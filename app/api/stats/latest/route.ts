@@ -2,9 +2,6 @@
 import { NextResponse } from "next/server";
 import { METRICS, type MetricKey } from "@/lib/metrics";
 
-// If you want to ensure this route never caches at the edge
-export const dynamic = "force-dynamic";
-
 // ---- World Bank API typings ----
 type WBPageInfo = {
   page: number;
