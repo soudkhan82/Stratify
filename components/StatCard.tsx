@@ -6,11 +6,11 @@ export default function StatCard({
   foot,
 }: {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   value: number | null;
   foot?: string;
-  unit: string;
-  loading: boolean;
+  unit?: string;
+  loading?: boolean;
 }) {
   return (
     <div className="rounded-xl border p-4">
