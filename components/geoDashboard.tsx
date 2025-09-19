@@ -442,6 +442,9 @@ export default function GeoDashboard() {
               <span className="font-semibold text-slate-50">Stratify</span> —
               Visualize. Compare. Understand the World.
             </p>
+            <p className="text-xs">
+              The visuals with take 5-10 seconds to update
+            </p>
           </div>
         </div>
       </header>
