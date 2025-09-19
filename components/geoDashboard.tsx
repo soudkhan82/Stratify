@@ -45,7 +45,7 @@ const ALL_COUNTRIES: Country[] = worldCountries
       continent: cont,
       lat: c.latlng[0],
       lon: c.latlng[1],
-    };
+    } as Country;
   })
   .filter(Boolean) as Country[];
 
@@ -119,6 +119,34 @@ function BarChart({
   );
 }
 
+// ---------- Helpers ----------
+const toNumber = (v: unknown): number | null => {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+};
+
+type RankRow = { rank: number; cca3: string; name: string; value: number };
+function buildRankingForMetric(
+  metricKey: MetricKey,
+  countries: Country[],
+  continentValues: Record<string, MetricValues>
+): RankRow[] {
+  const rows = countries
+    .map((c) => {
+      const v = toNumber(continentValues[c.cca3]?.[metricKey]);
+      return v != null ? { cca3: c.cca3, name: c.name, value: v } : null;
+    })
+    .filter(
+      (x): x is { cca3: string; name: string; value: number } => x !== null
+    )
+    .sort((a, b) => b.value - a.value);
+  return rows.map((r, i) => ({ rank: i + 1, ...r }));
+}
+
 // ---------- Component ----------
 export default function GeoDashboard() {
   const [continent, setContinent] = useState<Continent>("Asia");
@@ -139,7 +167,8 @@ export default function GeoDashboard() {
     if (!countries.find((c) => c.cca3 === countryCca3)) {
       setCountryCca3(countries[0]?.cca3 ?? "");
     }
-  }, [countries, countryCca3]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countries]);
 
   const selected = countries.find((c) => c.cca3 === countryCca3) ?? null;
 
@@ -189,21 +218,22 @@ export default function GeoDashboard() {
       let best: Picked | null = null;
 
       for (const k of keys) {
-        const selVal = continentValues[selected.cca3]?.[k];
-        if (selVal == null || !Number.isFinite(selVal)) continue;
+        const selValNum = toNumber(continentValues[selected.cca3]?.[k]);
+        if (selValNum == null) continue;
 
         const vals = countries
-          .map((c) => continentValues[c.cca3]?.[k])
-          .filter((v): v is number => v != null && Number.isFinite(v));
+          .map((c) => toNumber(continentValues[c.cca3]?.[k]))
+          .filter((v): v is number => v != null);
 
         if (!vals.length) continue;
 
         // Descending: larger value = better rank
         const sortedDesc = [...vals].sort((a, b) => b - a);
-        const rank = sortedDesc.findIndex((v) => v === selVal) + 1;
+        const rank =
+          sortedDesc.findIndex((v) => Math.abs(v - selValNum) < 1e-9) + 1;
         const total = sortedDesc.length;
 
-        const row: Picked = { topic, key: k, rank, total, value: selVal };
+        const row: Picked = { topic, key: k, rank, total, value: selValNum };
         if (!best || rank < best.rank) best = row;
       }
 
@@ -228,11 +258,11 @@ export default function GeoDashboard() {
         .map((c) => ({
           name: c.name,
           cca3: c.cca3,
-          value: continentValues[c.cca3]?.[p.key] ?? null,
+          value: toNumber(continentValues[c.cca3]?.[p.key]),
         }))
         .filter(
           (r): r is { name: string; cca3: string; value: number } =>
-            r.value != null && Number.isFinite(r.value)
+            r.value != null
         )
         .sort((a, b) => b.value - a.value)
         .slice(0, 10);
@@ -247,6 +277,15 @@ export default function GeoDashboard() {
     });
   }, [pickedIndicators, countries, continentValues]);
 
+  // --- Rankings per metric (for modal) ---
+  const rankingsByMetric = useMemo(() => {
+    const out = new Map<MetricKey, RankRow[]>();
+    for (const p of pickedIndicators) {
+      out.set(p.key, buildRankingForMetric(p.key, countries, continentValues));
+    }
+    return out;
+  }, [pickedIndicators, countries, continentValues]);
+
   // --- Map points (no color coding) ---
   const points: Poi[] = countries.map((c) => ({
     id: c.cca3,
@@ -256,16 +295,30 @@ export default function GeoDashboard() {
     value: 1,
   }));
 
-  // --- Ranking modal (optional; unchanged behavior) ---
+  // --- Ranking modal state & handlers ---
   const [rankModalOpen, setRankModalOpen] = useState(false);
   const [rankCountry, setRankCountry] = useState<Country | null>(null);
+  const [activeMetric, setActiveMetric] = useState<MetricKey | null>(null);
+
+  const canShowModal = pickedIndicators.length > 0 && !loadingContinent;
+
   const handlePointClick = (p: Poi) => {
     const c = countries.find((x) => x.cca3 === p.id);
     if (!c) return;
     setRankCountry(c);
-    setRankModalOpen(true);
     setCountryCca3(c.cca3);
+    if (!canShowModal) return; // avoid opening empty modal while loading
+    setRankModalOpen(true);
+    setActiveMetric(pickedIndicators[0]?.key ?? null);
   };
+
+  useEffect(() => {
+    if (rankModalOpen && pickedIndicators.length) {
+      setActiveMetric((prev) => prev ?? pickedIndicators[0].key);
+    } else if (!rankModalOpen) {
+      setActiveMetric(null);
+    }
+  }, [rankModalOpen, pickedIndicators]);
 
   return (
     <div className="min-h-screen bg-white">
@@ -294,10 +347,6 @@ export default function GeoDashboard() {
               <span className="font-semibold">Stratify</span> — Visualize.
               Compare. Understand the World.
             </p>
-            {/* optional subtle subline; remove if not needed */}
-            {/* <p className="hidden md:block text-xs text-slate-500">
-        Where maps meet metrics for country-by-country insight.
-      </p> */}
           </div>
         </div>
       </header>
@@ -407,7 +456,7 @@ export default function GeoDashboard() {
           </div>
         </div>
       </main>
-      {/* Optional: rankings modal kept if you still want it */}
+      {/* Rankings modal */}
       {rankModalOpen && rankCountry && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
@@ -424,6 +473,26 @@ export default function GeoDashboard() {
                   Full rankings within{" "}
                   <span className="font-medium">{continent}</span>
                 </p>
+                {activeMetric &&
+                  (() => {
+                    const rows = rankingsByMetric.get(activeMetric) ?? [];
+                    const idx = rows.findIndex(
+                      (r) => r.cca3 === rankCountry.cca3
+                    );
+                    const rank = idx >= 0 ? rows[idx].rank : null;
+                    const total = rows.length;
+                    const m = METRICS[activeMetric];
+                    const val = idx >= 0 ? rows[idx].value : null;
+                    return (
+                      <p className="text-sm text-slate-600 mt-1">
+                        {m.label}:{" "}
+                        {val != null
+                          ? `${val.toLocaleString()} ${m.unit}`
+                          : "—"}{" "}
+                        • Rank {rank ?? "—"}/{total || "—"}
+                      </p>
+                    );
+                  })()}
               </div>
               <button
                 className="rounded-md border px-3 py-1 text-sm hover:bg-slate-50"
@@ -433,7 +502,96 @@ export default function GeoDashboard() {
               </button>
             </div>
 
-            {/* (Modal table content omitted for brevity — keep your previous implementation if needed) */}
+            {/* Tabs for picked indicators */}
+            <div className="mb-4 flex flex-wrap gap-2">
+              {pickedIndicators.map((p) => {
+                const m = METRICS[p.key];
+                const isActive = activeMetric === p.key;
+                return (
+                  <button
+                    key={`${p.topic}-${p.key}`}
+                    className={`rounded-full border px-3 py-1 text-sm ${
+                      isActive
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "hover:bg-slate-50"
+                    }`}
+                    onClick={() => setActiveMetric(p.key)}
+                  >
+                    <span className="font-medium">{m.label}</span>
+                    <span className="ml-1 text-xs opacity-80">({m.unit})</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Ranking table */}
+            {activeMetric ? (
+              (() => {
+                const rows = rankingsByMetric.get(activeMetric) ?? [];
+                const m = METRICS[activeMetric];
+                const selectedCca3 = rankCountry?.cca3;
+
+                return rows.length ? (
+                  <div className="overflow-auto rounded-lg border">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-slate-50">
+                        <tr className="text-left">
+                          <th className="px-3 py-2 w-14">#</th>
+                          <th className="px-3 py-2">Country</th>
+                          <th className="px-3 py-2 text-right">
+                            Value{" "}
+                            <span className="text-slate-500 font-normal">
+                              ({m.unit})
+                            </span>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((r) => {
+                          const isSel = r.cca3 === selectedCca3;
+                          return (
+                            <tr
+                              key={r.cca3}
+                              className={
+                                isSel
+                                  ? "bg-blue-50"
+                                  : "odd:bg-white even:bg-slate-50/30"
+                              }
+                            >
+                              <td className="px-3 py-2 font-medium tabular-nums">
+                                {r.rank}
+                              </td>
+                              <td
+                                className={`px-3 py-2 ${
+                                  isSel ? "font-semibold" : ""
+                                }`}
+                              >
+                                {r.name}
+                              </td>
+                              <td
+                                className={`px-3 py-2 text-right tabular-nums ${
+                                  isSel ? "font-semibold" : ""
+                                }`}
+                              >
+                                {Number(r.value).toLocaleString()}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="rounded-md border p-4 text-slate-600">
+                    No data for this indicator.
+                  </div>
+                );
+              })()
+            ) : (
+              <div className="rounded-md border p-4 text-slate-600">
+                Select an indicator above.
+              </div>
+            )}
           </div>
         </div>
       )}
