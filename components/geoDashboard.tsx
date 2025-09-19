@@ -278,13 +278,20 @@ export default function GeoDashboard() {
   }, [pickedIndicators, countries, continentValues]);
 
   // --- Rankings per metric (for modal) ---
+  const allIndicators = useMemo(() => {
+    return METRIC_KEYS.map((k) => ({
+      key: k,
+      topic: METRICS[k].topic,
+      label: METRICS[k].label,
+    }));
+  }, []);
   const rankingsByMetric = useMemo(() => {
     const out = new Map<MetricKey, RankRow[]>();
-    for (const p of pickedIndicators) {
-      out.set(p.key, buildRankingForMetric(p.key, countries, continentValues));
+    for (const m of allIndicators) {
+      out.set(m.key, buildRankingForMetric(m.key, countries, continentValues));
     }
     return out;
-  }, [pickedIndicators, countries, continentValues]);
+  }, [allIndicators, countries, continentValues]);
 
   // --- Map points (no color coding) ---
   const points: Poi[] = countries.map((c) => ({
@@ -300,7 +307,7 @@ export default function GeoDashboard() {
   const [rankCountry, setRankCountry] = useState<Country | null>(null);
   const [activeMetric, setActiveMetric] = useState<MetricKey | null>(null);
 
-  const canShowModal = pickedIndicators.length > 0 && !loadingContinent;
+  const canShowModal = allIndicators.length > 0 && !loadingContinent;
 
   const handlePointClick = (p: Poi) => {
     const c = countries.find((x) => x.cca3 === p.id);
@@ -309,12 +316,12 @@ export default function GeoDashboard() {
     setCountryCca3(c.cca3);
     if (!canShowModal) return; // avoid opening empty modal while loading
     setRankModalOpen(true);
-    setActiveMetric(pickedIndicators[0]?.key ?? null);
+    setActiveMetric(allIndicators[0]?.key ?? null);
   };
 
   useEffect(() => {
-    if (rankModalOpen && pickedIndicators.length) {
-      setActiveMetric((prev) => prev ?? pickedIndicators[0].key);
+    if (rankModalOpen && allIndicators.length) {
+      setActiveMetric((prev) => prev ?? allIndicators[0].key);
     } else if (!rankModalOpen) {
       setActiveMetric(null);
     }
@@ -502,20 +509,20 @@ export default function GeoDashboard() {
               </button>
             </div>
 
-            {/* Tabs for picked indicators */}
+            {/* Tabs for All indicators */}
             <div className="mb-4 flex flex-wrap gap-2">
-              {pickedIndicators.map((p) => {
-                const m = METRICS[p.key];
-                const isActive = activeMetric === p.key;
+              {allIndicators.map((mdef) => {
+                const m = METRICS[mdef.key];
+                const isActive = activeMetric === mdef.key;
                 return (
                   <button
-                    key={`${p.topic}-${p.key}`}
+                    key={`${mdef.topic}-${mdef.key}`}
                     className={`rounded-full border px-3 py-1 text-sm ${
                       isActive
                         ? "bg-blue-600 text-white border-blue-600"
                         : "hover:bg-slate-50"
                     }`}
-                    onClick={() => setActiveMetric(p.key)}
+                    onClick={() => setActiveMetric(mdef.key)}
                   >
                     <span className="font-medium">{m.label}</span>
                     <span className="ml-1 text-xs opacity-80">({m.unit})</span>
