@@ -13,6 +13,22 @@ import {
   type MetricKey,
 } from "@/lib/metrics";
 import { fetchLatestMetrics } from "@/lib/stats/client";
+import {
+  fetchWorldBankSeries,
+  type SeriesPoint,
+} from "@/lib/fetchers/worldbank";
+
+// Recharts (trend line)
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  Legend,
+} from "recharts";
 
 // ---------- Continents ----------
 type Continent = "Africa" | "Americas" | "Asia" | "Europe" | "Oceania";
@@ -51,8 +67,6 @@ const ALL_COUNTRIES: Country[] = worldCountries
 
 // ---------- Types ----------
 type MetricValues = Record<MetricKey, number | null>;
-const emptyValues = (keys: MetricKey[]) =>
-  keys.reduce((a, k) => ((a[k] = null), a), {} as MetricValues);
 
 // Topics we will consider for “top indicator” (skip environment)
 const TOPIC_ORDER: Array<keyof typeof METRICS_BY_TOPIC> = [
@@ -147,6 +161,18 @@ function buildRankingForMetric(
   return rows.map((r, i) => ({ rank: i + 1, ...r }));
 }
 
+// Try to read a World Bank indicator code from a metric definition
+function getWorldBankCode(metricKey: MetricKey): string | null {
+  const m = METRICS[metricKey] as Record<string, unknown>;
+  // Common property names people use for WB code
+  const candidates = ["wb", "code", "id", "indicator"];
+  for (const k of candidates) {
+    const v = m?.[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
+
 // ---------- Component ----------
 export default function GeoDashboard() {
   const [continent, setContinent] = useState<Continent>("Asia");
@@ -171,6 +197,37 @@ export default function GeoDashboard() {
   }, [countries]);
 
   const selected = countries.find((c) => c.cca3 === countryCca3) ?? null;
+
+  // ------ Time series state ------
+  const [indicator, setIndicator] = useState<MetricKey>(METRIC_KEYS[0]);
+  const [series, setSeries] = useState<SeriesPoint[]>([]);
+  const [seriesLoading, setSeriesLoading] = useState(false);
+
+  // Fetch WB series for selected country + indicator
+  useEffect(() => {
+    let cancel = false;
+    const wbCode = getWorldBankCode(indicator);
+    if (!countryCca3 || !wbCode) {
+      setSeries([]);
+      return;
+    }
+
+    (async () => {
+      setSeriesLoading(true);
+      try {
+        const data = await fetchWorldBankSeries(wbCode, countryCca3);
+        if (!cancel) setSeries(data ?? []);
+      } catch {
+        if (!cancel) setSeries([]);
+      } finally {
+        if (!cancel) setSeriesLoading(false);
+      }
+    })();
+
+    return () => {
+      cancel = true;
+    };
+  }, [countryCca3, indicator]);
 
   // --- Fetch continent-wide values (for picking top indicators & charts) ---
   const [continentValues, setContinentValues] = useState<
@@ -325,12 +382,11 @@ export default function GeoDashboard() {
     } else if (!rankModalOpen) {
       setActiveMetric(null);
     }
-  }, [rankModalOpen, pickedIndicators]);
+  }, [rankModalOpen, allIndicators]);
 
   return (
     <div className="min-h-screen bg-white">
       {/* Top-left logo bar */}
-
       <header className="sticky top-0 z-30 border-b bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60">
         <div className="mx-auto flex max-w-7xl items-center justify-start gap-4 px-4 py-2">
           <Link
@@ -344,11 +400,10 @@ export default function GeoDashboard() {
               width={200}
               height={400}
               priority
-              className="h-12 w-auto md:h-16" // valid Tailwind heights
+              className="h-12 w-auto md:h-16"
             />
           </Link>
 
-          {/* Punchline next to the logo */}
           <div className="min-w-0">
             <p className="text-sm md:text-base lg:text-lg font-medium text-slate-800 leading-snug">
               <span className="font-semibold">Stratify</span> — Visualize.
@@ -357,6 +412,7 @@ export default function GeoDashboard() {
           </div>
         </div>
       </header>
+
       <main className="mx-auto max-w-7xl px-4 py-4">
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Left: Map column */}
@@ -435,6 +491,57 @@ export default function GeoDashboard() {
               selectedId={selected?.cca3}
               onPointClick={handlePointClick}
             />
+
+            {/* Indicator dropdown + Time series chart */}
+            <div className="mt-3 flex items-center gap-3">
+              <label className="text-sm text-slate-700">Indicator:</label>
+              <select
+                value={indicator}
+                onChange={(e) => setIndicator(e.target.value as MetricKey)}
+                className="rounded border p-2"
+              >
+                {METRIC_KEYS.map((k) => (
+                  <option key={k} value={k}>
+                    {METRICS[k].label} ({METRICS[k].unit})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="h-[340px] w-full rounded-xl border p-3">
+              <div className="mb-2 text-sm font-semibold">
+                {METRICS[indicator].label} — {selected?.name ?? "—"}{" "}
+                <span className="text-slate-500">
+                  ({METRICS[indicator].unit})
+                </span>
+              </div>
+              {seriesLoading ? (
+                <div className="text-center text-slate-500 py-10">
+                  Loading trend…
+                </div>
+              ) : series.length ? (
+                <ResponsiveContainer width="100%" height="90%">
+                  <LineChart data={series}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="year" tickMargin={6} />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      dot={false}
+                      stroke="#2563eb"
+                      name={selected?.name ?? "Selected country"}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="text-center text-slate-500 py-10">
+                  No time-series data available.
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right: Two-per-row bar charts */}
@@ -463,6 +570,7 @@ export default function GeoDashboard() {
           </div>
         </div>
       </main>
+
       {/* Rankings modal */}
       {rankModalOpen && rankCountry && (
         <div
