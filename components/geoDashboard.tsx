@@ -18,11 +18,11 @@ import {
   type SeriesPoint,
 } from "@/lib/fetchers/worldbank";
 
-// Recharts (trend line)
+// Recharts (area trend)
 import {
   ResponsiveContainer,
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   Tooltip,
@@ -77,8 +77,44 @@ const TOPIC_ORDER: Array<keyof typeof METRICS_BY_TOPIC> = [
   "agriculture",
 ];
 
+// ---------- Formatting helpers ----------
+const fmtCompact = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+const formatCompact = (n: unknown) =>
+  typeof n === "number" && Number.isFinite(n)
+    ? fmtCompact.format(n)
+    : String(n ?? "");
+
+// Pull a World Bank code from the metric definition
+function getWorldBankCode(metricKey: MetricKey): string | null {
+  const m = METRICS[metricKey] as Record<string, unknown>;
+  const candidates = ["wb", "code", "id", "indicator"];
+  for (const k of candidates) {
+    const v = m?.[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
+
 // ---------- Tiny BarChart (no lib) ----------
 type BarDatum = { name: string; value: number; cca3: string };
+
+// pleasant, high-contrast palette for dark mode
+const PALETTE = [
+  "#60a5fa", // blue-400
+  "#34d399", // emerald-400
+  "#f59e0b", // amber-500
+  "#a78bfa", // violet-400
+  "#22d3ee", // cyan-400
+  "#fb7185", // rose-400
+  "#f472b6", // pink-400
+  "#d946ef", // fuchsia-500
+  "#f97316", // orange-500
+  "#84cc16", // lime-500
+];
+
 function BarChart({
   title,
   unit,
@@ -95,34 +131,43 @@ function BarChart({
     [data]
   );
   return (
-    <div className="rounded-xl border p-4">
-      <div className="mb-2 text-sm font-semibold">
-        {title} <span className="text-slate-500">({unit})</span>
+    <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <div className="mb-2 text-sm font-semibold text-slate-100">
+        {title} <span className="text-slate-400">({unit})</span>
       </div>
-      <div className="space-y-2">
-        {data.map((d) => {
+      <div className="space-y-3">
+        {data.map((d, i) => {
           const w = `${(d.value / max) * 100}%`;
           const isSel = d.cca3 === highlightCca3;
+          const color = PALETTE[i % PALETTE.length];
           return (
             <div key={d.cca3}>
               <div className="mb-1 flex items-center justify-between text-xs">
-                <span className={`truncate ${isSel ? "font-semibold" : ""}`}>
+                <span
+                  className={`truncate ${
+                    isSel ? "font-semibold text-slate-50" : "text-slate-300"
+                  }`}
+                >
                   {d.name}
                 </span>
                 <span
                   className={`ml-2 tabular-nums ${
-                    isSel ? "font-semibold" : "text-slate-600"
+                    isSel ? "font-semibold text-slate-50" : "text-slate-400"
                   }`}
                 >
-                  {Number(d.value).toLocaleString()}
+                  {formatCompact(d.value)}
                 </span>
               </div>
-              <div className="h-2 w-full rounded bg-slate-100">
+              <div className="h-2 w-full rounded bg-slate-800">
                 <div
-                  className={`h-2 rounded ${
-                    isSel ? "bg-blue-600" : "bg-slate-400"
-                  }`}
-                  style={{ width: w }}
+                  className="h-2 rounded transition-all"
+                  style={{
+                    width: w,
+                    background: isSel
+                      ? `linear-gradient(90deg, ${color}, ${color})`
+                      : color,
+                    boxShadow: isSel ? `0 0 0 1px ${color}` : undefined,
+                  }}
                 />
               </div>
             </div>
@@ -159,18 +204,6 @@ function buildRankingForMetric(
     )
     .sort((a, b) => b.value - a.value);
   return rows.map((r, i) => ({ rank: i + 1, ...r }));
-}
-
-// Try to read a World Bank indicator code from a metric definition
-function getWorldBankCode(metricKey: MetricKey): string | null {
-  const m = METRICS[metricKey] as Record<string, unknown>;
-  // Common property names people use for WB code
-  const candidates = ["wb", "code", "id", "indicator"];
-  for (const k of candidates) {
-    const v = m?.[k];
-    if (typeof v === "string" && v.trim()) return v.trim();
-  }
-  return null;
 }
 
 // ---------- Component ----------
@@ -385,9 +418,9 @@ export default function GeoDashboard() {
   }, [rankModalOpen, allIndicators]);
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-slate-950 text-slate-100">
       {/* Top-left logo bar */}
-      <header className="sticky top-0 z-30 border-b bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+      <header className="sticky top-0 z-30 border-b border-slate-800 bg-slate-900/80 backdrop-blur supports-[backdrop-filter]:bg-slate-900/60">
         <div className="mx-auto flex max-w-7xl items-center justify-start gap-4 px-4 py-2">
           <Link
             href="/"
@@ -405,9 +438,9 @@ export default function GeoDashboard() {
           </Link>
 
           <div className="min-w-0">
-            <p className="text-sm md:text-base lg:text-lg font-medium text-slate-800 leading-snug">
-              <span className="font-semibold">Stratify</span> — Visualize.
-              Compare. Understand the World.
+            <p className="text-sm md:text-base lg:text-lg font-medium text-slate-100/90 leading-snug">
+              <span className="font-semibold text-slate-50">Stratify</span> —
+              Visualize. Compare. Understand the World.
             </p>
           </div>
         </div>
@@ -418,28 +451,30 @@ export default function GeoDashboard() {
           {/* Left: Map column */}
           <div className="w-full lg:w-1/2 space-y-3">
             {/* Compact ribbon with picked indicators */}
-            <div className="rounded-lg border p-2">
+            <div className="rounded-lg border border-slate-800 bg-slate-900 p-2">
               <div className="flex flex-wrap gap-2 text-xs leading-tight">
                 {loadingContinent || !selected ? (
-                  <span className="text-slate-500">Loading summary…</span>
+                  <span className="text-slate-400">Loading summary…</span>
                 ) : pickedIndicators.length ? (
                   pickedIndicators.map((p) => {
                     const m = METRICS[p.key];
                     const val =
                       p.value == null
                         ? "—"
-                        : `${Number(p.value).toLocaleString()} ${m.unit}`;
+                        : `${formatCompact(p.value)} ${m.unit}`;
                     return (
                       <span
                         key={`${p.topic}-${p.key}`}
-                        className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1"
+                        className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-2 py-1 text-slate-200"
                       >
-                        <span className="capitalize text-slate-700">
+                        <span className="capitalize text-slate-300">
                           {p.topic}:
                         </span>
-                        <span className="font-medium">{m.label}</span>
-                        <span className="text-slate-500">• {val}</span>
-                        <span className="text-slate-500">
+                        <span className="font-medium text-slate-100">
+                          {m.label}
+                        </span>
+                        <span className="text-slate-400">• {val}</span>
+                        <span className="text-slate-400">
                           • Rank {Number.isFinite(p.rank) ? p.rank : "—"}/
                           {p.total || "—"}
                         </span>
@@ -447,7 +482,7 @@ export default function GeoDashboard() {
                     );
                   })
                 ) : (
-                  <span className="text-slate-500">No summary available.</span>
+                  <span className="text-slate-400">No summary available.</span>
                 )}
               </div>
             </div>
@@ -457,20 +492,22 @@ export default function GeoDashboard() {
               <select
                 value={continent}
                 onChange={(e) => setContinent(e.target.value as Continent)}
-                className="rounded border p-2"
+                className="rounded border border-slate-700 bg-slate-900 p-2 text-slate-100"
               >
                 {CONTINENTS.map((c) => (
-                  <option key={c}>{c}</option>
+                  <option key={c} className="bg-slate-900">
+                    {c}
+                  </option>
                 ))}
               </select>
 
               <select
                 value={countryCca3}
                 onChange={(e) => setCountryCca3(e.target.value)}
-                className="rounded border p-2"
+                className="rounded border border-slate-700 bg-slate-900 p-2 text-slate-100"
               >
                 {countries.map((c) => (
-                  <option key={c.cca3} value={c.cca3}>
+                  <option key={c.cca3} value={c.cca3} className="bg-slate-900">
                     {c.name}
                   </option>
                 ))}
@@ -492,52 +529,83 @@ export default function GeoDashboard() {
               onPointClick={handlePointClick}
             />
 
-            {/* Indicator dropdown + Time series chart */}
+            {/* Indicator dropdown + Area trend chart */}
             <div className="mt-3 flex items-center gap-3">
-              <label className="text-sm text-slate-700">Indicator:</label>
+              <label className="text-sm text-slate-300">Indicator:</label>
               <select
                 value={indicator}
                 onChange={(e) => setIndicator(e.target.value as MetricKey)}
-                className="rounded border p-2"
+                className="rounded border border-slate-700 bg-slate-900 p-2 text-slate-100"
               >
                 {METRIC_KEYS.map((k) => (
-                  <option key={k} value={k}>
+                  <option key={k} value={k} className="bg-slate-900">
                     {METRICS[k].label} ({METRICS[k].unit})
                   </option>
                 ))}
               </select>
             </div>
 
-            <div className="h-[340px] w-full rounded-xl border p-3">
-              <div className="mb-2 text-sm font-semibold">
+            <div className="h-[360px] w-full rounded-xl border border-slate-800 bg-slate-900 p-3">
+              <div className="mb-2 text-sm font-semibold text-slate-100">
                 {METRICS[indicator].label} — {selected?.name ?? "—"}{" "}
-                <span className="text-slate-500">
+                <span className="text-slate-400">
                   ({METRICS[indicator].unit})
                 </span>
               </div>
               {seriesLoading ? (
-                <div className="text-center text-slate-500 py-10">
+                <div className="text-center text-slate-400 py-10">
                   Loading trend…
                 </div>
               ) : series.length ? (
                 <ResponsiveContainer width="100%" height="90%">
-                  <LineChart data={series}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="year" tickMargin={6} />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Line
+                  <AreaChart data={series}>
+                    <defs>
+                      <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop
+                          offset="0%"
+                          stopColor="#60a5fa"
+                          stopOpacity={0.65}
+                        />
+                        <stop
+                          offset="100%"
+                          stopColor="#60a5fa"
+                          stopOpacity={0.06}
+                        />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="year"
+                      tickMargin={6}
+                      stroke="#94a3b8"
+                      tick={{ fill: "#cbd5e1", fontSize: 12 }}
+                    />
+                    <YAxis
+                      stroke="#94a3b8"
+                      tick={{ fill: "#cbd5e1", fontSize: 12 }}
+                      tickFormatter={formatCompact}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: "#0f172a",
+                        border: "1px solid #1f2937",
+                        color: "#e2e8f0",
+                      }}
+                      labelStyle={{ color: "#94a3b8" }}
+                      formatter={(v) => formatCompact(v as number)}
+                    />
+                    <Legend wrapperStyle={{ color: "#cbd5e1" }} />
+                    <Area
                       type="monotone"
                       dataKey="value"
-                      dot={false}
-                      stroke="#2563eb"
+                      stroke="#93c5fd"
+                      fill="url(#areaFill)"
                       name={selected?.name ?? "Selected country"}
                     />
-                  </LineChart>
+                  </AreaChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="text-center text-slate-500 py-10">
+                <div className="text-center text-slate-400 py-10">
                   No time-series data available.
                 </div>
               )}
@@ -547,7 +615,7 @@ export default function GeoDashboard() {
           {/* Right: Two-per-row bar charts */}
           <div className="w-full lg:w-1/2">
             {loadingContinent ? (
-              <div className="rounded-xl border p-6 text-center text-slate-500">
+              <div className="rounded-xl border border-slate-800 bg-slate-900 p-6 text-center text-slate-400">
                 Loading charts…
               </div>
             ) : barBlocks.length ? (
@@ -563,7 +631,7 @@ export default function GeoDashboard() {
                 ))}
               </div>
             ) : (
-              <div className="rounded-xl border p-6 text-center text-slate-500">
+              <div className="rounded-xl border border-slate-800 bg-slate-900 p-6 text-center text-slate-400">
                 No charts available.
               </div>
             )}
@@ -574,19 +642,23 @@ export default function GeoDashboard() {
       {/* Rankings modal */}
       {rankModalOpen && rankCountry && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
           onClick={() => setRankModalOpen(false)}
         >
           <div
-            className="w-[90vw] max-w-3xl max-h-[80vh] overflow-auto rounded-xl bg-white p-5 shadow-xl"
+            className="w-[90vw] max-w-3xl max-h-[80vh] overflow-auto rounded-xl border border-slate-800 bg-slate-900 p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <h3 className="text-xl font-semibold">{rankCountry.name}</h3>
-                <p className="text-sm text-slate-600">
+                <h3 className="text-xl font-semibold text-slate-100">
+                  {rankCountry.name}
+                </h3>
+                <p className="text-sm text-slate-400">
                   Full rankings within{" "}
-                  <span className="font-medium">{continent}</span>
+                  <span className="font-medium text-slate-200">
+                    {continent}
+                  </span>
                 </p>
                 {activeMetric &&
                   (() => {
@@ -599,18 +671,16 @@ export default function GeoDashboard() {
                     const m = METRICS[activeMetric];
                     const val = idx >= 0 ? rows[idx].value : null;
                     return (
-                      <p className="text-sm text-slate-600 mt-1">
+                      <p className="text-sm text-slate-300 mt-1">
                         {m.label}:{" "}
-                        {val != null
-                          ? `${val.toLocaleString()} ${m.unit}`
-                          : "—"}{" "}
+                        {val != null ? `${formatCompact(val)} ${m.unit}` : "—"}{" "}
                         • Rank {rank ?? "—"}/{total || "—"}
                       </p>
                     );
                   })()}
               </div>
               <button
-                className="rounded-md border px-3 py-1 text-sm hover:bg-slate-50"
+                className="rounded-md border border-slate-700 px-3 py-1 text-sm text-slate-100 hover:bg-slate-800"
                 onClick={() => setRankModalOpen(false)}
               >
                 Close
@@ -628,7 +698,7 @@ export default function GeoDashboard() {
                     className={`rounded-full border px-3 py-1 text-sm ${
                       isActive
                         ? "bg-blue-600 text-white border-blue-600"
-                        : "hover:bg-slate-50"
+                        : "border-slate-700 text-slate-200 hover:bg-slate-800"
                     }`}
                     onClick={() => setActiveMetric(mdef.key)}
                   >
@@ -647,9 +717,9 @@ export default function GeoDashboard() {
                 const selectedCca3 = rankCountry?.cca3;
 
                 return rows.length ? (
-                  <div className="overflow-auto rounded-lg border">
+                  <div className="overflow-auto rounded-lg border border-slate-800">
                     <table className="min-w-full text-sm">
-                      <thead className="bg-slate-50">
+                      <thead className="bg-slate-800/60 text-slate-300">
                         <tr className="text-left">
                           <th className="px-3 py-2 w-14">#</th>
                           <th className="px-3 py-2">Country</th>
@@ -669,8 +739,8 @@ export default function GeoDashboard() {
                               key={r.cca3}
                               className={
                                 isSel
-                                  ? "bg-blue-50"
-                                  : "odd:bg-white even:bg-slate-50/30"
+                                  ? "bg-blue-950/40 text-slate-100"
+                                  : "odd:bg-slate-900 even:bg-slate-900/60 text-slate-200"
                               }
                             >
                               <td className="px-3 py-2 font-medium tabular-nums">
@@ -688,7 +758,7 @@ export default function GeoDashboard() {
                                   isSel ? "font-semibold" : ""
                                 }`}
                               >
-                                {Number(r.value).toLocaleString()}
+                                {formatCompact(r.value)}
                               </td>
                             </tr>
                           );
@@ -697,13 +767,13 @@ export default function GeoDashboard() {
                     </table>
                   </div>
                 ) : (
-                  <div className="rounded-md border p-4 text-slate-600">
+                  <div className="rounded-md border border-slate-800 p-4 text-slate-300">
                     No data for this indicator.
                   </div>
                 );
               })()
             ) : (
-              <div className="rounded-md border p-4 text-slate-600">
+              <div className="rounded-md border border-slate-800 p-4 text-slate-300">
                 Select an indicator above.
               </div>
             )}
