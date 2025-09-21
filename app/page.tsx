@@ -1,4 +1,4 @@
-import GeoDashboard from "@/components/geoDashboard";
+import GeoDashboard from "./geoDashboard";
 
 export default function Page() {
   return (

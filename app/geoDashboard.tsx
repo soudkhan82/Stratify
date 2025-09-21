@@ -1,0 +1,232 @@
+// app/geodashboard.tsx
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import worldCountries from "world-countries";
+
+import PoiMap, { type Poi } from "@/components/PoiMap";
+import { METRICS, METRIC_KEYS, type MetricKey } from "@/lib/metrics";
+import { IndicatorLine } from "@/components/IndicatorLine";
+import { IndicatorRank, type RankCountry } from "@/components/IndicatorRank";
+import { StatCard } from "@/components/StatCard";
+
+const DEBUG = true;
+const dlog = (label: string, data?: unknown): void => {
+  if (DEBUG) console.log(label, data);
+};
+
+type Continent = "Africa" | "Americas" | "Asia" | "Europe" | "Oceania";
+const CONTINENTS: readonly Continent[] = [
+  "Asia",
+  "Africa",
+  "Americas",
+  "Europe",
+  "Oceania",
+];
+const toContinent = (r?: string): Continent | null =>
+  CONTINENTS.includes(r as Continent) ? (r as Continent) : null;
+
+type Country = {
+  name: string;
+  cca3: string;
+  continent: Continent;
+  lat: number;
+  lon: number;
+};
+
+const ALL_COUNTRIES: Country[] = worldCountries
+  .map((c) => {
+    const cont = toContinent(c.region);
+    if (!cont || !Array.isArray(c.latlng) || c.latlng.length < 2) return null;
+    return {
+      name: c.name.common,
+      cca3: c.cca3,
+      continent: cont,
+      lat: Number(c.latlng[0]),
+      lon: Number(c.latlng[1]),
+    } as Country;
+  })
+  .filter((x): x is Country => x !== null);
+
+export default function GeoDashboard() {
+  const [continent, setContinent] = useState<Continent>("Asia");
+
+  const countries = useMemo<Country[]>(
+    () =>
+      ALL_COUNTRIES.filter((c) => c.continent === continent).sort((a, b) =>
+        a.name.localeCompare(b.name)
+      ),
+    [continent]
+  );
+
+  const [countryCca3, setCountryCca3] = useState<string>(
+    countries[0]?.cca3 ?? ""
+  );
+  useEffect(() => {
+    if (!countries.find((c) => c.cca3 === countryCca3)) {
+      setCountryCca3(countries[0]?.cca3 ?? "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countries]);
+
+  const selected = useMemo(
+    () => countries.find((c) => c.cca3 === countryCca3) ?? null,
+    [countries, countryCca3]
+  );
+
+  const [indicator, setIndicator] = useState<MetricKey>(METRIC_KEYS[0]);
+
+  const points = useMemo<Poi[]>(
+    () =>
+      countries.map((c) => ({
+        id: c.cca3,
+        name: c.name,
+        lat: c.lat,
+        lon: c.lon,
+        value: 1,
+      })),
+    [countries]
+  );
+
+  const rankCountries = useMemo<readonly RankCountry[]>(
+    () => countries.map((c) => ({ name: c.name, cca3: c.cca3 })),
+    [countries]
+  );
+
+  // Debug
+  useEffect(() => {
+    dlog("[Geo] countries", {
+      continent,
+      count: countries.length,
+      sample: countries.slice(0, 3).map(({ cca3, name }) => ({ cca3, name })),
+    });
+  }, [continent, countries]);
+
+  useEffect(() => {
+    dlog("[Geo] points", { count: points.length, sample: points.slice(0, 3) });
+  }, [points]);
+
+  useEffect(() => {
+    dlog("[Geo] selection", {
+      selectedCca3: countryCca3,
+      selectedName: selected?.name ?? null,
+      indicator,
+      indicatorLabel: METRICS[indicator].label,
+    });
+  }, [countryCca3, selected?.name, indicator]);
+
+  const handlePointClick = (p: Poi): void => {
+    const c = countries.find((x) => x.cca3 === p.id);
+    if (c) setCountryCca3(c.cca3);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100">
+      <header className="sticky top-0 z-30 border-b border-slate-800 bg-slate-900/80 backdrop-blur supports-[backdrop-filter]:bg-slate-900/60">
+        <div className="mx-auto flex max-w-7xl items-center justify-start gap-4 px-4 py-2">
+          <Link
+            href="/"
+            aria-label="Stratify home"
+            className="inline-flex items-center shrink-0"
+          >
+            <Image
+              src="/stratify.png"
+              alt="Stratify"
+              width={200}
+              height={400}
+              priority
+              className="h-12 w-auto md:h-16"
+            />
+          </Link>
+          <div className="min-w-0">
+            <p className="text-sm md:text-base lg:text-lg font-medium text-slate-100/90 leading-snug">
+              <span className="font-semibold text-slate-50">Stratify</span> —
+              Visualize. Compare. Understand the World.
+            </p>
+            <p className="text-xs">Updates in a few seconds</p>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-4 py-4">
+        {/* Controls */}
+        <div className="mb-3 flex flex-wrap gap-3">
+          <select
+            value={continent}
+            onChange={(e) => setContinent(e.target.value as Continent)}
+            className="rounded border border-slate-700 bg-slate-900 p-2 text-slate-100"
+          >
+            {CONTINENTS.map((c) => (
+              <option key={c} className="bg-slate-900">
+                {c}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={countryCca3}
+            onChange={(e) => setCountryCca3(e.target.value)}
+            className="rounded border border-slate-700 bg-slate-900 p-2 text-slate-100"
+          >
+            {countries.map((c) => (
+              <option key={c.cca3} value={c.cca3} className="bg-slate-900">
+                {c.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={indicator}
+            onChange={(e) => setIndicator(e.target.value as MetricKey)}
+            className="rounded border border-slate-700 bg-slate-900 p-2 text-slate-100"
+          >
+            {METRIC_KEYS.map((k) => (
+              <option key={k} value={k} className="bg-slate-900">
+                {METRICS[k].label} ({METRICS[k].unit})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Two columns: Map | Line + Rank */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          {/* Map block + StatCard below */}
+          <div className="space-y-3">
+            <div className="rounded-xl border border-slate-800 bg-slate-900 p-2">
+              <div className="text-sm font-semibold text-slate-100 mb-1">
+                {selected?.name ?? "—"} — Countries
+              </div>
+              <PoiMap
+                points={points}
+                selectedId={selected?.cca3}
+                onPointClick={handlePointClick}
+                className="h-[280px] w-full"
+              />
+            </div>
+
+            {/* NEW: StatCard showing latest values for the selected country */}
+            <StatCard iso3={countryCca3} countryLabel={selected?.name ?? ""} />
+          </div>
+
+          {/* Chart + Rank */}
+          <div className="space-y-4">
+            <IndicatorLine
+              iso3={countryCca3}
+              metric={indicator}
+              countryLabel={selected?.name ?? ""}
+              className="h-[340px]"
+            />
+            <IndicatorRank
+              continentLabel={continent}
+              countries={rankCountries}
+              selectedIso3={countryCca3}
+              metric={indicator}
+            />
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}

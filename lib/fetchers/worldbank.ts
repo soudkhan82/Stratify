@@ -1,76 +1,38 @@
-export type SeriesPoint = { year: number; value: number };
+// lib/fetchers/worldbank.ts
+import type { SeriesPoint } from "@/lib/datasources";
 
-/**
- * World Bank series fetcher (minimal)
- * @param indicator e.g. "AG.LND.FRST.ZS" or "NY.GDP.MKTP.CD"
- * @param country   ISO-3 codes, e.g. "PAK" or semicolon list "PAK;IND"
- * @param date      "YYYY" or "YYYY:YYYY" (optional)
- */
+type WbValue = {
+  value: number | null;
+  date: string; // year as string
+};
+
+type WbResponse =
+  | [/* meta */ unknown, /* data */ WbValue[]]
+  | [/* meta */ unknown, /* data */ []];
+
 export async function fetchWorldBankSeries(
-  indicator: string,
-  country: string,
-  { date }: { date?: string } = {}
+  indicatorCode: string,
+  iso3: string
 ): Promise<SeriesPoint[]> {
-  // WB expects ISO-3 and semicolon-separated lists
-  const countryParam = country.toUpperCase().replace(/,/g, ";").trim();
+  const url = `https://api.worldbank.org/v2/country/${encodeURIComponent(
+    iso3
+  )}/indicator/${encodeURIComponent(indicatorCode)}?format=json&per_page=20000`;
 
-  const params = new URLSearchParams({
-    format: "json",
-    per_page: "20000",
-    ...(date ? { date } : {}),
-  });
+  const res = await fetch(url, { next: { revalidate: 3600 } });
+  if (!res.ok) return [];
 
-  const url = `https://api.worldbank.org/v2/country/${countryParam}/indicator/${indicator}?${params.toString()}`;
+  const json = (await res.json()) as WbResponse;
+  const data = Array.isArray(json) && Array.isArray(json[1]) ? json[1] : [];
 
-  try {
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) {
-      console.error(
-        `WorldBank HTTP ${res.status}: ${res.statusText}\nURL: ${url}`
-      );
-      return [];
-    }
+  // Filter + normalize + ascending by year
+  const points: SeriesPoint[] = data
+    .map((d): SeriesPoint | null => {
+      const y = Number(d.date);
+      const v = typeof d.value === "number" ? d.value : null;
+      return Number.isFinite(y) && v !== null ? { year: y, value: v } : null;
+    })
+    .filter((p): p is SeriesPoint => p !== null)
+    .sort((a, b) => a.year - b.year);
 
-    const raw: unknown = await res.json();
-
-    // Success shape: [meta, rows[]]
-    if (Array.isArray(raw) && raw.length >= 2 && Array.isArray(raw[1])) {
-      const series: SeriesPoint[] = raw[1]
-        .map((r: unknown) => {
-          if (r && typeof r === "object" && "date" in r && "value" in r) {
-            const year = Number((r as { date: unknown }).date);
-            const val = (r as { value: unknown }).value;
-            if (typeof val === "number" && Number.isFinite(year)) {
-              return { year, value: val };
-            }
-          }
-          return null;
-        })
-        .filter((x): x is SeriesPoint => x !== null)
-        .sort((a, b) => a.year - b.year);
-
-      return series;
-    }
-
-    // Error shape: [{ message: [{ value: "..." }, ...] }]
-    if (
-      Array.isArray(raw) &&
-      raw[0] &&
-      typeof raw[0] === "object" &&
-      "message" in (raw[0] as Record<string, unknown>) &&
-      Array.isArray((raw[0] as { message: unknown }).message)
-    ) {
-      const msg = (raw[0] as { message: Array<{ value?: unknown }> }).message
-        .map((m) => (typeof m.value === "string" ? m.value : ""))
-        .filter(Boolean)
-        .join(" | ");
-
-      return [];
-    }
-
-    return [];
-  } catch (e) {
-    console.error("fetchWorldBankSeries failed:", e);
-    return [];
-  }
+  return points;
 }
