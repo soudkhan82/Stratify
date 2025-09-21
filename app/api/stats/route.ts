@@ -16,21 +16,33 @@ type StatMeta = {
   source: (typeof METRICS)[MetricKey]["source"];
 };
 
+// ---------- Types returned to the client ----------
+
 export type StatSeries = {
   meta: StatMeta;
-  series: SeriesPoint[]; // normalized {year,value}[]
+  series: SeriesPoint[];
   latest: { year: number; value: number } | null;
 };
 
 export type StatBundle<K extends MetricKey = MetricKey> = Record<K, StatSeries>;
 
-// ---------- Simple in-memory promise cache ----------
+// ---------- Simple, stable in-memory cache ----------
 type CacheKey = string;
+
+// ✅ Strongly-type the global so we don't need `any`
+declare global {
+  // eslint-disable-next-line no-var
+  var __statsCache: Map<CacheKey, Promise<SeriesPoint[]>> | undefined;
+}
+
+// Use the augmented global with full types
 const getGlobalCache = () => {
-  const g = globalThis as any;
-  g.__statsCache ??= new Map<CacheKey, Promise<SeriesPoint[]>>();
-  return g.__statsCache as Map<CacheKey, Promise<SeriesPoint[]>>;
+  globalThis.__statsCache ??= new Map<CacheKey, Promise<SeriesPoint[]>>();
+  return globalThis.__statsCache;
 };
+
+// ---------- Simple in-memory promise cache ----------
+
 const cache = getGlobalCache();
 
 const lastPoint = (arr: ReadonlyArray<SeriesPoint>) =>
