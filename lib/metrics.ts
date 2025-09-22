@@ -1,7 +1,7 @@
 // lib/metrics.ts
 import type { SeriesSpec } from "@/lib/datasources";
 
-export type MetricSource = "WB"; // extend later
+export type MetricSource = "WB";
 export type MetricTopic =
   | "demographics"
   | "economy"
@@ -16,10 +16,10 @@ export interface Metric {
   unit: string;
   source: MetricSource;
   topic: MetricTopic;
-  toSpec: (geo: string) => SeriesSpec;
+  toSpec: (geo: string) => SeriesSpec; // geo is ISO3 (e.g., "PAK")
 }
 
-// Curated WB-only set (fast + stable). Add more later.
+// Curated WB-only set
 export const METRICS = {
   // Demographics
   POPULATION: {

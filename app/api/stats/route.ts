@@ -1,13 +1,11 @@
 // app/api/stats/route.ts
 import { NextResponse } from "next/server";
 import { METRICS, type MetricKey } from "@/lib/metrics";
-
-import type { SeriesPoint } from "@/lib/format";
+import type { SeriesPoint } from "@/lib/format"; // keep your existing type location
 import { fetchSeries } from "@/lib/datasources";
 
-export const dynamic = "force-dynamic"; // ensure it's not pruned at build
+export const dynamic = "force-dynamic";
 
-// ---------- Types returned to the client ----------
 type StatMeta = {
   key: MetricKey;
   label: string;
@@ -15,8 +13,6 @@ type StatMeta = {
   topic: (typeof METRICS)[MetricKey]["topic"];
   source: (typeof METRICS)[MetricKey]["source"];
 };
-
-// ---------- Types returned to the client ----------
 
 export type StatSeries = {
   meta: StatMeta;
@@ -26,23 +22,15 @@ export type StatSeries = {
 
 export type StatBundle<K extends MetricKey = MetricKey> = Record<K, StatSeries>;
 
-// ---------- Simple, stable in-memory cache ----------
 type CacheKey = string;
-
-// ✅ Strongly-type the global so we don't need `any`
 declare global {
   // eslint-disable-next-line no-var
   var __statsCache: Map<CacheKey, Promise<SeriesPoint[]>> | undefined;
 }
-
-// Use the augmented global with full types
 const getGlobalCache = () => {
   globalThis.__statsCache ??= new Map<CacheKey, Promise<SeriesPoint[]>>();
   return globalThis.__statsCache;
 };
-
-// ---------- Simple in-memory promise cache ----------
-
 const cache = getGlobalCache();
 
 const lastPoint = (arr: ReadonlyArray<SeriesPoint>) =>
@@ -50,17 +38,15 @@ const lastPoint = (arr: ReadonlyArray<SeriesPoint>) =>
 
 const isMetricKey = (x: unknown): x is MetricKey =>
   typeof x === "string" && x in METRICS;
-
 const validateISO3 = (s: unknown): s is string =>
   typeof s === "string" && /^[A-Za-z]{3}$/.test(s);
 
-// ---------- POST /api/stats ----------
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const iso3Raw = body?.iso3;
     const metricKeysRaw = body?.metricKeys;
-    const includeSeries: boolean = Boolean(body?.includeSeries); // default false
+    const includeSeries: boolean = Boolean(body?.includeSeries);
 
     if (!validateISO3(iso3Raw)) {
       return NextResponse.json({ error: "iso3 must be ISO3" }, { status: 400 });
@@ -88,30 +74,42 @@ export async function POST(req: Request) {
       metricKeys.map(async (k) => {
         const spec = METRICS[k].toSpec(iso3);
         const ckey = JSON.stringify(spec);
+        try {
+          let p = cache.get(ckey);
+          if (!p) {
+            p = fetchSeries(spec);
+            cache.set(ckey, p);
+          }
+          const series = await p;
+          const latest = lastPoint(series);
 
-        let p = cache.get(ckey);
-        if (!p) {
-          p = fetchSeries(spec);
-          cache.set(ckey, p);
+          const meta: StatMeta = {
+            key: k,
+            label: METRICS[k].label,
+            unit: METRICS[k].unit,
+            topic: METRICS[k].topic,
+            source: METRICS[k].source,
+          };
+
+          const stat: StatSeries = {
+            meta,
+            series: includeSeries ? series : [],
+            latest: latest ? { year: latest.year, value: latest.value } : null,
+          };
+
+          return [k, stat] as const;
+        } catch (err) {
+          console.error("[/api/stats] metric failed:", { k, spec, err });
+          const meta: StatMeta = {
+            key: k,
+            label: METRICS[k].label,
+            unit: METRICS[k].unit,
+            topic: METRICS[k].topic,
+            source: METRICS[k].source,
+          };
+          const stat: StatSeries = { meta, series: [], latest: null };
+          return [k, stat] as const;
         }
-        const series = await p;
-
-        const latest = lastPoint(series);
-        const meta: StatMeta = {
-          key: k,
-          label: METRICS[k].label,
-          unit: METRICS[k].unit,
-          topic: METRICS[k].topic,
-          source: METRICS[k].source,
-        };
-
-        const stat: StatSeries = {
-          meta,
-          series: includeSeries ? series : [],
-          latest: latest ? { year: latest.year, value: latest.value } : null,
-        };
-
-        return [k, stat] as const;
       })
     );
 
@@ -120,6 +118,7 @@ export async function POST(req: Request) {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (err) {
+    console.error("[/api/stats] top-level error:", err);
     return NextResponse.json({ error: "bad request" }, { status: 400 });
   }
 }

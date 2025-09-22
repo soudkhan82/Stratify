@@ -1,15 +1,10 @@
 // lib/datasources.ts
 import { fetchWorldBankSeries } from "@/lib/fetchers/worldbank";
 
-export type DataSource = "WB"; // add "IMF" | "OECD" | "EIA" | "FAO" later
-
 export type SeriesPoint = { year: number; value: number };
 
+// WB-only spec
 export type SeriesSpec = { source: "WB"; code: string; geo: string };
-// | { source: "IMF"; ... }
-// | { source: "OECD"; ... }
-// | { source: "EIA"; ... }
-// | { source: "FAO"; ... }
 
 export async function fetchSeries(spec: SeriesSpec): Promise<SeriesPoint[]> {
   switch (spec.source) {

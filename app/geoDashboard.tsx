@@ -50,6 +50,56 @@ const ALL_COUNTRIES: Country[] = worldCountries
   })
   .filter((x): x is Country => x !== null);
 
+// Map view type (matches PoiMap structural typing)
+type MapView =
+  | {
+      type: "bounds";
+      bounds: [[number, number], [number, number]];
+      padding?: number;
+    }
+  | { type: "center"; center: [number, number]; zoom: number };
+
+// Compute bounds for a set of countries
+function computeBounds(
+  cs: ReadonlyArray<Country>
+): [[number, number], [number, number]] {
+  let minLat = 90,
+    maxLat = -90,
+    minLon = 180,
+    maxLon = -180;
+  for (const c of cs) {
+    if (Number.isFinite(c.lat) && Number.isFinite(c.lon)) {
+      if (c.lat < minLat) minLat = c.lat;
+      if (c.lat > maxLat) maxLat = c.lat;
+      if (c.lon < minLon) minLon = c.lon;
+      if (c.lon > maxLon) maxLon = c.lon;
+    }
+  }
+  const pad = 0.5; // small expansion so points near edges aren't clipped
+  return [
+    [minLat - pad, minLon - pad],
+    [maxLat + pad, maxLon + pad],
+  ];
+}
+
+// Heuristic: pick a nicer zoom per continent when focusing a single country
+function countryZoom(cont: Continent): number {
+  switch (cont) {
+    case "Europe":
+      return 5.5;
+    case "Oceania":
+      return 5.2;
+    case "Asia":
+      return 5.0;
+    case "Africa":
+      return 4.8;
+    case "Americas":
+      return 4.7;
+    default:
+      return 5;
+  }
+}
+
 export default function GeoDashboard() {
   const [continent, setContinent] = useState<Continent>("Asia");
 
@@ -95,6 +145,24 @@ export default function GeoDashboard() {
     [countries]
   );
 
+  // Compute map view (auto-zoom to selected country; fit continent otherwise)
+  const mapView: MapView = useMemo(() => {
+    if (selected) {
+      return {
+        type: "center",
+        center: [selected.lat, selected.lon],
+        zoom: countryZoom(selected.continent),
+      };
+    }
+    return { type: "bounds", bounds: computeBounds(countries), padding: 24 };
+  }, [selected, countries]);
+
+  // Key that changes when continent or selection changes — forces remount if needed
+  const mapFitKey = useMemo(
+    () => `${continent}:${selected?.cca3 ?? "ALL"}`,
+    [continent, selected?.cca3]
+  );
+
   // Debug
   useEffect(() => {
     dlog("[Geo] countries", {
@@ -103,10 +171,6 @@ export default function GeoDashboard() {
       sample: countries.slice(0, 3).map(({ cca3, name }) => ({ cca3, name })),
     });
   }, [continent, countries]);
-
-  useEffect(() => {
-    dlog("[Geo] points", { count: points.length, sample: points.slice(0, 3) });
-  }, [points]);
 
   useEffect(() => {
     dlog("[Geo] selection", {
@@ -199,14 +263,17 @@ export default function GeoDashboard() {
                 {selected?.name ?? "—"} — Countries
               </div>
               <PoiMap
+                key={mapFitKey} // hard re-mount to guarantee re-fit even if view effect isn't present
                 points={points}
                 selectedId={selected?.cca3}
                 onPointClick={handlePointClick}
                 className="h-[280px] w-full"
+                view={mapView}
+                fitKey={mapFitKey}
               />
             </div>
 
-            {/* NEW: StatCard showing latest values for the selected country */}
+            {/* Latest value for the selected country */}
             <StatCard iso3={countryCca3} countryLabel={selected?.name ?? ""} />
           </div>
 

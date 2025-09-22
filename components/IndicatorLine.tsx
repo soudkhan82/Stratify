@@ -14,7 +14,7 @@ import {
 } from "recharts";
 import { METRICS, type MetricKey } from "@/lib/metrics";
 import { fetchSeries } from "@/lib/datasources";
-import type { SeriesPoint } from "@/lib/datasources";
+import type { SeriesPoint } from "@/lib/types/series";
 
 const fmtCompact = new Intl.NumberFormat("en-US", {
   notation: "compact",
