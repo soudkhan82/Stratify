@@ -1,13 +1,18 @@
 // app/geodashboard.tsx
 "use client";
 
+import {
+  ECONOMY_LEAN_KEYS,
+  METRICS,
+  METRIC_KEYS,
+  type MetricKey,
+} from "@/lib/metrics";
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import worldCountries from "world-countries";
 
 import PoiMap, { type Poi } from "@/components/PoiMap";
-import { METRICS, METRIC_KEYS, type MetricKey } from "@/lib/metrics";
 import { IndicatorLine } from "@/components/IndicatorLine";
 import { IndicatorRank, type RankCountry } from "@/components/IndicatorRank";
 import { StatCard } from "@/components/StatCard";
@@ -126,7 +131,34 @@ export default function GeoDashboard() {
     [countries, countryCca3]
   );
 
-  const [indicator, setIndicator] = useState<MetricKey>(METRIC_KEYS[0]);
+  // --- Lean metric key set: all non-economy metrics + only ECONOMY_LEAN_KEYS for economy ---
+  const ECONOMY_LEAN_SET = useMemo(
+    () => new Set<MetricKey>(ECONOMY_LEAN_KEYS),
+    []
+  );
+  const VISIBLE_KEYS = useMemo<MetricKey[]>(
+    () =>
+      (METRIC_KEYS as MetricKey[]).filter(
+        (k) => METRICS[k].topic !== "economy" || ECONOMY_LEAN_SET.has(k)
+      ),
+    [ECONOMY_LEAN_SET]
+  );
+
+  // Prefer a lean economy default if available; else first visible key
+  const defaultIndicator: MetricKey =
+    (["TRADE_BAL_GDP", "FDI_IN_GDP", "REMIT_IN_GDP"].find((k) =>
+      VISIBLE_KEYS.includes(k as MetricKey)
+    ) as MetricKey) ?? VISIBLE_KEYS[0];
+
+  const [indicator, setIndicator] = useState<MetricKey>(defaultIndicator);
+
+  // Ensure the selected indicator is always visible under the lean policy
+  useEffect(() => {
+    if (!VISIBLE_KEYS.includes(indicator)) {
+      setIndicator(defaultIndicator);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [VISIBLE_KEYS]);
 
   const points = useMemo<Poi[]>(
     () =>
@@ -241,12 +273,13 @@ export default function GeoDashboard() {
             ))}
           </select>
 
+          {/* Indicator dropdown uses lean policy: all non-economy + economy lean only */}
           <select
             value={indicator}
             onChange={(e) => setIndicator(e.target.value as MetricKey)}
             className="rounded border border-slate-700 bg-slate-900 p-2 text-slate-100"
           >
-            {METRIC_KEYS.map((k) => (
+            {VISIBLE_KEYS.map((k) => (
               <option key={k} value={k} className="bg-slate-900">
                 {METRICS[k].label} ({METRICS[k].unit})
               </option>
@@ -273,7 +306,7 @@ export default function GeoDashboard() {
               />
             </div>
 
-            {/* Latest value for the selected country */}
+            {/* Latest bundle for the selected country (your StatCard comp handles content) */}
             <StatCard iso3={countryCca3} countryLabel={selected?.name ?? ""} />
           </div>
 

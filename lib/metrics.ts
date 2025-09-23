@@ -21,7 +21,7 @@ export interface Metric {
 
 // Curated WB-only set
 export const METRICS = {
-  // Demographics
+  // ---------------- Demographics ----------------
   POPULATION: {
     code: "SP.POP.TOTL",
     label: "Population",
@@ -59,7 +59,7 @@ export const METRICS = {
     }),
   },
 
-  // Economy
+  // ---------------- Economy ----------------
   GDP_CURRENT_USD: {
     code: "NY.GDP.MKTP.CD",
     label: "GDP (current US$)",
@@ -97,11 +97,76 @@ export const METRICS = {
     }),
   },
 
-  // Health
+  // NEW: Trade balance (% of GDP)
+  TRADE_BAL_GDP: {
+    code: "NE.RSB.GNFS.ZS",
+    label: "Trade balance (% of GDP)",
+    unit: "%",
+    source: "WB",
+    topic: "economy",
+    toSpec: (geo: string): SeriesSpec => ({
+      source: "WB",
+      code: "NE.RSB.GNFS.ZS",
+      geo,
+    }),
+  },
+  // NEW: FDI net inflows (% of GDP)
+  FDI_IN_GDP: {
+    code: "BX.KLT.DINV.WD.GD.ZS",
+    label: "FDI net inflows (% of GDP)",
+    unit: "%",
+    source: "WB",
+    topic: "economy",
+    toSpec: (geo: string): SeriesSpec => ({
+      source: "WB",
+      code: "BX.KLT.DINV.WD.GD.ZS",
+      geo,
+    }),
+  },
+  // NEW: Personal remittances received (% of GDP)
+  REMIT_IN_GDP: {
+    code: "BX.TRF.PWKR.DT.GD.ZS",
+    label: "Remittances received (% of GDP)",
+    unit: "%",
+    source: "WB",
+    topic: "economy",
+    toSpec: (geo: string): SeriesSpec => ({
+      source: "WB",
+      code: "BX.TRF.PWKR.DT.GD.ZS",
+      geo,
+    }),
+  },
+  // Optional companions (absolute values in US$)
+  FDI_IN_USD: {
+    code: "BX.KLT.DINV.CD.WD",
+    label: "FDI net inflows (US$)",
+    unit: "US$",
+    source: "WB",
+    topic: "economy",
+    toSpec: (geo: string): SeriesSpec => ({
+      source: "WB",
+      code: "BX.KLT.DINV.CD.WD",
+      geo,
+    }),
+  },
+  REMIT_IN_USD: {
+    code: "BX.TRF.PWKR.CD.DT",
+    label: "Remittances received (US$)",
+    unit: "US$",
+    source: "WB",
+    topic: "economy",
+    toSpec: (geo: string): SeriesSpec => ({
+      source: "WB",
+      code: "BX.TRF.PWKR.CD.DT",
+      geo,
+    }),
+  },
+
+  // ---------------- Health ----------------
   INFANT_MORTALITY: {
     code: "SP.DYN.IMRT.IN",
     label: "Infant mortality rate",
-    unit: "per 1,000 births",
+    unit: "per 1,000 live births",
     source: "WB",
     topic: "health",
     toSpec: (geo: string): SeriesSpec => ({
@@ -123,7 +188,7 @@ export const METRICS = {
     }),
   },
 
-  // Energy
+  // ---------------- Energy ----------------
   ELECTRICITY_CONS_PC: {
     code: "EG.USE.ELEC.KH.PC",
     label: "Electric power consumption",
@@ -149,7 +214,7 @@ export const METRICS = {
     }),
   },
 
-  // Environment
+  // ---------------- Environment ----------------
   CO2_TOTAL_KT: {
     code: "EN.ATM.CO2E.KT",
     label: "CO₂ emissions",
@@ -175,7 +240,7 @@ export const METRICS = {
     }),
   },
 
-  // Agriculture
+  // ---------------- Agriculture ----------------
   CEREAL_YIELD: {
     code: "AG.YLD.CREL.KG",
     label: "Cereal yield",
@@ -201,6 +266,15 @@ export const METRICS = {
     }),
   },
 } as const;
+
+export const ECONOMY_LEAN_KEYS: MetricKey[] = [
+  "GDP_CURRENT_USD", // keep if you want a single absolute anchor; remove if you want 100% “% of GDP”
+  "INFLATION_CPI",
+  "UNEMPLOYMENT_RATE",
+  "TRADE_BAL_GDP",
+  "FDI_IN_GDP",
+  "REMIT_IN_GDP",
+];
 
 export type MetricKey = keyof typeof METRICS;
 export const METRIC_KEYS: MetricKey[] = Object.keys(METRICS) as MetricKey[];
