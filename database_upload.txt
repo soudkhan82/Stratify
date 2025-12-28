@@ -1,0 +1,16 @@
+psql "$(postgresql://postgres:etisalat@1234@db.cncqutypqouhvgunttkb.supabase.co:5432/postgres)" \
+  -c "\copy public.faostat_qcl_raw from 'C:\NextJS\FAOSTAT\Batch1\Stratify\faostat_gt.csv' "
+
+
+
+\copy public.faostat_rl FROM 'C:\\NextJS\\FAOSTAT\\Batch1\\Stratify\\faostat_rl.csv' WITH (FORMAT csv, HEADER true, DELIMITER ',', QUOTE '"', ESCAPE '"', NULL '')
+
+
+\copy public."EUTRAN_HU"(report_time,"EUtranCellFDD","Site_ID","AvgDL_TP","PRB_DL","AvgRRC") FROM 'C:/Zong NAR/EUTRAN_HU_rows_4.csv' WITH (FORMAT csv, HEADER true, DELIMITER ',', NULL '', ENCODING 'UTF8');
+
+\copy public."Cell_Availability"("SITE_ID","Sub_Region","Region","Report_Date","Overall") FROM 'C:/Zong NAR/Cell_Ava.csv'WITH (FORMAT csv, HEADER true, DELIMITER ',', NULL '', ENCODING 'UTF8');
+
+\copy public."traffic"("Report_Date","Site","Region","SubRegion","Grid","RadioVoice_2G_Traffic","RadioVoice_3G_Traffic","VoLTE_Voice_Traffic","TotalVoiceTraffic_Erl","RadioData_2G_Traffic_GB","RadioData_3G_Traffic_GB","RadioData_4G_Traffic_GB","Total_Traffic_GB")
+FROM 'C:/Zong NAR/Daily_Traffic.csv'
+WITH (FORMAT csv, HEADER true, NULL '', ENCODING 'UTF8');
+

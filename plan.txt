@@ -1,0 +1,117 @@
+Below are the core metrics that power Worldometers-type platforms, grouped by priority.
+
+🔥 Tier-1 (must have — 80% user demand)
+Population & Demographics
+
+Total Population — SP.POP.TOTL
+
+Population Growth % — SP.POP.GROW
+
+Birth Rate — SP.DYN.CBRT.IN
+
+Death Rate — SP.DYN.CDRT.IN
+
+Life Expectancy — SP.DYN.LE00.IN
+
+Urbanization % — SP.URB.TOTL.IN.ZS
+
+Economy
+
+GDP (Current US$) — NY.GDP.MKTP.CD
+
+GDP Per Capita — NY.GDP.PCAP.CD
+
+GDP Growth (%) — NY.GDP.MKTP.KD.ZG
+
+Inflation (CPI) — FP.CPI.TOTL.ZG
+
+Health
+
+Under-5 Mortality — SH.DYN.MORT
+
+Maternal Mortality — SH.STA.MMRT
+
+Access to Drinking Water — SH.H2O.SAFE.ZS
+
+Access to Sanitation — SH.STA.SMSS.ZS
+
+Energy & Environment
+
+CO₂ Emissions (Total) — EN.ATM.CO2E.KT
+
+CO₂ Emissions per Capita — EN.ATM.CO2E.PC
+
+Energy Use per Capita — EG.USE.PCAP.KG.OE
+
+Access to Electricity — EG.ELC.ACCS.ZS
+
+Forest Area % — AG.LND.FRST.ZS
+
+FAOSTAT (Agriculture/Food Security)
+
+Already ingested:
+
+_qcl — Production
+
+_gt — Trade
+
+_rfn — Forestry trade
+
+_rl — Land/resources
+
+_scl — Forestry economics
+
+These tables give Stratify an edge over Worldometers, because they don’t have agriculture detail.
+
+🔥 Tier-2 (high relevance)
+Poverty / Inequality
+
+Poverty % under $2.15 — SI.POV.DDAY
+
+GINI Inequality Index — SI.POV.GINI
+
+Education
+
+Literacy Rate — SE.ADT.LITR.ZS
+
+School Enrollment Primary — SE.PRM.ENRR
+
+Secondary Enrollment — SE.SEC.ENRR
+
+Digital & Infrastructure
+
+Internet Users % — IT.NET.USER.ZS
+
+Mobile Subscriptions — IT.CEL.SETS.P2
+
+Trade (World Bank complement to FAOSTAT)
+
+Merchandise Exports — TX.VAL.MRCH.CD.WT
+
+Merchandise Imports — TM.VAL.MRCH.CD.WT
+
+🔥 Tier-3 (platform differentiators)
+
+These give Stratify a competitive advantage over Worldometers.
+
+Migration
+
+Net Migration — SM.POP.NETM
+
+Refugee Count — UNHCR API (optional, easy to integrate)
+
+Governance (WGI)
+
+Corruption Control
+
+Rule of Law
+
+Government Effectiveness
+
+Climate Risk (World Bank Climate Knowledge Portal)
+
+Annual Temperature Anomaly
+
+Drought Severity
+
+Extreme Precipitation Index
