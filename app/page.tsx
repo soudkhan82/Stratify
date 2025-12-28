@@ -2,8 +2,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import StratifyMap from "@/app/components/StratifyMap";
-import VitalStatsList, { StatSection } from "@/app/components/VitalStatsList";
+import StratifyMap, { type StratifyMapRow } from "@/app/components/StratifyMap";
+import VitalStatsList, {
+  type StatSection,
+} from "@/app/components/VitalStatsList";
 
 type LandingResp = {
   scope: "world" | "country";
@@ -53,48 +55,121 @@ function formatNumber(v: number | null) {
   }).format(v);
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function safeStr(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
+function safeNum(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
 export default function HomePage() {
+  // ✅ Selection state: use iso3 directly (Fix A)
   const [iso3, setIso3] = useState<string | null>(null);
   const [region, setRegion] = useState<string | null>(null);
   const [mapMetric, setMapMetric] = useState(MAP_METRICS[0].code);
 
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<LandingResp | null>(null);
+  const [loadingLanding, setLoadingLanding] = useState(true);
+  const [landing, setLanding] = useState<LandingResp | null>(null);
 
+  const [loadingMap, setLoadingMap] = useState(true);
+  const [mapRows, setMapRows] = useState<StratifyMapRow[]>([]);
+
+  // -------------------------
+  // Fetch Landing (right panel)
+  // -------------------------
   useEffect(() => {
     const run = async () => {
-      setLoading(true);
+      setLoadingLanding(true);
 
       const params = new URLSearchParams();
       if (iso3) params.set("iso3", iso3);
       if (region) params.set("region", region);
 
-      // ✅ helpful debug (remove later)
-      console.log("[LANDING] params:", { iso3, region });
-
       const res = await fetch(`/api/landing?${params.toString()}`, {
         cache: "no-store",
       });
 
-      const json = await res.json();
-      setData(json);
-      setLoading(false);
+      const json: unknown = await res.json();
+      setLanding(json as LandingResp);
+      setLoadingLanding(false);
     };
 
-    run();
+    run().catch(() => setLoadingLanding(false));
   }, [iso3, region]);
 
-  const sections: StatSection[] = useMemo(() => {
-    if (!data) return [];
+  // -------------------------
+  // Fetch Map (left panel)
+  // -------------------------
+  useEffect(() => {
+    const run = async () => {
+      setLoadingMap(true);
 
-    // Map by label so we can attach indicator_code for expandable rows
-    const wdiMap = new Map(data.wdi.map((x) => [x.label, x]));
+      const params = new URLSearchParams();
+      params.set("indicator", mapMetric);
+      if (region) params.set("region", region);
+
+      const res = await fetch(`/api/map?${params.toString()}`, {
+        cache: "no-store",
+      });
+
+      const json: unknown = await res.json();
+
+      // Accept either: { points: [...] } OR directly [...]
+      const pointsRaw: unknown =
+        isRecord(json) && Array.isArray(json.points) ? json.points : json;
+
+      const rows: StratifyMapRow[] = Array.isArray(pointsRaw)
+        ? pointsRaw
+            .map((p): StratifyMapRow | null => {
+              if (!isRecord(p)) return null;
+
+              // support multiple possible field names
+              const iso =
+                safeStr(p.iso3) ||
+                safeStr(p.iso) ||
+                safeStr(p.country_code) ||
+                safeStr(p.iso_code);
+
+              const country = safeStr(p.country) || safeStr(p.country_name);
+              const reg =
+                typeof p.region === "string"
+                  ? p.region
+                  : p.region === null
+                  ? null
+                  : null;
+
+              const value = safeNum(p.value);
+
+              if (!iso || !country) return null;
+              return { iso3: iso, country, region: reg, value };
+            })
+            .filter((x): x is StratifyMapRow => x !== null)
+        : [];
+
+      setMapRows(rows);
+      setLoadingMap(false);
+    };
+
+    run().catch(() => setLoadingMap(false));
+  }, [mapMetric, region]);
+
+  const sections: StatSection[] = useMemo(() => {
+    if (!landing) return [];
+
+    const wdiMap = new Map(landing.wdi.map((x) => [x.label, x]));
 
     const population: StatSection = {
       title:
-        data.scope === "world"
+        landing.scope === "world"
           ? "WORLD POPULATION"
-          : `${(data.countryName ?? data.iso3)?.toUpperCase()} — POPULATION`,
+          : `${(
+              landing.countryName ?? landing.iso3
+            )?.toUpperCase()} — POPULATION`,
       rows: [
         {
           label: "Total Population",
@@ -237,9 +312,9 @@ export default function HomePage() {
 
     const suaSection: StatSection = {
       title: `STRATIFY EDGE — FOOD SECURITY (SUA) ${
-        data.suaYear ? `(${data.suaYear})` : ""
+        landing.suaYear ? `(${landing.suaYear})` : ""
       }`,
-      rows: (data.sua ?? []).map((r) => ({
+      rows: (landing.sua ?? []).map((r) => ({
         label: r.label,
         value:
           r.value == null
@@ -254,9 +329,9 @@ export default function HomePage() {
 
     const prodSection: StatSection = {
       title: `STRATIFY EDGE — TOP COMMODITIES BY PRODUCTION ${
-        data.prodYear ? `(${data.prodYear})` : ""
+        landing.prodYear ? `(${landing.prodYear})` : ""
       }`,
-      rows: (data.topCommodities ?? []).map((r) => ({
+      rows: (landing.topCommodities ?? []).map((r) => ({
         label: r.item,
         value: formatNumber(r.value),
         meta: "",
@@ -265,7 +340,7 @@ export default function HomePage() {
     };
 
     return [population, economy, healthEnv, suaSection, prodSection];
-  }, [data]);
+  }, [landing]);
 
   return (
     <div className="min-h-screen bg-white text-slate-900">
@@ -286,8 +361,7 @@ export default function HomePage() {
               onChange={(e) => {
                 const next = e.target.value || null;
                 setRegion(next);
-
-                // optional: clear selection when region changes
+                // optional: clear selected country when region changes
                 // setIso3(null);
               }}
             >
@@ -324,36 +398,52 @@ export default function HomePage() {
       {/* Main */}
       <div className="mx-auto max-w-screen-2xl px-4 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* ✅ Left: Map (slightly narrower) */}
+          {/* Left: Map */}
           <div className="lg:col-span-7">
             <div className="text-xs tracking-widest text-slate-400 mb-3">
               GEOMAP
             </div>
-            <StratifyMap
-              indicator={mapMetric}
-              region={region}
-              selectedIso3={iso3}
-              onSelectIso3={(v) => setIso3(v)}
-            />
+
+            {loadingMap ? (
+              <div className="rounded-xl border bg-white p-6 text-sm text-slate-500">
+                Loading map…
+              </div>
+            ) : (
+              <StratifyMap
+                rows={mapRows}
+                topoJsonUrl="/world-110m.json"
+                selectedIso3={iso3}
+                onSelectIso3={(v) => setIso3(v)}
+              />
+            )}
+
             <div className="mt-3 text-sm text-slate-500">
               Click a country to load country profile. Default: World.
             </div>
+
+            {iso3 && (
+              <div className="mt-2 text-xs text-slate-400">
+                Selected ISO3:{" "}
+                <span className="font-semibold text-slate-700">{iso3}</span>
+              </div>
+            )}
           </div>
 
-          {/* ✅ Right: Stats (wider to avoid wrapping / unused space) */}
+          {/* Right: Stats */}
           <div className="lg:col-span-5 lg:sticky lg:top-[72px]">
             <div className="max-h-[calc(100vh-96px)] overflow-y-auto pr-1">
-              {loading && (
+              {loadingLanding && (
                 <div className="text-sm text-slate-500">Loading…</div>
               )}
-              {!loading && data && (
+
+              {!loadingLanding && landing && (
                 <VitalStatsList
                   sections={sections}
-                  region={region} // ✅ IMPORTANT: makes expandable ranking respect region
+                  region={region}
                   subtitle={
-                    data.scope === "world"
+                    landing.scope === "world"
                       ? "Current World Snapshot (latest available year per metric)"
-                      : `Selected: ${data.countryName ?? data.iso3}`
+                      : `Selected: ${landing.countryName ?? landing.iso3}`
                   }
                 />
               )}

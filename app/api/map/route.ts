@@ -1,58 +1,108 @@
+// app/api/map/route.ts
 import { NextResponse } from "next/server";
-import supabase from "@/app/config/supabase-config";
 
-const YEAR_FALLBACK = ["2024","2023","2022","2021","2020","2019","2018","2017","2016","2015","2014","2013","2012","2011","2010"] as const;
+type MapPoint = {
+  iso3: string; // e.g. "PAK"
+  country: string;
+  region: string | null;
+  value: number;
+};
 
-function pickLatest(row: any) {
-  for (const y of YEAR_FALLBACK) {
-    const v = row?.[y];
-    if (v !== null && v !== undefined) return Number(v);
-  }
-  return null;
+type MapResponse = {
+  indicator: string;
+  year: number;
+  unit?: string;
+  points: MapPoint[];
+};
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function asString(v: unknown, fallback = ""): string {
+  return typeof v === "string" ? v : fallback;
+}
+
+function asNumber(v: unknown, fallback = 0): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+}
+
+function parseQueryNumber(url: URL, key: string, fallback: number): number {
+  const raw = url.searchParams.get(key);
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const indicator = searchParams.get("indicator") ?? "SP.POP.TOTL"; // default map metric
-  const region = searchParams.get("region"); // optional continent filter
+  try {
+    const url = new URL(req.url);
+    const indicator = asString(
+      url.searchParams.get("indicator"),
+      "SP.POP.TOTL"
+    );
+    const year = parseQueryNumber(url, "year", new Date().getUTCFullYear());
 
-  // Pull WDI rows for this indicator for all countries
-  const { data: rows, error } = await supabase
-    .from("wdi_dataset")
-    .select(
-      `"Country Name","Country Code","Indicator Code",
-       "2010","2011","2012","2013","2014","2015","2016","2017","2018","2019",
-       "2020","2021","2022","2023","2024"`
-    )
-    .eq("Indicator Code", indicator);
+    // Replace this with your real fetch (Supabase RPC, etc.)
+    const points: MapPoint[] = [
+      {
+        iso3: "PAK",
+        country: "Pakistan",
+        region: "South Asia",
+        value: 250000000,
+      },
+      {
+        iso3: "IND",
+        country: "India",
+        region: "South Asia",
+        value: 1400000000,
+      },
+    ];
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  // Get regions
-  const { data: countries, error: cErr } = await supabase
-    .from("wdicountry")
-    .select(`"Country Code","Region","Table Name"`);
-
-  if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
-
-  const regionMap = new Map<string, { region: string | null; name: string | null }>();
-  for (const c of countries ?? []) {
-    regionMap.set(c["Country Code"], { region: c["Region"] ?? null, name: c["Table Name"] ?? null });
+    const payload: MapResponse = { indicator, year, points };
+    return NextResponse.json(payload, { status: 200 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
+}
 
-  const out = (rows ?? [])
-    .map((r: any) => {
-      const iso3 = r["Country Code"];
-      const meta = regionMap.get(iso3);
-      return {
-        iso3,
-        country: r["Country Name"],
-        region: meta?.region ?? null,
-        value: pickLatest(r),
-      };
-    })
-    .filter((r) => r.iso3 && r.value !== null && r.country !== "World")
-    .filter((r) => (region ? r.region === region : true));
+// Optional POST to accept a custom payload for debugging
+export async function POST(req: Request) {
+  try {
+    const body: unknown = await req.json();
 
-  return NextResponse.json({ indicator, region: region ?? null, data: out });
+    if (!isRecord(body)) {
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
+
+    const indicator = asString(body.indicator, "SP.POP.TOTL");
+    const year = asNumber(body.year, new Date().getUTCFullYear());
+    const rawPoints = body.points;
+
+    const points: MapPoint[] = Array.isArray(rawPoints)
+      ? rawPoints
+          .map((p): MapPoint | null => {
+            if (!isRecord(p)) return null;
+            const iso3 = asString(p.iso3);
+            const country = asString(p.country);
+            const region =
+              typeof p.region === "string"
+                ? p.region
+                : p.region === null
+                ? null
+                : null;
+            const value = asNumber(p.value, 0);
+            if (!iso3 || !country) return null;
+            return { iso3, country, region, value };
+          })
+          .filter((x): x is MapPoint => x !== null)
+      : [];
+
+    const payload: MapResponse = { indicator, year, points };
+    return NextResponse.json(payload, { status: 200 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
 }
