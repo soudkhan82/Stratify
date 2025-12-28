@@ -1,108 +1,94 @@
 // app/api/map/route.ts
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 type MapPoint = {
-  iso3: string; // e.g. "PAK"
+  iso3: string;
   country: string;
   region: string | null;
+  year: string | null;
   value: number;
-};
-
-type MapResponse = {
-  indicator: string;
-  year: number;
-  unit?: string;
-  points: MapPoint[];
 };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-function asString(v: unknown, fallback = ""): string {
-  return typeof v === "string" ? v : fallback;
+function safeStr(v: unknown): string | null {
+  return typeof v === "string" ? v : null;
 }
 
-function asNumber(v: unknown, fallback = 0): number {
-  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+function safeNum(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
-function parseQueryNumber(url: URL, key: string, fallback: number): number {
-  const raw = url.searchParams.get(key);
-  if (!raw) return fallback;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : fallback;
+/**
+ * World Bank indicator endpoint for all countries:
+ * [ meta, rows[] ]
+ */
+async function fetchIndicatorAllCountries(
+  indicator: string
+): Promise<MapPoint[]> {
+  const url = `https://api.worldbank.org/v2/country/all/indicator/${encodeURIComponent(
+    indicator
+  )}?format=json&per_page=20000`;
+
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) return [];
+
+  const json: unknown = await res.json();
+  if (!Array.isArray(json) || json.length < 2) return [];
+
+  const rows = json[1];
+  if (!Array.isArray(rows)) return [];
+
+  const out: MapPoint[] = [];
+  for (const r of rows) {
+    if (!isRecord(r)) continue;
+
+    const countryObj = isRecord(r.country) ? r.country : null;
+    const iso2 = safeStr(r.countryiso3code) || safeStr(r.countryiso3Code); // sometimes casing changes
+    const countryName = countryObj ? safeStr(countryObj.value) : null;
+
+    const date = safeStr(r.date);
+    const value = safeNum(r.value);
+
+    // many rows are null; skip those so map colors correctly
+    if (!iso2 || !countryName || value === null) continue;
+
+    // region isn't in this endpoint; leave null (UI region filter can be backend later)
+    out.push({
+      iso3: iso2.toUpperCase(),
+      country: countryName,
+      region: null,
+      year: date ?? null,
+      value,
+    });
+  }
+
+  // de-duplicate by iso3 taking first (latest) because endpoint is usually latest-first
+  const seen = new Set<string>();
+  const dedup: MapPoint[] = [];
+  for (const p of out) {
+    if (seen.has(p.iso3)) continue;
+    seen.add(p.iso3);
+    dedup.push(p);
+  }
+
+  return dedup;
 }
 
 export async function GET(req: Request) {
   try {
-    const url = new URL(req.url);
-    const indicator = asString(
-      url.searchParams.get("indicator"),
-      "SP.POP.TOTL"
-    );
-    const year = parseQueryNumber(url, "year", new Date().getUTCFullYear());
+    const { searchParams } = new URL(req.url);
+    const indicator = (searchParams.get("indicator") || "SP.POP.TOTL").trim();
 
-    // Replace this with your real fetch (Supabase RPC, etc.)
-    const points: MapPoint[] = [
-      {
-        iso3: "PAK",
-        country: "Pakistan",
-        region: "South Asia",
-        value: 250000000,
-      },
-      {
-        iso3: "IND",
-        country: "India",
-        region: "South Asia",
-        value: 1400000000,
-      },
-    ];
+    const points = await fetchIndicatorAllCountries(indicator);
 
-    const payload: MapResponse = { indicator, year, points };
-    return NextResponse.json(payload, { status: 200 });
+    return NextResponse.json({ indicator, points }, { status: 200 });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
-}
-
-// Optional POST to accept a custom payload for debugging
-export async function POST(req: Request) {
-  try {
-    const body: unknown = await req.json();
-
-    if (!isRecord(body)) {
-      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-    }
-
-    const indicator = asString(body.indicator, "SP.POP.TOTL");
-    const year = asNumber(body.year, new Date().getUTCFullYear());
-    const rawPoints = body.points;
-
-    const points: MapPoint[] = Array.isArray(rawPoints)
-      ? rawPoints
-          .map((p): MapPoint | null => {
-            if (!isRecord(p)) return null;
-            const iso3 = asString(p.iso3);
-            const country = asString(p.country);
-            const region =
-              typeof p.region === "string"
-                ? p.region
-                : p.region === null
-                ? null
-                : null;
-            const value = asNumber(p.value, 0);
-            if (!iso3 || !country) return null;
-            return { iso3, country, region, value };
-          })
-          .filter((x): x is MapPoint => x !== null)
-      : [];
-
-    const payload: MapResponse = { indicator, year, points };
-    return NextResponse.json(payload, { status: 200 });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 400 });
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

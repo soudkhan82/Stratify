@@ -5,9 +5,10 @@ import { useMemo } from "react";
 import { ComposableMap, Geographies, Geography } from "react-simple-maps";
 import { scaleQuantile } from "d3-scale";
 import { interpolateBlues as d3Blues } from "d3-scale-chromatic";
+import worldCountries from "world-countries";
 
 export type StratifyMapRow = {
-  iso3: string; // ISO3 e.g. "PAK"
+  iso3: string; // e.g. "PAK"
   country: string;
   region: string | null;
   value: number;
@@ -15,28 +16,43 @@ export type StratifyMapRow = {
 
 type Props = {
   rows: StratifyMapRow[];
-  topoJsonUrl: string;
+  topoJsonUrl: string; // e.g. "/maps/countries-110m.json"
   selectedIso3?: string | null;
   onSelectIso3?: (iso3: string) => void;
   height?: number;
 };
 
-type GeoFeatureProperties = {
-  ISO_A3?: string;
-  ADM0_A3?: string;
-  NAME?: string;
-};
+type GeoProps = Record<string, unknown>;
 
-// Minimal shape we actually use from react-simple-maps “geo”
+// react-simple-maps gives us a feature-like object for each geography
 type RsmGeo = {
   rsmKey: string;
-  type: "Feature";
-  properties?: GeoFeatureProperties;
+  id?: string | number; // in world-atlas countries-110m.json it's numeric ISO_N3
+  properties?: GeoProps;
 };
 
 type GeographiesRenderProps = {
   geographies: RsmGeo[];
 };
+
+type WorldCountry = {
+  cca3?: unknown; // ISO3
+  ccn3?: unknown; // numeric ISO (string)
+};
+
+function normIso3(v: unknown): string | null {
+  const s = typeof v === "string" ? v.trim().toUpperCase() : "";
+  return s.length === 3 ? s : null;
+}
+
+function normN3(v: unknown): string | null {
+  const s = typeof v === "string" ? v.trim() : typeof v === "number" ? String(v) : "";
+  if (!s) return null;
+  // pad numeric to 3 digits ("4" -> "004") to match world-atlas ids
+  const digits = s.replace(/\D/g, "");
+  if (!digits) return null;
+  return digits.padStart(3, "0");
+}
 
 export default function StratifyMap({
   rows,
@@ -45,29 +61,43 @@ export default function StratifyMap({
   onSelectIso3,
   height = 420,
 }: Props) {
+  // Map: ISO3 -> value
   const valueByIso3 = useMemo(() => {
     const m = new Map<string, number>();
-    for (const r of rows) m.set(r.iso3, r.value);
+    for (const r of rows) m.set(r.iso3.toUpperCase(), r.value);
     return m;
   }, [rows]);
+
+  // Build: N3 -> ISO3 using world-countries dataset
+  const n3ToIso3 = useMemo(() => {
+    const m = new Map<string, string>();
+    const arr = Array.isArray(worldCountries) ? (worldCountries as WorldCountry[]) : [];
+    for (const c of arr) {
+      const iso3 = normIso3(c.cca3);
+      const n3 = normN3(c.ccn3);
+      if (iso3 && n3) m.set(n3, iso3);
+    }
+    return m;
+  }, []);
 
   const values = useMemo(
     () => rows.map((r) => r.value).filter((v) => Number.isFinite(v)),
     [rows]
   );
 
-  const colorScale = useMemo(() => {
-    if (values.length === 0) return (_v: number) => "#e5e7eb"; // gray-200
+  const colorFor = useMemo(() => {
+    if (values.length === 0) return () => "#e5e7eb";
     const s = scaleQuantile<number>()
       .domain(values)
       .range(Array.from({ length: 7 }, (_, i) => d3Blues((i + 1) / 7)));
     return (v: number) => s(v);
   }, [values]);
 
-  function getIso3FromFeature(geo: RsmGeo): string | null {
-    const p = geo.properties;
-    const iso = (p?.ISO_A3 ?? p?.ADM0_A3 ?? "").toString().trim();
-    return iso && iso !== "-99" ? iso : null;
+  function geoToIso3(geo: RsmGeo): string | null {
+    // world-atlas uses geo.id as numeric ISO_N3
+    const n3 = normN3(geo.id);
+    if (!n3) return null;
+    return n3ToIso3.get(n3) ?? null;
   }
 
   return (
@@ -81,14 +111,12 @@ export default function StratifyMap({
           <Geographies geography={topoJsonUrl}>
             {({ geographies }: GeographiesRenderProps) =>
               geographies.map((geo: RsmGeo) => {
-                const iso3 = getIso3FromFeature(geo);
+                const iso3 = geoToIso3(geo);
                 const value = iso3 ? valueByIso3.get(iso3) : undefined;
                 const isSelected = !!iso3 && selectedIso3 === iso3;
 
                 const fill =
-                  typeof value === "number" && Number.isFinite(value)
-                    ? colorScale(value)
-                    : "#e5e7eb";
+                  typeof value === "number" && Number.isFinite(value) ? colorFor(value) : "#e5e7eb";
 
                 return (
                   <Geography

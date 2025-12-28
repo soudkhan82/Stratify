@@ -1,32 +1,39 @@
 // app/page.tsx
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useEffect, useMemo, useState } from "react";
 import StratifyMap, { type StratifyMapRow } from "@/app/components/StratifyMap";
 import VitalStatsList, {
   type StatSection,
 } from "@/app/components/VitalStatsList";
 
+type LandingWdiRow = {
+  indicator_code: string;
+  label: string;
+  year: string | null;
+  value: number | null;
+};
+
+type LandingSuaRow = {
+  label: string;
+  unit: string | null;
+  value: number | null;
+  year: number;
+};
+
 type LandingResp = {
-  scope: "world" | "country";
-  iso3: string | null;
-  region: string | null;
-  countryName: string | null;
-  wdi: {
-    indicator_code: string;
-    label: string;
-    year: string | null;
-    value: number | null;
-  }[];
-  suaYear: number | null;
-  sua: {
-    label: string;
-    unit: string | null;
-    value: number | null;
-    year: number;
-  }[];
-  prodYear: number | null;
-  topCommodities: { item: string; value: number }[];
+  scope?: "world" | "country";
+  iso3?: string | null;
+  region?: string | null;
+  countryName?: string | null;
+  wdi?: LandingWdiRow[];
+  suaYear?: number | null;
+  sua?: LandingSuaRow[];
+  prodYear?: number | null;
+  topCommodities?: { item: string; value: number }[];
+  error?: string; // if your API sends error
 };
 
 const MAP_METRICS = [
@@ -63,28 +70,30 @@ function safeStr(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
-function safeNum(v: unknown): number {
-  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+function safeNum(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
 export default function HomePage() {
-  // ✅ Selection state: use iso3 directly (Fix A)
   const [iso3, setIso3] = useState<string | null>(null);
   const [region, setRegion] = useState<string | null>(null);
   const [mapMetric, setMapMetric] = useState(MAP_METRICS[0].code);
 
   const [loadingLanding, setLoadingLanding] = useState(true);
   const [landing, setLanding] = useState<LandingResp | null>(null);
+  const [landingError, setLandingError] = useState<string | null>(null);
 
   const [loadingMap, setLoadingMap] = useState(true);
   const [mapRows, setMapRows] = useState<StratifyMapRow[]>([]);
+  const [mapError, setMapError] = useState<string | null>(null);
 
   // -------------------------
-  // Fetch Landing (right panel)
+  // Fetch Landing
   // -------------------------
   useEffect(() => {
     const run = async () => {
       setLoadingLanding(true);
+      setLandingError(null);
 
       const params = new URLSearchParams();
       if (iso3) params.set("iso3", iso3);
@@ -93,21 +102,52 @@ export default function HomePage() {
       const res = await fetch(`/api/landing?${params.toString()}`, {
         cache: "no-store",
       });
-
       const json: unknown = await res.json();
-      setLanding(json as LandingResp);
+
+      if (!res.ok) {
+        setLanding(null);
+        setLandingError(`Landing API failed (${res.status}).`);
+        setLoadingLanding(false);
+        return;
+      }
+
+      if (isRecord(json) && typeof json.error === "string" && json.error) {
+        setLanding(null);
+        setLandingError(json.error);
+        setLoadingLanding(false);
+        return;
+      }
+
+      // keep whatever server sends, but ensure arrays exist
+      const normalized: LandingResp = isRecord(json)
+        ? {
+            ...json,
+            wdi: Array.isArray(json.wdi) ? (json.wdi as LandingWdiRow[]) : [],
+            sua: Array.isArray(json.sua) ? (json.sua as LandingSuaRow[]) : [],
+            topCommodities: Array.isArray(json.topCommodities)
+              ? (json.topCommodities as { item: string; value: number }[])
+              : [],
+          }
+        : { wdi: [], sua: [], topCommodities: [] };
+
+      setLanding(normalized);
       setLoadingLanding(false);
     };
 
-    run().catch(() => setLoadingLanding(false));
+    run().catch((e: unknown) => {
+      setLanding(null);
+      setLandingError(e instanceof Error ? e.message : "Landing API error.");
+      setLoadingLanding(false);
+    });
   }, [iso3, region]);
 
   // -------------------------
-  // Fetch Map (left panel)
+  // Fetch Map
   // -------------------------
   useEffect(() => {
     const run = async () => {
       setLoadingMap(true);
+      setMapError(null);
 
       const params = new URLSearchParams();
       params.set("indicator", mapMetric);
@@ -116,26 +156,46 @@ export default function HomePage() {
       const res = await fetch(`/api/map?${params.toString()}`, {
         cache: "no-store",
       });
-
       const json: unknown = await res.json();
 
-      // Accept either: { points: [...] } OR directly [...]
-      const pointsRaw: unknown =
-        isRecord(json) && Array.isArray(json.points) ? json.points : json;
+      if (!res.ok) {
+        setMapRows([]);
+        setMapError(`Map API failed (${res.status}).`);
+        setLoadingMap(false);
+        return;
+      }
 
-      const rows: StratifyMapRow[] = Array.isArray(pointsRaw)
-        ? pointsRaw
+      if (isRecord(json) && typeof json.error === "string" && json.error) {
+        setMapRows([]);
+        setMapError(json.error);
+        setLoadingMap(false);
+        return;
+      }
+
+      // Accept MANY shapes: {points}, {rows}, {data}, or direct array
+      const raw: unknown =
+        isRecord(json) && Array.isArray(json.points)
+          ? json.points
+          : isRecord(json) && Array.isArray(json.rows)
+          ? json.rows
+          : isRecord(json) && Array.isArray(json.data)
+          ? json.data
+          : json;
+
+      const rows: StratifyMapRow[] = Array.isArray(raw)
+        ? raw
             .map((p): StratifyMapRow | null => {
               if (!isRecord(p)) return null;
 
-              // support multiple possible field names
               const iso =
                 safeStr(p.iso3) ||
                 safeStr(p.iso) ||
                 safeStr(p.country_code) ||
                 safeStr(p.iso_code);
 
-              const country = safeStr(p.country) || safeStr(p.country_name);
+              const country =
+                safeStr(p.country) || safeStr(p.country_name) || iso;
+
               const reg =
                 typeof p.region === "string"
                   ? p.region
@@ -144,9 +204,12 @@ export default function HomePage() {
                   : null;
 
               const value = safeNum(p.value);
+              if (!iso) return null;
 
-              if (!iso || !country) return null;
-              return { iso3: iso, country, region: reg, value };
+              // if value missing/null → keep row but mark value as 0? better: skip so map stays grey
+              if (value === null) return null;
+
+              return { iso3: iso.toUpperCase(), country, region: reg, value };
             })
             .filter((x): x is StratifyMapRow => x !== null)
         : [];
@@ -155,21 +218,32 @@ export default function HomePage() {
       setLoadingMap(false);
     };
 
-    run().catch(() => setLoadingMap(false));
+    run().catch((e: unknown) => {
+      setMapRows([]);
+      setMapError(e instanceof Error ? e.message : "Map API error.");
+      setLoadingMap(false);
+    });
   }, [mapMetric, region]);
 
+  // -------------------------
+  // Sections (FULL)
+  // -------------------------
   const sections: StatSection[] = useMemo(() => {
     if (!landing) return [];
 
-    const wdiMap = new Map(landing.wdi.map((x) => [x.label, x]));
+    const wdiRows = Array.isArray(landing.wdi) ? landing.wdi : [];
+    const wdiMap = new Map(wdiRows.map((x) => [x.label, x]));
+
+    const scope = landing.scope ?? "world";
+    const countryTitle = (
+      landing.countryName ??
+      landing.iso3 ??
+      "COUNTRY"
+    ).toUpperCase();
 
     const population: StatSection = {
       title:
-        landing.scope === "world"
-          ? "WORLD POPULATION"
-          : `${(
-              landing.countryName ?? landing.iso3
-            )?.toUpperCase()} — POPULATION`,
+        scope === "world" ? "WORLD POPULATION" : `${countryTitle} — POPULATION`,
       rows: [
         {
           label: "Total Population",
@@ -255,20 +329,6 @@ export default function HomePage() {
       title: "HEALTH, ENERGY & ENVIRONMENT",
       rows: [
         {
-          label: "Under-5 Mortality",
-          value: formatNumber(wdiMap.get("Under-5 Mortality")?.value ?? null),
-          meta: wdiMap.get("Under-5 Mortality")?.year ?? "",
-          indicatorCode:
-            wdiMap.get("Under-5 Mortality")?.indicator_code ?? null,
-        },
-        {
-          label: "Maternal Mortality",
-          value: formatNumber(wdiMap.get("Maternal Mortality")?.value ?? null),
-          meta: wdiMap.get("Maternal Mortality")?.year ?? "",
-          indicatorCode:
-            wdiMap.get("Maternal Mortality")?.indicator_code ?? null,
-        },
-        {
           label: "Access to Drinking Water (%)",
           value:
             wdiMap.get("Access to Drinking Water (%)")?.value?.toFixed(2) ??
@@ -310,11 +370,12 @@ export default function HomePage() {
       ],
     };
 
+    const suaRows = Array.isArray(landing.sua) ? landing.sua : [];
     const suaSection: StatSection = {
       title: `STRATIFY EDGE — FOOD SECURITY (SUA) ${
         landing.suaYear ? `(${landing.suaYear})` : ""
       }`,
-      rows: (landing.sua ?? []).map((r) => ({
+      rows: suaRows.map((r) => ({
         label: r.label,
         value:
           r.value == null
@@ -327,11 +388,14 @@ export default function HomePage() {
       })),
     };
 
+    const topComms = Array.isArray(landing.topCommodities)
+      ? landing.topCommodities
+      : [];
     const prodSection: StatSection = {
       title: `STRATIFY EDGE — TOP COMMODITIES BY PRODUCTION ${
         landing.prodYear ? `(${landing.prodYear})` : ""
       }`,
-      rows: (landing.topCommodities ?? []).map((r) => ({
+      rows: topComms.map((r) => ({
         label: r.item,
         value: formatNumber(r.value),
         meta: "",
@@ -341,6 +405,8 @@ export default function HomePage() {
 
     return [population, economy, healthEnv, suaSection, prodSection];
   }, [landing]);
+
+  const wdiCount = landing?.wdi?.length ?? 0;
 
   return (
     <div className="min-h-screen bg-white text-slate-900">
@@ -358,12 +424,7 @@ export default function HomePage() {
             <select
               className="h-9 rounded-md border px-2 text-sm"
               value={region ?? ""}
-              onChange={(e) => {
-                const next = e.target.value || null;
-                setRegion(next);
-                // optional: clear selected country when region changes
-                // setIso3(null);
-              }}
+              onChange={(e) => setRegion(e.target.value || null)}
             >
               <option value="">All Regions (World)</option>
               {REGIONS.map((r) => (
@@ -397,8 +458,27 @@ export default function HomePage() {
 
       {/* Main */}
       <div className="mx-auto max-w-screen-2xl px-4 py-6">
+        {/* Debug row (keep for now) */}
+        <div className="mb-4 text-xs text-slate-500 flex flex-wrap gap-4">
+          <div>
+            <span className="font-semibold">Map rows:</span> {mapRows.length}
+          </div>
+          <div>
+            <span className="font-semibold">WDI rows:</span> {wdiCount}
+          </div>
+          <div>
+            <span className="font-semibold">Selected:</span> {iso3 ?? "WORLD"}
+          </div>
+          {mapError ? (
+            <div className="text-red-600">Map error: {mapError}</div>
+          ) : null}
+          {landingError ? (
+            <div className="text-red-600">Landing error: {landingError}</div>
+          ) : null}
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left: Map */}
+          {/* Map */}
           <div className="lg:col-span-7">
             <div className="text-xs tracking-widest text-slate-400 mb-3">
               GEOMAP
@@ -411,7 +491,7 @@ export default function HomePage() {
             ) : (
               <StratifyMap
                 rows={mapRows}
-                topoJsonUrl="/world-110m.json"
+                topoJsonUrl="/maps/countries-110m.json"
                 selectedIso3={iso3}
                 onSelectIso3={(v) => setIso3(v)}
               />
@@ -420,30 +500,27 @@ export default function HomePage() {
             <div className="mt-3 text-sm text-slate-500">
               Click a country to load country profile. Default: World.
             </div>
-
-            {iso3 && (
-              <div className="mt-2 text-xs text-slate-400">
-                Selected ISO3:{" "}
-                <span className="font-semibold text-slate-700">{iso3}</span>
-              </div>
-            )}
           </div>
 
-          {/* Right: Stats */}
+          {/* Stats */}
           <div className="lg:col-span-5 lg:sticky lg:top-[72px]">
             <div className="max-h-[calc(100vh-96px)] overflow-y-auto pr-1">
-              {loadingLanding && (
+              {loadingLanding ? (
                 <div className="text-sm text-slate-500">Loading…</div>
-              )}
-
-              {!loadingLanding && landing && (
+              ) : landingError ? (
+                <div className="rounded-xl border bg-white p-4 text-sm text-red-600">
+                  {landingError}
+                </div>
+              ) : (
                 <VitalStatsList
                   sections={sections}
                   region={region}
                   subtitle={
-                    landing.scope === "world"
+                    (landing?.scope ?? "world") === "world"
                       ? "Current World Snapshot (latest available year per metric)"
-                      : `Selected: ${landing.countryName ?? landing.iso3}`
+                      : `Selected: ${
+                          landing?.countryName ?? landing?.iso3 ?? "Country"
+                        }`
                   }
                 />
               )}
