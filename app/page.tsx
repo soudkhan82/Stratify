@@ -61,7 +61,8 @@ const INDICATORS: Array<{ code: string; label: string }> = [
 const THRESH_WARN = 25;
 
 // ✅ Put your topojson file here.
-const TOPO_JSON_URL = "/maps/countries-iso3.json";
+const TOPO_JSON_URL =
+  "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
 function fmtCompact(n: number) {
   const abs = Math.abs(n);
