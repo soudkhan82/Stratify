@@ -43,8 +43,14 @@ type GeoProps = {
 
 type RsmGeo = {
   rsmKey: string;
-  id?: unknown; // ✅ your topo uses numeric IDs (ISO numeric)
+  id?: unknown; // topo uses numeric IDs (ISO numeric)
   properties?: GeoProps;
+};
+
+// ✅ correct type for ZoomableGroup onMoveEnd param (avoid `any`)
+type ZoomPosition = {
+  coordinates: [number, number];
+  zoom: number;
 };
 
 /* =======================
@@ -52,7 +58,6 @@ type RsmGeo = {
 ======================= */
 
 function stripDiacritics(s: string) {
-  // "côte" -> "cote"
   return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
@@ -78,36 +83,32 @@ function isValidISO3(v: unknown): v is string {
 }
 
 /* =======================
-   ✅ Numeric ID -> ISO3 (no dependency)
-   NOTE:
-   - This fixes the countries you flagged.
-   - If you want 100% global coverage, ask me for the full list and I’ll paste it.
+   Numeric ID -> ISO3 (no dependency)
 ======================= */
 
 const ISO_NUM_TO_A3: Record<string, string> = {
-  // From your screenshots + common problem ones
-  "012": "DZA", // Algeria
-  "818": "EGY", // Egypt
-  "434": "LBY", // Libya
-  "788": "TUN", // Tunisia
-  "504": "MAR", // Morocco
-  "242": "FJI", // Fiji
+  "012": "DZA",
+  "818": "EGY",
+  "434": "LBY",
+  "788": "TUN",
+  "504": "MAR",
+  "242": "FJI",
 
-  "728": "SSD", // South Sudan (S. Sudan)
-  "178": "COG", // Congo (Rep.)
-  "180": "COD", // Congo (Dem. Rep.)
+  "728": "SSD",
+  "178": "COG",
+  "180": "COD",
 
-  "364": "IRN", // Iran
-  "417": "KGZ", // Kyrgyzstan
-  "140": "CAF", // Central African Rep.
-  "384": "CIV", // Côte d'Ivoire
-  "418": "LAO", // Laos
-  "887": "YEM", // Yemen
-  "703": "SVK", // Slovakia
-  "732": "ESH", // Western Sahara
-  "706": "SOM", // Somalia
-  "807": "MKD", // North Macedonia
-  "070": "BIH", // Bosnia and Herz.
+  "364": "IRN",
+  "417": "KGZ",
+  "140": "CAF",
+  "384": "CIV",
+  "418": "LAO",
+  "887": "YEM",
+  "703": "SVK",
+  "732": "ESH",
+  "706": "SOM",
+  "807": "MKD",
+  "070": "BIH",
 };
 
 function iso3FromNumericId(id: unknown): string {
@@ -135,7 +136,7 @@ const TOPO_TO_DB_NAME: Record<string, string> = {
   "democratic republic of the congo": "congo, dem. rep.",
   "democratic republic of congo": "congo, dem. rep.",
   "dem rep congo": "congo, dem. rep.",
-  congo: "congo, rep.", // ⚠️ ambiguous; numeric id is preferred
+  congo: "congo, rep.", // ambiguous; numeric id is preferred
 
   egypt: "egypt, arab rep.",
   venezuela: "venezuela, rb",
@@ -168,11 +169,10 @@ export default function StratifyMap({
 }: Props) {
   const [debug, setDebug] = useState<Record<string, unknown> | null>(null);
 
-  // zoom state
-  const [mapPos, setMapPos] = useState<{
-    coordinates: [number, number];
-    zoom: number;
-  }>({ coordinates: [0, 0], zoom: 1 });
+  const [mapPos, setMapPos] = useState<ZoomPosition>({
+    coordinates: [0, 0],
+    zoom: 1,
+  });
 
   /* ---- DB maps ---- */
 
@@ -213,7 +213,7 @@ export default function StratifyMap({
     const p = geo.properties ?? {};
     const topoNameNorm = normName(p.name);
 
-    // ✅ 1) BEST: numeric geo.id -> ISO3 (fixes most issues forever)
+    // 1) BEST: numeric geo.id -> ISO3
     const fromNumeric = iso3FromNumericId(geo.id);
     if (isValidISO3(fromNumeric)) return { iso3: fromNumeric, topoNameNorm };
 
@@ -297,8 +297,8 @@ export default function StratifyMap({
         projection="geoMercator"
         projectionConfig={{
           rotate: [0, 0, 0], // ✅ no rotation
-          center: [0, 15], // ✅ lifts the map slightly (prevents "tilt" feeling)
-          scale: 155, // tweak 145–175
+          center: [0, 15], // ✅ straight / upfront look
+          scale: 155,
         }}
         width={980}
         height={460}
@@ -306,12 +306,7 @@ export default function StratifyMap({
         <ZoomableGroup
           center={mapPos.coordinates}
           zoom={mapPos.zoom}
-          onMoveEnd={(pos: any) =>
-            setMapPos({
-              coordinates: pos.coordinates as [number, number],
-              zoom: pos.zoom,
-            })
-          }
+          onMoveEnd={(pos: ZoomPosition) => setMapPos(pos)}
         >
           <Geographies geography={topoJsonUrl}>
             {({ geographies }: { geographies: RsmGeo[] }) => (
@@ -326,8 +321,6 @@ export default function StratifyMap({
                       : "#e5e7eb";
 
                   const isSelected = !!selected && !!iso3 && iso3 === selected;
-
-                  // clickable if we resolved ISO (even if no value)
                   const clickable = !!iso3;
 
                   return (
