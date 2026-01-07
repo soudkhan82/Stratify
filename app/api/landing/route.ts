@@ -2,79 +2,101 @@
 import { NextResponse } from "next/server";
 import supabase from "@/app/config/supabase-config";
 
-export const dynamic = "force-dynamic";
+/* =======================
+   Types
+======================= */
 
-type WdiRow = {
-  indicator_code: string;
+type LandingStat = {
+  key: string;
   label: string;
-  year: number | null;
-  value: number | null;
+  value: number;
+  unit?: string;
 };
 
-export async function GET(req: Request) {
-  try {
-    const { searchParams } = new URL(req.url);
+type LandingSection = {
+  id: string;
+  title: string;
+  subtitle?: string;
+  stats?: LandingStat[];
+};
 
-    const iso3Raw = (searchParams.get("iso3") || "").trim().toUpperCase();
-    const iso3 = iso3Raw || null;
+type LandingResponse = {
+  generated_at: string; // ISO
+  sections: LandingSection[];
+};
 
-    const regionRaw = (searchParams.get("region") || "").trim();
-    const regionParam = regionRaw || null;
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
 
-    // If iso3 selected, ignore region filter
-    const regionForRpc = iso3 ? null : regionParam;
-    const scope: "world" | "country" = iso3 ? "country" : "world";
+function asString(v: unknown, fallback = ""): string {
+  return typeof v === "string" ? v : fallback;
+}
 
-    let countryName: string | null = null;
-    let countryRegion: string | null = null;
+function asNumber(v: unknown, fallback = 0): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+}
 
-    if (iso3) {
-      const { data: meta, error: metaErr } = await supabase
-        .from("country_dim_clean")
-        .select("country_name, region")
-        .eq("country_code", iso3)
-        .maybeSingle();
+/** Minimal coercion for a LandingResponse coming from DB or computed logic */
+function coerceLandingResponse(payload: unknown): LandingResponse {
+  if (!isRecord(payload)) {
+    return { generated_at: new Date().toISOString(), sections: [] };
+  }
 
-      if (metaErr) {
-        return NextResponse.json({ error: metaErr.message }, { status: 500 });
-      }
+  const generated_at = asString(payload.generated_at, new Date().toISOString());
 
-      countryName = meta?.country_name ?? null;
-      countryRegion = meta?.region ?? null;
-    }
+  const rawSections = payload.sections;
+  const sections: LandingSection[] = Array.isArray(rawSections)
+    ? rawSections.map((s): LandingSection => {
+        if (!isRecord(s)) {
+          return { id: "", title: "" };
+        }
 
-    const { data, error } = await supabase.rpc("fetch_landing_wdi", {
-      p_iso3: iso3,
-      p_region: regionForRpc,
-    });
+        const statsRaw = s.stats;
+        const stats: LandingStat[] | undefined = Array.isArray(statsRaw)
+          ? statsRaw.map((st): LandingStat => {
+              if (!isRecord(st)) {
+                return { key: "", label: "", value: 0 };
+              }
+              return {
+                key: asString(st.key),
+                label: asString(st.label),
+                value: asNumber(st.value),
+                unit: typeof st.unit === "string" ? st.unit : undefined,
+              };
+            })
+          : undefined;
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+        return {
+          id: asString(s.id),
+          title: asString(s.title),
+          subtitle: typeof s.subtitle === "string" ? s.subtitle : undefined,
+          stats,
+        };
+      })
+    : [];
 
-    const wdi: WdiRow[] = (data ?? []).map((r: any) => ({
-      indicator_code: String(r.indicator_code ?? ""),
-      label: String(r.label ?? ""),
-      year: typeof r.year === "number" ? r.year : null,
-      value: typeof r.value === "number" ? r.value : null,
-    }));
+  return { generated_at, sections };
+}
 
+export async function GET() {
+  // If you were calling an RPC / table, keep your existing logic here.
+  // Example shown (adjust to your actual source):
+  const { data, error } = await supabase.rpc("fetch_landing", {});
+
+  if (error) {
     return NextResponse.json(
       {
-        scope,
-        iso3,
-        region: iso3 ? countryRegion : regionParam,
-        countryName,
-        wdi,
-        suaYear: null,
-        sua: [],
-        prodYear: null,
-        topCommodities: [],
+        error: error.message,
+        generated_at: new Date().toISOString(),
+        sections: [],
       },
-      { status: 200 }
+      { status: 500 }
     );
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: msg }, { status: 500 });
   }
+
+  // ✅ NO any: treat as unknown and coerce
+  const safe = coerceLandingResponse(data as unknown);
+
+  return NextResponse.json(safe);
 }

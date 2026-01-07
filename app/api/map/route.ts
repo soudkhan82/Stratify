@@ -2,37 +2,67 @@
 import { NextResponse } from "next/server";
 import supabase from "@/app/config/supabase-config";
 
-export const dynamic = "force-dynamic";
+/* =======================
+   Types
+======================= */
+
+type MapRow = {
+  iso3: string;
+  country: string;
+  region: string | null;
+  value: number;
+};
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function asString(v: unknown, fallback = ""): string {
+  return typeof v === "string" ? v : fallback;
+}
+
+function asNumber(v: unknown, fallback = 0): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+}
+
+function coerceMapRows(payload: unknown): MapRow[] {
+  if (!Array.isArray(payload)) return [];
+  return payload.map((r): MapRow => {
+    if (!isRecord(r)) {
+      return { iso3: "", country: "", region: null, value: 0 };
+    }
+    return {
+      iso3: asString(r.iso3),
+      country: asString(r.country),
+      region: typeof r.region === "string" ? r.region : null,
+      value: asNumber(r.value),
+    };
+  });
+}
 
 export async function GET(req: Request) {
-  try {
-    const { searchParams } = new URL(req.url);
+  const { searchParams } = new URL(req.url);
 
-    const indicator = (searchParams.get("indicator") || "SP.POP.TOTL").trim();
-    const region = (searchParams.get("region") || "").trim() || null;
+  const indicator = searchParams.get("indicator") ?? "SP.POP.TOTL";
+  const year = Number(searchParams.get("year") ?? "2024");
+  const region = searchParams.get("region"); // optional
 
-    const { data, error } = await supabase.rpc("fetch_map_wdi", {
-      p_indicator: indicator,
-      p_region: region,
-    });
+  // Example RPC – keep your own function name/args if different
+  const { data, error } = await supabase.rpc("fetch_map_rows", {
+    p_indicator: indicator,
+    p_year: Number.isFinite(year) ? year : 2024,
+    p_region: region,
+  });
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    const points = (data ?? [])
-      .map((r: any) => ({
-        iso3: String(r.iso3 ?? "").toUpperCase(),
-        country: String(r.country ?? ""),
-        region: typeof r.region === "string" ? r.region : null,
-        year: typeof r.year === "number" ? r.year : null,
-        value: typeof r.value === "number" ? r.value : null,
-      }))
-      .filter((p: any) => p.iso3 && p.country && typeof p.value === "number");
-
-    return NextResponse.json({ indicator, points }, { status: 200 });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+  if (error) {
+    return NextResponse.json(
+      { error: error.message, rows: [] },
+      { status: 500 }
+    );
   }
+
+  // ✅ NO any: treat as unknown and coerce
+  const rows = coerceMapRows(data as unknown);
+
+  return NextResponse.json({ rows });
 }
