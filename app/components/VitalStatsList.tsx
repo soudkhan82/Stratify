@@ -1,4 +1,3 @@
-// app/components/VitalStatsList.tsx
 "use client";
 
 export type StatRow = {
@@ -13,44 +12,47 @@ export type StatSection = {
   rows: StatRow[];
 };
 
-export default function VitalStatsList({
-  sections,
-  subtitle,
-}: {
+type Props = {
   sections: StatSection[];
   region?: string | null;
   subtitle?: string;
-}) {
+};
+
+export default function VitalStatsList({ sections, region, subtitle }: Props) {
   return (
     <div className="space-y-4">
-      {subtitle ? (
-        <div className="text-sm text-slate-500">{subtitle}</div>
-      ) : null}
+      <div className="rounded-xl border bg-white p-4">
+        <div className="text-xs tracking-widest text-slate-400">SNAPSHOT</div>
+        {subtitle ? (
+          <div className="mt-1 text-sm text-slate-700">{subtitle}</div>
+        ) : null}
+        <div className="mt-2 text-xs text-slate-500">
+          Scope: <span className="font-semibold">{region ?? "World"}</span>
+        </div>
+      </div>
 
       {sections.map((sec) => (
         <div key={sec.title} className="rounded-xl border bg-white">
           <div className="px-4 py-3 border-b">
-            <div className="text-xs tracking-widest text-slate-500">
+            <div className="text-xs tracking-widest text-slate-400">
               {sec.title}
             </div>
           </div>
-          <div className="p-4 space-y-3">
-            {sec.rows.map((r) => (
-              <div
-                key={r.label}
-                className="flex items-center justify-between gap-3"
-              >
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-slate-900 truncate">
+
+          <div className="divide-y">
+            {sec.rows.map((r, idx) => (
+              <div key={`${sec.title}-${idx}`} className="px-4 py-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="text-sm font-medium text-slate-900">
                     {r.label}
                   </div>
-                  {r.meta ? (
-                    <div className="text-xs text-slate-500">{r.meta}</div>
-                  ) : null}
+                  <div className="text-sm font-semibold tabular-nums text-slate-900">
+                    {r.value}
+                  </div>
                 </div>
-                <div className="text-sm font-semibold text-slate-900">
-                  {r.value}
-                </div>
+                {r.meta ? (
+                  <div className="mt-1 text-xs text-slate-500">{r.meta}</div>
+                ) : null}
               </div>
             ))}
           </div>

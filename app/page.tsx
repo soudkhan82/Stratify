@@ -1,532 +1,530 @@
-// app/page.tsx
+// app/wdi-map/page.tsx
 "use client";
 
-export const dynamic = "force-dynamic";
-
 import { useEffect, useMemo, useState } from "react";
-import StratifyMap, { type StratifyMapRow } from "@/app/components/StratifyMap";
-import VitalStatsList, {
-  type StatSection,
-} from "@/app/components/VitalStatsList";
+import supabase from "@/app/config/supabase-config";
 
-type LandingWdiRow = {
+import StratifyMap, { type StratifyMapRow } from "@/app/components/StratifyMap";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+
+import {
+  fetchWdiCoverage,
+  asPct,
+  type WdiCoverageRow,
+} from "@/app/lib/rpc/wdi-coverage";
+
+type MapRowApi = {
+  iso3: string;
+  country: string;
+  region: string | null;
+  year: number;
+  value: number;
+};
+
+type LandingRow = {
   indicator_code: string;
   label: string;
-  year: string | null;
+  year: number | null;
   value: number | null;
 };
-
-type LandingSuaRow = {
-  label: string;
-  unit: string | null;
-  value: number | null;
-  year: number;
-};
-
-type LandingResp = {
-  scope?: "world" | "country";
-  iso3?: string | null;
-  region?: string | null;
-  countryName?: string | null;
-  wdi?: LandingWdiRow[];
-  suaYear?: number | null;
-  sua?: LandingSuaRow[];
-  prodYear?: number | null;
-  topCommodities?: { item: string; value: number }[];
-  error?: string; // if your API sends error
-};
-
-const MAP_METRICS = [
-  { code: "SP.POP.TOTL", label: "Population" },
-  { code: "NY.GDP.MKTP.CD", label: "GDP (US$)" },
-  { code: "NY.GDP.PCAP.CD", label: "GDP per Capita" },
-  { code: "EG.ELC.ACCS.ZS", label: "Electricity Access (%)" },
-  { code: "EN.ATM.CO2E.PC", label: "CO₂ per Capita" },
-];
 
 const REGIONS = [
-  "East Asia & Pacific",
-  "Europe & Central Asia",
-  "Latin America & Caribbean",
-  "Middle East & North Africa",
-  "North America",
-  "South Asia",
+  "World",
   "Sub-Saharan Africa",
+  "Europe & Central Asia",
+  "Middle East & North Africa",
+  "South Asia",
+  "East Asia & Pacific",
+  "Latin America & Caribbean",
+  "North America",
 ] as const;
 
-function formatNumber(v: number | null) {
-  if (v === null || Number.isNaN(v)) return "—";
-  return new Intl.NumberFormat(undefined, {
-    notation: "compact",
-    maximumFractionDigits: 2,
-  }).format(v);
+const INDICATORS: Array<{ code: string; label: string }> = [
+  { code: "SP.POP.TOTL", label: "Population" },
+  { code: "NY.GDP.MKTP.CD", label: "GDP current US$" },
+  { code: "SP.POP.GROW", label: "Population Growth (%)" },
+  { code: "SP.DYN.CBRT.IN", label: "Birth Rate (per 1,000)" },
+  { code: "SP.DYN.CDRT.IN", label: "Death Rate (per 1,000)" },
+  { code: "SP.DYN.LE00.IN", label: "Life Expectancy (years)" },
+  { code: "SP.URB.TOTL.IN.ZS", label: "Urban Population (%)" },
+  { code: "SH.H2O.SMDW.ZS", label: "Access to Drinking Water (%)" },
+  { code: "SH.STA.SMSS.ZS", label: "Access to Sanitation (%)" },
+  { code: "EG.ELC.ACCS.ZS", label: "Access to Electricity (%)" },
+  { code: "AG.LND.FRST.ZS", label: "Forest Area (%)" },
+];
+
+const TOPO_JSON_URL = "/maps/countries-110m.json";
+const THRESH_WARN = 25;
+
+function fmtCompact(n: number) {
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return (n / 1e12).toFixed(2) + "T";
+  if (abs >= 1e9) return (n / 1e9).toFixed(2) + "B";
+  if (abs >= 1e6) return (n / 1e6).toFixed(2) + "M";
+  if (abs >= 1e3) return (n / 1e3).toFixed(2) + "K";
+  return n.toLocaleString();
 }
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
+async function fetchWdiMapLatest(args: {
+  indicator: string;
+  region: string | null;
+}): Promise<MapRowApi[]> {
+  const { data, error } = await supabase.rpc("fetch_wdi_map_latest", {
+    p_indicator: args.indicator,
+    p_region: args.region,
+  });
+  if (error) throw error;
+  return (data ?? []) as MapRowApi[];
 }
 
-function safeStr(v: unknown): string {
-  return typeof v === "string" ? v : "";
+async function fetchLandingSnapshot(args: {
+  region: string | null;
+  iso3: string | null;
+}): Promise<LandingRow[]> {
+  const { data, error } = await supabase.rpc("fetch_landing_wdi", {
+    p_region: args.region,
+    p_iso3: args.iso3,
+  });
+  if (error) throw error;
+  return (data ?? []) as LandingRow[];
 }
 
-function safeNum(v: unknown): number | null {
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
+function Skeleton({ h }: { h: number }) {
+  return (
+    <div className="w-full rounded-2xl bg-black/5" style={{ height: h }} />
+  );
 }
 
-export default function HomePage() {
-  const [iso3, setIso3] = useState<string | null>(null);
-  const [region, setRegion] = useState<string | null>(null);
-  const [mapMetric, setMapMetric] = useState(MAP_METRICS[0].code);
+/** ------- TopoJSON Health Check (no DevTools needed) ------- */
+type TopoHealth = {
+  ok: boolean;
+  url: string;
+  error?: string;
+  objectKeys?: string[];
+  firstPropsKeys?: string[];
+  sampleProps?: Record<string, unknown>;
+  geoCount?: number;
+};
 
-  const [loadingLanding, setLoadingLanding] = useState(true);
-  const [landing, setLanding] = useState<LandingResp | null>(null);
-  const [landingError, setLandingError] = useState<string | null>(null);
+async function topoHealthCheck(url: string): Promise<TopoHealth> {
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) {
+      return { ok: false, url, error: `HTTP ${res.status} ${res.statusText}` };
+    }
 
-  const [loadingMap, setLoadingMap] = useState(true);
-  const [mapRows, setMapRows] = useState<StratifyMapRow[]>([]);
-  const [mapError, setMapError] = useState<string | null>(null);
+    const json = (await res.json()) as any;
+    const objects = json?.objects;
+    const objectKeys = objects ? Object.keys(objects) : [];
+    const firstKey = objectKeys[0];
 
-  // -------------------------
-  // Fetch Landing
-  // -------------------------
-  useEffect(() => {
-    const run = async () => {
-      setLoadingLanding(true);
-      setLandingError(null);
+    const geoms = firstKey ? objects[firstKey]?.geometries : null;
+    const geoCount = Array.isArray(geoms) ? geoms.length : 0;
 
-      const params = new URLSearchParams();
-      if (iso3) params.set("iso3", iso3);
-      if (region) params.set("region", region);
+    const firstProps = geoCount ? geoms[0]?.properties : null;
+    const firstPropsKeys = firstProps ? Object.keys(firstProps) : [];
 
-      const res = await fetch(`/api/landing?${params.toString()}`, {
-        cache: "no-store",
-      });
-      const json: unknown = await res.json();
-
-      if (!res.ok) {
-        setLanding(null);
-        setLandingError(`Landing API failed (${res.status}).`);
-        setLoadingLanding(false);
-        return;
-      }
-
-      if (isRecord(json) && typeof json.error === "string" && json.error) {
-        setLanding(null);
-        setLandingError(json.error);
-        setLoadingLanding(false);
-        return;
-      }
-
-      // keep whatever server sends, but ensure arrays exist
-      const normalized: LandingResp = isRecord(json)
-        ? {
-            ...json,
-            wdi: Array.isArray(json.wdi) ? (json.wdi as LandingWdiRow[]) : [],
-            sua: Array.isArray(json.sua) ? (json.sua as LandingSuaRow[]) : [],
-            topCommodities: Array.isArray(json.topCommodities)
-              ? (json.topCommodities as { item: string; value: number }[])
-              : [],
-          }
-        : { wdi: [], sua: [], topCommodities: [] };
-
-      setLanding(normalized);
-      setLoadingLanding(false);
+    return {
+      ok: true,
+      url,
+      objectKeys,
+      firstPropsKeys,
+      sampleProps: (firstProps ?? undefined) as
+        | Record<string, unknown>
+        | undefined,
+      geoCount,
     };
+  } catch (e: any) {
+    return { ok: false, url, error: String(e?.message ?? e) };
+  }
+}
 
-    run().catch((e: unknown) => {
-      setLanding(null);
-      setLandingError(e instanceof Error ? e.message : "Landing API error.");
-      setLoadingLanding(false);
-    });
-  }, [iso3, region]);
+export default function Page() {
+  const [topoHealth, setTopoHealth] = useState<TopoHealth | null>(null);
 
-  // -------------------------
-  // Fetch Map
-  // -------------------------
+  const [region, setRegion] = useState<string>("World");
+  const [indicator, setIndicator] = useState<string>("SP.POP.TOTL");
+
+  const regionParam = useMemo(
+    () => (region === "World" ? null : region),
+    [region]
+  );
+
+  const [cov, setCov] = useState<WdiCoverageRow | null>(null);
+  const [mapApiRows, setMapApiRows] = useState<MapRowApi[]>([]);
+  const [snapshotScope, setSnapshotScope] = useState<LandingRow[]>([]);
+  const [snapshotSelected, setSnapshotSelected] = useState<LandingRow[]>([]);
+
+  const [selectedIso3, setSelectedIso3] = useState<string | null>(null);
+
+  const [loadingMap, setLoadingMap] = useState(false);
+  const [loadingSnap, setLoadingSnap] = useState(false);
+  const [err, setErr] = useState<string>("");
+
+  const coveragePct = useMemo(() => (cov ? asPct(cov.coverage_pct) : 0), [cov]);
+
+  const indicatorLabel = useMemo(() => {
+    return INDICATORS.find((x) => x.code === indicator)?.label ?? indicator;
+  }, [indicator]);
+
+  const mapRows: StratifyMapRow[] = useMemo(() => {
+    return (mapApiRows ?? [])
+      .filter((r) => typeof r.value === "number" && Number.isFinite(r.value))
+      .map((r) => ({
+        iso3: String(r.iso3 ?? "").toUpperCase(),
+        country: String(r.country ?? ""),
+        region: r.region ?? null,
+        value: r.value,
+      }));
+  }, [mapApiRows]);
+
+  const mapStats = useMemo(() => {
+    const withValue = mapRows.length;
+    const uniqueIso = new Set(mapRows.map((r) => r.iso3)).size;
+    return { withValue, uniqueIso };
+  }, [mapRows]);
+
+  /** Topo health check on first load + whenever URL changes */
   useEffect(() => {
-    const run = async () => {
+    let cancelled = false;
+
+    async function runTopo() {
+      const h = await topoHealthCheck(TOPO_JSON_URL);
+      if (!cancelled) setTopoHealth(h);
+    }
+
+    runTopo();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** Load (coverage + map + scope snapshot) */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      setErr("");
       setLoadingMap(true);
-      setMapError(null);
+      setLoadingSnap(true);
 
-      const params = new URLSearchParams();
-      params.set("indicator", mapMetric);
-      if (region) params.set("region", region);
+      try {
+        // reset selection when scope/indicator changes
+        setSelectedIso3(null);
+        setSnapshotSelected([]);
 
-      const res = await fetch(`/api/map?${params.toString()}`, {
-        cache: "no-store",
-      });
-      const json: unknown = await res.json();
+        const [snap, c, rows] = await Promise.all([
+          fetchLandingSnapshot({ region: regionParam, iso3: null }),
+          fetchWdiCoverage({ indicatorCode: indicator, region: regionParam }),
+          fetchWdiMapLatest({ indicator, region: regionParam }),
+        ]);
 
-      if (!res.ok) {
-        setMapRows([]);
-        setMapError(`Map API failed (${res.status}).`);
-        setLoadingMap(false);
-        return;
+        if (cancelled) return;
+
+        setSnapshotScope(snap);
+        setCov(c);
+        setMapApiRows(rows);
+      } catch (e: any) {
+        if (!cancelled) setErr(String(e?.message ?? e));
+      } finally {
+        if (!cancelled) {
+          setLoadingMap(false);
+          setLoadingSnap(false);
+        }
       }
+    }
 
-      if (isRecord(json) && typeof json.error === "string" && json.error) {
-        setMapRows([]);
-        setMapError(json.error);
-        setLoadingMap(false);
-        return;
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [regionParam, indicator]);
+
+  /** Load selected-country snapshot */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function runSelected() {
+      if (!selectedIso3) return;
+
+      setLoadingSnap(true);
+      setErr("");
+
+      try {
+        const snap = await fetchLandingSnapshot({
+          region: regionParam,
+          iso3: selectedIso3,
+        });
+
+        if (cancelled) return;
+        setSnapshotSelected(snap);
+      } catch (e: any) {
+        if (!cancelled) setErr(String(e?.message ?? e));
+      } finally {
+        if (!cancelled) setLoadingSnap(false);
       }
+    }
 
-      // Accept MANY shapes: {points}, {rows}, {data}, or direct array
-      const raw: unknown =
-        isRecord(json) && Array.isArray(json.points)
-          ? json.points
-          : isRecord(json) && Array.isArray(json.rows)
-          ? json.rows
-          : isRecord(json) && Array.isArray(json.data)
-          ? json.data
-          : json;
-
-      const rows: StratifyMapRow[] = Array.isArray(raw)
-        ? raw
-            .map((p): StratifyMapRow | null => {
-              if (!isRecord(p)) return null;
-
-              const iso =
-                safeStr(p.iso3) ||
-                safeStr(p.iso) ||
-                safeStr(p.country_code) ||
-                safeStr(p.iso_code);
-
-              const country =
-                safeStr(p.country) || safeStr(p.country_name) || iso;
-
-              const reg =
-                typeof p.region === "string"
-                  ? p.region
-                  : p.region === null
-                  ? null
-                  : null;
-
-              const value = safeNum(p.value);
-              if (!iso) return null;
-
-              // if value missing/null → keep row but mark value as 0? better: skip so map stays grey
-              if (value === null) return null;
-
-              return { iso3: iso.toUpperCase(), country, region: reg, value };
-            })
-            .filter((x): x is StratifyMapRow => x !== null)
-        : [];
-
-      setMapRows(rows);
-      setLoadingMap(false);
+    runSelected();
+    return () => {
+      cancelled = true;
     };
+  }, [selectedIso3, regionParam]);
 
-    run().catch((e: unknown) => {
-      setMapRows([]);
-      setMapError(e instanceof Error ? e.message : "Map API error.");
-      setLoadingMap(false);
-    });
-  }, [mapMetric, region]);
-
-  // -------------------------
-  // Sections (FULL)
-  // -------------------------
-  const sections: StatSection[] = useMemo(() => {
-    if (!landing) return [];
-
-    const wdiRows = Array.isArray(landing.wdi) ? landing.wdi : [];
-    const wdiMap = new Map(wdiRows.map((x) => [x.label, x]));
-
-    const scope = landing.scope ?? "world";
-    const countryTitle = (
-      landing.countryName ??
-      landing.iso3 ??
-      "COUNTRY"
-    ).toUpperCase();
-
-    const population: StatSection = {
-      title:
-        scope === "world" ? "WORLD POPULATION" : `${countryTitle} — POPULATION`,
-      rows: [
-        {
-          label: "Total Population",
-          value: formatNumber(wdiMap.get("Total Population")?.value ?? null),
-          meta: wdiMap.get("Total Population")?.year ?? "",
-          indicatorCode: wdiMap.get("Total Population")?.indicator_code ?? null,
-        },
-        {
-          label: "Population Growth (%)",
-          value: wdiMap.get("Population Growth (%)")?.value?.toFixed(2) ?? "—",
-          meta: wdiMap.get("Population Growth (%)")?.year ?? "",
-          indicatorCode:
-            wdiMap.get("Population Growth (%)")?.indicator_code ?? null,
-        },
-        {
-          label: "Birth Rate (per 1,000)",
-          value: wdiMap.get("Birth Rate (per 1,000)")?.value?.toFixed(2) ?? "—",
-          meta: wdiMap.get("Birth Rate (per 1,000)")?.year ?? "",
-          indicatorCode:
-            wdiMap.get("Birth Rate (per 1,000)")?.indicator_code ?? null,
-        },
-        {
-          label: "Death Rate (per 1,000)",
-          value: wdiMap.get("Death Rate (per 1,000)")?.value?.toFixed(2) ?? "—",
-          meta: wdiMap.get("Death Rate (per 1,000)")?.year ?? "",
-          indicatorCode:
-            wdiMap.get("Death Rate (per 1,000)")?.indicator_code ?? null,
-        },
-        {
-          label: "Life Expectancy (years)",
-          value:
-            wdiMap.get("Life Expectancy (years)")?.value?.toFixed(2) ?? "—",
-          meta: wdiMap.get("Life Expectancy (years)")?.year ?? "",
-          indicatorCode:
-            wdiMap.get("Life Expectancy (years)")?.indicator_code ?? null,
-        },
-        {
-          label: "Urban Population (%)",
-          value: wdiMap.get("Urban Population (%)")?.value?.toFixed(2) ?? "—",
-          meta: wdiMap.get("Urban Population (%)")?.year ?? "",
-          indicatorCode:
-            wdiMap.get("Urban Population (%)")?.indicator_code ?? null,
-        },
-      ],
-    };
-
-    const economy: StatSection = {
-      title: "GOVERNMENT & ECONOMICS",
-      rows: [
-        {
-          label: "GDP (Current US$)",
-          value: formatNumber(wdiMap.get("GDP (Current US$)")?.value ?? null),
-          meta: wdiMap.get("GDP (Current US$)")?.year ?? "",
-          indicatorCode:
-            wdiMap.get("GDP (Current US$)")?.indicator_code ?? null,
-        },
-        {
-          label: "GDP per Capita (US$)",
-          value: formatNumber(
-            wdiMap.get("GDP per Capita (US$)")?.value ?? null
-          ),
-          meta: wdiMap.get("GDP per Capita (US$)")?.year ?? "",
-          indicatorCode:
-            wdiMap.get("GDP per Capita (US$)")?.indicator_code ?? null,
-        },
-        {
-          label: "GDP Growth (%)",
-          value: wdiMap.get("GDP Growth (%)")?.value?.toFixed(2) ?? "—",
-          meta: wdiMap.get("GDP Growth (%)")?.year ?? "",
-          indicatorCode: wdiMap.get("GDP Growth (%)")?.indicator_code ?? null,
-        },
-        {
-          label: "Inflation (CPI %)",
-          value: wdiMap.get("Inflation (CPI %)")?.value?.toFixed(2) ?? "—",
-          meta: wdiMap.get("Inflation (CPI %)")?.year ?? "",
-          indicatorCode:
-            wdiMap.get("Inflation (CPI %)")?.indicator_code ?? null,
-        },
-      ],
-    };
-
-    const healthEnv: StatSection = {
-      title: "HEALTH, ENERGY & ENVIRONMENT",
-      rows: [
-        {
-          label: "Access to Drinking Water (%)",
-          value:
-            wdiMap.get("Access to Drinking Water (%)")?.value?.toFixed(2) ??
-            "—",
-          meta: wdiMap.get("Access to Drinking Water (%)")?.year ?? "",
-          indicatorCode:
-            wdiMap.get("Access to Drinking Water (%)")?.indicator_code ?? null,
-        },
-        {
-          label: "Access to Sanitation (%)",
-          value:
-            wdiMap.get("Access to Sanitation (%)")?.value?.toFixed(2) ?? "—",
-          meta: wdiMap.get("Access to Sanitation (%)")?.year ?? "",
-          indicatorCode:
-            wdiMap.get("Access to Sanitation (%)")?.indicator_code ?? null,
-        },
-        {
-          label: "CO₂ per Capita",
-          value:
-            wdiMap.get("CO₂ Emissions per Capita")?.value?.toFixed(2) ?? "—",
-          meta: wdiMap.get("CO₂ Emissions per Capita")?.year ?? "",
-          indicatorCode:
-            wdiMap.get("CO₂ Emissions per Capita")?.indicator_code ?? null,
-        },
-        {
-          label: "Access to Electricity (%)",
-          value:
-            wdiMap.get("Access to Electricity (%)")?.value?.toFixed(2) ?? "—",
-          meta: wdiMap.get("Access to Electricity (%)")?.year ?? "",
-          indicatorCode:
-            wdiMap.get("Access to Electricity (%)")?.indicator_code ?? null,
-        },
-        {
-          label: "Forest Area (%)",
-          value: wdiMap.get("Forest Area (%)")?.value?.toFixed(2) ?? "—",
-          meta: wdiMap.get("Forest Area (%)")?.year ?? "",
-          indicatorCode: wdiMap.get("Forest Area (%)")?.indicator_code ?? null,
-        },
-      ],
-    };
-
-    const suaRows = Array.isArray(landing.sua) ? landing.sua : [];
-    const suaSection: StatSection = {
-      title: `STRATIFY EDGE — FOOD SECURITY (SUA) ${
-        landing.suaYear ? `(${landing.suaYear})` : ""
-      }`,
-      rows: suaRows.map((r) => ({
-        label: r.label,
-        value:
-          r.value == null
-            ? "—"
-            : new Intl.NumberFormat(undefined, {
-                maximumFractionDigits: 2,
-              }).format(r.value),
-        meta: r.unit ?? "",
-        indicatorCode: null,
-      })),
-    };
-
-    const topComms = Array.isArray(landing.topCommodities)
-      ? landing.topCommodities
-      : [];
-    const prodSection: StatSection = {
-      title: `STRATIFY EDGE — TOP COMMODITIES BY PRODUCTION ${
-        landing.prodYear ? `(${landing.prodYear})` : ""
-      }`,
-      rows: topComms.map((r) => ({
-        label: r.item,
-        value: formatNumber(r.value),
-        meta: "",
-        indicatorCode: null,
-      })),
-    };
-
-    return [population, economy, healthEnv, suaSection, prodSection];
-  }, [landing]);
-
-  const wdiCount = landing?.wdi?.length ?? 0;
+  const snapToRender = selectedIso3 ? snapshotSelected : snapshotScope;
 
   return (
-    <div className="min-h-screen bg-white text-slate-900">
+    <div className="p-4 space-y-4">
       {/* Top bar */}
-      <div className="border-b bg-white/80 backdrop-blur sticky top-0 z-20">
-        <div className="mx-auto max-w-screen-2xl px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="text-xl font-semibold tracking-tight">Stratify</div>
-            <div className="text-sm text-slate-500">
-              World • Vital Statistics
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="text-xl font-semibold text-slate-900">
+            World • Vital Statistics
+          </div>
+
+          {cov ? (
+            <div className="flex items-center gap-2">
+              <Badge className="rounded-full bg-black text-white">
+                Coverage: {coveragePct.toFixed(0)}% ({cov.countries_with_data}/
+                {cov.countries_in_scope})
+              </Badge>
+              <div className="text-xs text-slate-600">
+                No data: {cov.missing_countries}
+              </div>
             </div>
-          </div>
+          ) : null}
+        </div>
 
-          <div className="flex items-center gap-2">
-            <select
-              className="h-9 rounded-md border px-2 text-sm"
-              value={region ?? ""}
-              onChange={(e) => setRegion(e.target.value || null)}
-            >
-              <option value="">All Regions (World)</option>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={region} onValueChange={setRegion}>
+            <SelectTrigger className="w-[240px] rounded-xl">
+              <SelectValue placeholder="Region" />
+            </SelectTrigger>
+            <SelectContent>
               {REGIONS.map((r) => (
-                <option key={r} value={r}>
+                <SelectItem key={r} value={r}>
                   {r}
-                </option>
+                </SelectItem>
               ))}
-            </select>
+            </SelectContent>
+          </Select>
 
-            <select
-              className="h-9 rounded-md border px-2 text-sm"
-              value={mapMetric}
-              onChange={(e) => setMapMetric(e.target.value)}
-            >
-              {MAP_METRICS.map((m) => (
-                <option key={m.code} value={m.code}>
-                  {m.label}
-                </option>
+          <Select value={indicator} onValueChange={setIndicator}>
+            <SelectTrigger className="w-[340px] rounded-xl">
+              <SelectValue placeholder="Indicator" />
+            </SelectTrigger>
+            <SelectContent className="max-h-[320px]">
+              {INDICATORS.map((x) => (
+                <SelectItem key={x.code} value={x.code}>
+                  {x.label} ({x.code})
+                </SelectItem>
               ))}
-            </select>
+            </SelectContent>
+          </Select>
 
-            <button
-              className="h-9 rounded-md border px-3 text-sm hover:bg-slate-50"
-              onClick={() => setIso3(null)}
-            >
-              Reset to World
-            </button>
-          </div>
+          <Button
+            className="rounded-xl"
+            variant="secondary"
+            onClick={() => {
+              setRegion("World");
+              setIndicator("SP.POP.TOTL");
+              setSelectedIso3(null);
+            }}
+          >
+            Reset to World
+          </Button>
         </div>
       </div>
 
-      {/* Main */}
-      <div className="mx-auto max-w-screen-2xl px-4 py-6">
-        {/* Debug row (keep for now) */}
-        <div className="mb-4 text-xs text-slate-500 flex flex-wrap gap-4">
-          <div>
-            <span className="font-semibold">Map rows:</span> {mapRows.length}
-          </div>
-          <div>
-            <span className="font-semibold">WDI rows:</span> {wdiCount}
-          </div>
-          <div>
-            <span className="font-semibold">Selected:</span> {iso3 ?? "WORLD"}
-          </div>
-          {mapError ? (
-            <div className="text-red-600">Map error: {mapError}</div>
-          ) : null}
-          {landingError ? (
-            <div className="text-red-600">Landing error: {landingError}</div>
-          ) : null}
+      {/* Error banner */}
+      {err ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {err}
         </div>
+      ) : null}
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Map */}
-          <div className="lg:col-span-7">
-            <div className="text-xs tracking-widest text-slate-400 mb-3">
-              GEOMAP
-            </div>
-
-            {loadingMap ? (
-              <div className="rounded-xl border bg-white p-6 text-sm text-slate-500">
-                Loading map…
-              </div>
-            ) : (
-              <StratifyMap
-                rows={mapRows}
-                topoJsonUrl="/maps/countries-110m.json"
-                selectedIso3={iso3}
-                onSelectIso3={(v) => setIso3(v)}
-              />
-            )}
-
-            <div className="mt-3 text-sm text-slate-500">
-              Click a country to load country profile. Default: World.
+      {/* Topo health panel (no DevTools needed) */}
+      {topoHealth ? (
+        <div className="rounded-xl border border-black/10 bg-white p-3 text-xs">
+          <div className="flex items-center justify-between">
+            <div className="font-semibold">Map Health Check</div>
+            <div className={topoHealth.ok ? "text-green-700" : "text-red-700"}>
+              {topoHealth.ok ? "OK" : "FAILED"}
             </div>
           </div>
 
-          {/* Stats */}
-          <div className="lg:col-span-5 lg:sticky lg:top-[72px]">
-            <div className="max-h-[calc(100vh-96px)] overflow-y-auto pr-1">
-              {loadingLanding ? (
-                <div className="text-sm text-slate-500">Loading…</div>
-              ) : landingError ? (
-                <div className="rounded-xl border bg-white p-4 text-sm text-red-600">
-                  {landingError}
+          <div className="mt-2 text-slate-700 space-y-1">
+            <div>
+              <span className="font-semibold">Topo URL:</span> {topoHealth.url}
+            </div>
+
+            {topoHealth.ok ? (
+              <>
+                <div>
+                  <span className="font-semibold">objects keys:</span>{" "}
+                  {topoHealth.objectKeys?.join(", ") || "—"}
                 </div>
-              ) : (
-                <VitalStatsList
-                  sections={sections}
-                  region={region}
-                  subtitle={
-                    (landing?.scope ?? "world") === "world"
-                      ? "Current World Snapshot (latest available year per metric)"
-                      : `Selected: ${
-                          landing?.countryName ?? landing?.iso3 ?? "Country"
-                        }`
-                  }
-                />
-              )}
-            </div>
+                <div>
+                  <span className="font-semibold">geometries:</span>{" "}
+                  {topoHealth.geoCount ?? 0}
+                </div>
+                <div>
+                  <span className="font-semibold">first properties keys:</span>{" "}
+                  {topoHealth.firstPropsKeys?.join(", ") || "—"}
+                </div>
+
+                <details className="mt-2">
+                  <summary className="cursor-pointer font-semibold">
+                    sample properties (first feature)
+                  </summary>
+                  <pre className="mt-2 overflow-auto rounded-lg bg-black/5 p-2">
+                    {JSON.stringify(topoHealth.sampleProps ?? {}, null, 2)}
+                  </pre>
+                </details>
+              </>
+            ) : (
+              <div className="mt-2 text-red-700">
+                <span className="font-semibold">error:</span> {topoHealth.error}
+              </div>
+            )}
           </div>
         </div>
+      ) : null}
+
+      <div className="grid grid-cols-12 gap-4">
+        {/* Map */}
+        <Card className="col-span-12 lg:col-span-8 rounded-2xl border border-black/10 overflow-hidden">
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle className="text-sm text-slate-700">
+                  Map — {region} • {indicatorLabel}
+                </CardTitle>
+
+                <div className="mt-1 text-xs text-slate-600">
+                  {selectedIso3 ? (
+                    <>
+                      Selected:{" "}
+                      <span className="font-semibold">{selectedIso3}</span>{" "}
+                      <span className="text-slate-400">•</span>{" "}
+                      <button
+                        className="underline underline-offset-2"
+                        onClick={() => setSelectedIso3(null)}
+                      >
+                        clear
+                      </button>
+                    </>
+                  ) : (
+                    "Click a country to drill into snapshot."
+                  )}
+                </div>
+
+                {cov && coveragePct < THRESH_WARN ? (
+                  <div className="mt-1 text-xs text-slate-600">
+                    Sparse coverage in this scope — gray countries can be
+                    expected.
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Quick data-side health */}
+              <div className="text-right">
+                <div className="text-[11px] uppercase tracking-widest text-slate-400">
+                  Data health
+                </div>
+                <div className="mt-1 text-xs text-slate-600">
+                  Values:{" "}
+                  <span className="font-semibold text-slate-900">
+                    {mapStats.withValue}
+                  </span>{" "}
+                  • Unique ISO3:{" "}
+                  <span className="font-semibold text-slate-900">
+                    {mapStats.uniqueIso}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-4">
+            {loadingMap ? (
+              <Skeleton h={520} />
+            ) : (
+              <div className="rounded-2xl border border-black/10 bg-white p-2">
+                <StratifyMap
+                  rows={mapRows}
+                  topoJsonUrl={TOPO_JSON_URL}
+                  selectedIso3={selectedIso3}
+                  onSelectIso3={(iso3) => setSelectedIso3(iso3)}
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Snapshot */}
+        <Card className="col-span-12 lg:col-span-4 rounded-2xl border border-black/10 overflow-hidden">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-slate-700">SNAPSHOT</CardTitle>
+            <div className="text-xs text-slate-600">
+              Scope:{" "}
+              <span className="font-semibold">
+                {selectedIso3 ? `${selectedIso3} (${region})` : region}
+              </span>
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-4">
+            {loadingSnap && snapToRender.length === 0 ? (
+              <Skeleton h={520} />
+            ) : (
+              <div className="rounded-2xl border border-black/10 bg-white overflow-hidden">
+                {snapToRender.map((s) => {
+                  const v = typeof s.value === "number" ? s.value : null;
+                  const isPct = (s.label ?? "").includes("%");
+                  const display =
+                    v === null ? "—" : isPct ? v.toFixed(2) : fmtCompact(v);
+
+                  return (
+                    <div
+                      key={s.indicator_code}
+                      className="flex items-center justify-between gap-3 px-4 py-3 border-b last:border-b-0 border-black/5"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-slate-800 truncate">
+                          {s.label}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {s.year ?? ""}
+                        </div>
+                      </div>
+
+                      <div className="text-sm font-semibold text-slate-900 tabular-nums">
+                        {display}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {snapToRender.length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-slate-600">
+                    No snapshot rows returned for this scope.
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
