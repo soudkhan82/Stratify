@@ -56,15 +56,14 @@ const INDICATORS: Array<{ code: string; label: string }> = [
   { code: "SP.DYN.CDRT.IN", label: "Death Rate (per 1,000)" },
   { code: "SP.DYN.LE00.IN", label: "Life Expectancy (years)" },
   { code: "SP.URB.TOTL.IN.ZS", label: "Urban Population (%)" },
+  { code: "SH.H2O.SMDW.ZS", label: "Access to Drinking Water (%)" },
+  { code: "SH.STA.SMSS.ZS", label: "Access to Sanitation (%)" },
+  { code: "EG.ELC.ACCS.ZS", label: "Access to Electricity (%)" },
+  { code: "AG.LND.FRST.ZS", label: "Forest Area (%)" },
 ];
 
-// Below this, we can show a warning; but we still render the map if user wants.
+const TOPO_JSON_URL = "/maps/countries-110m.json";
 const THRESH_WARN = 25;
-
-// ✅ Put your topojson file here.
-// If you already had a file before, use the same URL you used earlier.
-// Common location in Next: /public/world-110m.json or /public/world.topo.json etc.
-const TOPO_JSON_URL = "/maps/countries-iso3.json"; // <-- change if your file name differs
 
 function fmtCompact(n: number) {
   const abs = Math.abs(n);
@@ -75,9 +74,23 @@ function fmtCompact(n: number) {
   return n.toLocaleString();
 }
 
+function toErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 async function fetchWdiMapLatest(args: {
   indicator: string;
-  region: string | null; // null = world
+  region: string | null;
 }): Promise<MapRowApi[]> {
   const { data, error } = await supabase.rpc("fetch_wdi_map_latest", {
     p_indicator: args.indicator,
@@ -99,8 +112,73 @@ async function fetchLandingSnapshot(args: {
   return (data ?? []) as LandingRow[];
 }
 
+function Skeleton({ h }: { h: number }) {
+  return (
+    <div className="w-full rounded-2xl bg-black/5" style={{ height: h }} />
+  );
+}
+
+/** ------- TopoJSON Health Check (no DevTools needed) ------- */
+type TopoHealth = {
+  ok: boolean;
+  url: string;
+  error?: string;
+  objectKeys?: string[];
+  firstPropsKeys?: string[];
+  sampleProps?: Record<string, unknown>;
+  geoCount?: number;
+};
+
+async function topoHealthCheck(url: string): Promise<TopoHealth> {
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) {
+      return { ok: false, url, error: `HTTP ${res.status} ${res.statusText}` };
+    }
+
+    const json: unknown = await res.json();
+    if (!isRecord(json)) {
+      return { ok: false, url, error: "TopoJSON is not an object JSON" };
+    }
+
+    const objectsRaw = json.objects;
+    const objects = isRecord(objectsRaw) ? objectsRaw : null;
+
+    const objectKeys = objects ? Object.keys(objects) : [];
+    const firstKey = objectKeys[0];
+
+    const firstObj = firstKey && objects ? objects[firstKey] : undefined;
+    const firstObjRec = isRecord(firstObj) ? firstObj : null;
+
+    const geomsRaw = firstObjRec ? firstObjRec.geometries : null;
+    const geoms = Array.isArray(geomsRaw) ? geomsRaw : null;
+    const geoCount = geoms ? geoms.length : 0;
+
+    const firstGeom = geoCount && geoms ? geoms[0] : undefined;
+    const firstGeomRec = isRecord(firstGeom) ? firstGeom : null;
+
+    const propsRaw = firstGeomRec ? firstGeomRec.properties : null;
+    const props = isRecord(propsRaw) ? propsRaw : null;
+
+    const firstPropsKeys = props ? Object.keys(props) : [];
+
+    return {
+      ok: true,
+      url,
+      objectKeys,
+      firstPropsKeys,
+      sampleProps: props ?? undefined,
+      geoCount,
+    };
+  } catch (e: unknown) {
+    return { ok: false, url, error: toErrorMessage(e) };
+  }
+}
+
 export default function Page() {
-  const [region, setRegion] = useState<string>("Sub-Saharan Africa");
+  const [topoHealth, setTopoHealth] = useState<TopoHealth | null>(null);
+
+  const [region, setRegion] = useState<string>("World");
   const [indicator, setIndicator] = useState<string>("SP.POP.TOTL");
 
   const regionParam = useMemo(
@@ -110,17 +188,22 @@ export default function Page() {
 
   const [cov, setCov] = useState<WdiCoverageRow | null>(null);
   const [mapApiRows, setMapApiRows] = useState<MapRowApi[]>([]);
-  const [snapshot, setSnapshot] = useState<LandingRow[]>([]);
+  const [snapshotScope, setSnapshotScope] = useState<LandingRow[]>([]);
+  const [snapshotSelected, setSnapshotSelected] = useState<LandingRow[]>([]);
 
   const [selectedIso3, setSelectedIso3] = useState<string | null>(null);
 
-  const [loading, setLoading] = useState(false);
+  const [loadingMap, setLoadingMap] = useState(false);
+  const [loadingSnap, setLoadingSnap] = useState(false);
   const [err, setErr] = useState<string>("");
 
   const coveragePct = useMemo(() => (cov ? asPct(cov.coverage_pct) : 0), [cov]);
 
+  const indicatorLabel = useMemo(() => {
+    return INDICATORS.find((x) => x.code === indicator)?.label ?? indicator;
+  }, [indicator]);
+
   const mapRows: StratifyMapRow[] = useMemo(() => {
-    // StratifyMap expects: iso3,country,region,value (value must be number)
     return (mapApiRows ?? [])
       .filter((r) => typeof r.value === "number" && Number.isFinite(r.value))
       .map((r) => ({
@@ -131,65 +214,100 @@ export default function Page() {
       }));
   }, [mapApiRows]);
 
-  const indicatorLabel = useMemo(() => {
-    return INDICATORS.find((x) => x.code === indicator)?.label ?? indicator;
-  }, [indicator]);
+  const mapStats = useMemo(() => {
+    const withValue = mapRows.length;
+    const uniqueIso = new Set(mapRows.map((r) => r.iso3)).size;
+    return { withValue, uniqueIso };
+  }, [mapRows]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function runTopo() {
+      const h = await topoHealthCheck(TOPO_JSON_URL);
+      if (!cancelled) setTopoHealth(h);
+    }
+
+    runTopo();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     async function run() {
-      setLoading(true);
       setErr("");
+      setLoadingMap(true);
+      setLoadingSnap(true);
 
       try {
-        // Snapshot always
-        const snap = await fetchLandingSnapshot({
-          region: regionParam,
-          iso3: null,
-        });
-        if (cancelled) return;
-        setSnapshot(snap);
+        setSelectedIso3(null);
+        setSnapshotSelected([]);
 
-        // Coverage
-        const c = await fetchWdiCoverage({
-          indicatorCode: indicator,
-          region: regionParam,
-        });
+        const [snap, c, rows] = await Promise.all([
+          fetchLandingSnapshot({ region: regionParam, iso3: null }),
+          fetchWdiCoverage({ indicatorCode: indicator, region: regionParam }),
+          fetchWdiMapLatest({ indicator, region: regionParam }),
+        ]);
+
         if (cancelled) return;
+
+        setSnapshotScope(snap);
         setCov(c);
-
-        // Map rows
-        const rows = await fetchWdiMapLatest({
-          indicator,
-          region: regionParam,
-        });
-        if (cancelled) return;
         setMapApiRows(rows);
-      } catch (e: any) {
-        if (!cancelled) setErr(String(e?.message ?? e));
+      } catch (e: unknown) {
+        if (!cancelled) setErr(toErrorMessage(e));
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoadingMap(false);
+          setLoadingSnap(false);
+        }
       }
     }
 
-    // reset selection when scope changes
-    setSelectedIso3(null);
     run();
-
     return () => {
       cancelled = true;
     };
   }, [regionParam, indicator]);
 
-  return (
-    <div className="p-4">
-      <div className="mb-2 text-xs font-mono text-red-600">
-        PAGE VERSION: WDI-MAP NEW (StratifyMap)
-      </div>
+  useEffect(() => {
+    let cancelled = false;
 
-      {/* Header line */}
-      <div className="mb-3 flex items-center justify-between gap-3">
+    async function runSelected() {
+      if (!selectedIso3) return;
+
+      setLoadingSnap(true);
+      setErr("");
+
+      try {
+        const snap = await fetchLandingSnapshot({
+          region: regionParam,
+          iso3: selectedIso3,
+        });
+
+        if (cancelled) return;
+        setSnapshotSelected(snap);
+      } catch (e: unknown) {
+        if (!cancelled) setErr(toErrorMessage(e));
+      } finally {
+        if (!cancelled) setLoadingSnap(false);
+      }
+    }
+
+    runSelected();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedIso3, regionParam]);
+
+  const snapToRender = selectedIso3 ? snapshotSelected : snapshotScope;
+
+  return (
+    <div className="p-4 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="text-xl font-semibold text-slate-900">
             World • Vital Statistics
@@ -208,7 +326,7 @@ export default function Page() {
           ) : null}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Select value={region} onValueChange={setRegion}>
             <SelectTrigger className="w-[240px] rounded-xl">
               <SelectValue placeholder="Region" />
@@ -223,10 +341,10 @@ export default function Page() {
           </Select>
 
           <Select value={indicator} onValueChange={setIndicator}>
-            <SelectTrigger className="w-[320px] rounded-xl">
+            <SelectTrigger className="w-[340px] rounded-xl">
               <SelectValue placeholder="Indicator" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="max-h-[320px]">
               {INDICATORS.map((x) => (
                 <SelectItem key={x.code} value={x.code}>
                   {x.label} ({x.code})
@@ -241,6 +359,7 @@ export default function Page() {
             onClick={() => {
               setRegion("World");
               setIndicator("SP.POP.TOTL");
+              setSelectedIso3(null);
             }}
           >
             Reset to World
@@ -248,61 +367,145 @@ export default function Page() {
         </div>
       </div>
 
-      {err ? <div className="mb-3 text-sm text-red-600">{err}</div> : null}
+      {err ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {err}
+        </div>
+      ) : null}
+
+      {topoHealth ? (
+        <div className="rounded-xl border border-black/10 bg-white p-3 text-xs">
+          <div className="flex items-center justify-between">
+            <div className="font-semibold">Map Health Check</div>
+            <div className={topoHealth.ok ? "text-green-700" : "text-red-700"}>
+              {topoHealth.ok ? "OK" : "FAILED"}
+            </div>
+          </div>
+
+          <div className="mt-2 text-slate-700 space-y-1">
+            <div>
+              <span className="font-semibold">Topo URL:</span> {topoHealth.url}
+            </div>
+
+            {topoHealth.ok ? (
+              <>
+                <div>
+                  <span className="font-semibold">objects keys:</span>{" "}
+                  {topoHealth.objectKeys?.join(", ") || "—"}
+                </div>
+                <div>
+                  <span className="font-semibold">geometries:</span>{" "}
+                  {topoHealth.geoCount ?? 0}
+                </div>
+                <div>
+                  <span className="font-semibold">first properties keys:</span>{" "}
+                  {topoHealth.firstPropsKeys?.join(", ") || "—"}
+                </div>
+
+                <details className="mt-2">
+                  <summary className="cursor-pointer font-semibold">
+                    sample properties (first feature)
+                  </summary>
+                  <pre className="mt-2 overflow-auto rounded-lg bg-black/5 p-2">
+                    {JSON.stringify(topoHealth.sampleProps ?? {}, null, 2)}
+                  </pre>
+                </details>
+              </>
+            ) : (
+              <div className="mt-2 text-red-700">
+                <span className="font-semibold">error:</span> {topoHealth.error}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-12 gap-4">
-        {/* Map */}
-        <Card className="col-span-12 lg:col-span-8 rounded-2xl border border-black/10">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-700">
-              Map — {region} • {indicatorLabel}
-            </CardTitle>
+        <Card className="col-span-12 lg:col-span-8 rounded-2xl border border-black/10 overflow-hidden">
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle className="text-sm text-slate-700">
+                  Map — {region} • {indicatorLabel}
+                </CardTitle>
 
-            {cov && coveragePct < THRESH_WARN ? (
-              <div className="text-xs text-slate-600">
-                Sparse indicator coverage in this scope — gray countries are
-                expected.
-              </div>
-            ) : null}
+                <div className="mt-1 text-xs text-slate-600">
+                  {selectedIso3 ? (
+                    <>
+                      Selected:{" "}
+                      <span className="font-semibold">{selectedIso3}</span>{" "}
+                      <span className="text-slate-400">•</span>{" "}
+                      <button
+                        className="underline underline-offset-2"
+                        onClick={() => setSelectedIso3(null)}
+                      >
+                        clear
+                      </button>
+                    </>
+                  ) : (
+                    "Click a country to drill into snapshot."
+                  )}
+                </div>
 
-            {/* optional selected country indicator */}
-            {selectedIso3 ? (
-              <div className="text-xs text-slate-600">
-                Selected: <span className="font-semibold">{selectedIso3}</span>
+                {cov && coveragePct < THRESH_WARN ? (
+                  <div className="mt-1 text-xs text-slate-600">
+                    Sparse coverage in this scope — gray countries can be
+                    expected.
+                  </div>
+                ) : null}
               </div>
-            ) : null}
+
+              <div className="text-right">
+                <div className="text-[11px] uppercase tracking-widest text-slate-400">
+                  Data health
+                </div>
+                <div className="mt-1 text-xs text-slate-600">
+                  Values:{" "}
+                  <span className="font-semibold text-slate-900">
+                    {mapStats.withValue}
+                  </span>{" "}
+                  • Unique ISO3:{" "}
+                  <span className="font-semibold text-slate-900">
+                    {mapStats.uniqueIso}
+                  </span>
+                </div>
+              </div>
+            </div>
           </CardHeader>
 
-          <CardContent>
-            {loading ? (
-              <div className="h-[620px] w-full rounded-2xl bg-black/5" />
+          <CardContent className="p-4">
+            {loadingMap ? (
+              <Skeleton h={520} />
             ) : (
-              <StratifyMap
-                rows={mapRows}
-                topoJsonUrl={TOPO_JSON_URL}
-                selectedIso3={selectedIso3}
-                onSelectIso3={(iso3) => setSelectedIso3(iso3)}
-              />
+              <div className="rounded-2xl border border-black/10 bg-white p-2">
+                <StratifyMap
+                  rows={mapRows}
+                  topoJsonUrl={TOPO_JSON_URL}
+                  selectedIso3={selectedIso3}
+                  onSelectIso3={(iso3) => setSelectedIso3(iso3)}
+                />
+              </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Snapshot */}
-        <Card className="col-span-12 lg:col-span-4 rounded-2xl border border-black/10">
-          <CardHeader className="pb-2">
+        <Card className="col-span-12 lg:col-span-4 rounded-2xl border border-black/10 overflow-hidden">
+          <CardHeader className="pb-3">
             <CardTitle className="text-sm text-slate-700">SNAPSHOT</CardTitle>
             <div className="text-xs text-slate-600">
-              Current Snapshot (latest year per metric) • Scope:{" "}
-              <span className="font-semibold">{region}</span>
+              Scope:{" "}
+              <span className="font-semibold">
+                {selectedIso3 ? `${selectedIso3} (${region})` : region}
+              </span>
             </div>
           </CardHeader>
 
-          <CardContent className="space-y-3">
-            {loading && snapshot.length === 0 ? (
-              <div className="h-[520px] w-full rounded-2xl bg-black/5" />
+          <CardContent className="p-4">
+            {loadingSnap && snapToRender.length === 0 ? (
+              <Skeleton h={520} />
             ) : (
               <div className="rounded-2xl border border-black/10 bg-white overflow-hidden">
-                {snapshot.map((s) => {
+                {snapToRender.map((s) => {
                   const v = typeof s.value === "number" ? s.value : null;
                   const isPct = (s.label ?? "").includes("%");
                   const display =
@@ -311,10 +514,10 @@ export default function Page() {
                   return (
                     <div
                       key={s.indicator_code}
-                      className="flex items-center justify-between px-4 py-3 border-b last:border-b-0 border-black/5"
+                      className="flex items-center justify-between gap-3 px-4 py-3 border-b last:border-b-0 border-black/5"
                     >
-                      <div>
-                        <div className="text-sm font-semibold text-slate-800">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-slate-800 truncate">
                           {s.label}
                         </div>
                         <div className="text-xs text-slate-500">
@@ -322,17 +525,29 @@ export default function Page() {
                         </div>
                       </div>
 
-                      <div className="text-sm font-semibold text-slate-900">
+                      <div className="text-sm font-semibold text-slate-900 tabular-nums">
                         {display}
                       </div>
                     </div>
                   );
                 })}
+
+                {snapToRender.length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-slate-600">
+                    No snapshot rows returned for this scope.
+                  </div>
+                ) : null}
               </div>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {cov && coveragePct < THRESH_WARN ? (
+        <div className="text-xs text-slate-500">
+          Tip: low coverage means many countries will be gray (no data).
+        </div>
+      ) : null}
     </div>
   );
 }
