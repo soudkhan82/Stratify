@@ -28,9 +28,7 @@ function asNumber(v: unknown, fallback = 0): number {
 function coerceMapRows(payload: unknown): MapRow[] {
   if (!Array.isArray(payload)) return [];
   return payload.map((r): MapRow => {
-    if (!isRecord(r)) {
-      return { iso3: "", country: "", region: null, value: 0 };
-    }
+    if (!isRecord(r)) return { iso3: "", country: "", region: null, value: 0 };
     return {
       iso3: asString(r.iso3),
       country: asString(r.country),
@@ -40,18 +38,26 @@ function coerceMapRows(payload: unknown): MapRow[] {
   });
 }
 
+/* =======================
+   Handler
+======================= */
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
 
   const indicator = searchParams.get("indicator") ?? "SP.POP.TOTL";
-  const year = Number(searchParams.get("year") ?? "2024");
-  const region = searchParams.get("region"); // optional
+  const region = searchParams.get("region"); // optional ("ALL" or null allowed)
 
-  // Example RPC – keep your own function name/args if different
-  const { data, error } = await supabase.rpc("fetch_map_rows", {
+  const p_region =
+    !region || region === "ALL" || region === "null" || region === "undefined"
+      ? null
+      : region;
+
+  // ✅ Correct RPC that exists in your DB:
+  // public.fetch_map_wdi(p_indicator text, p_region text)
+  const { data, error } = await supabase.rpc("fetch_map_wdi", {
     p_indicator: indicator,
-    p_year: Number.isFinite(year) ? year : 2024,
-    p_region: region,
+    p_region,
   });
 
   if (error) {
@@ -61,8 +67,6 @@ export async function GET(req: Request) {
     );
   }
 
-  // ✅ NO any: treat as unknown and coerce
   const rows = coerceMapRows(data as unknown);
-
   return NextResponse.json({ rows });
 }

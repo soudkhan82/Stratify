@@ -1,11 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import supabase from "@/app/config/supabase-config";
+import StratifyMap, { StratifyMapRow } from "@/app/components/StratifyMap";
+import VitalStatsList, { StatSection } from "@/app/components/VitalStatsList";
 
-import StratifyMap, { type StratifyMapRow } from "@/app/components/StratifyMap";
-
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
   SelectTrigger,
@@ -14,28 +12,29 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 
-import {
-  fetchWdiCoverage,
-  asPct,
-  type WdiCoverageRow,
-} from "@/app/lib/rpc/wdi-coverage";
+/* =======================
+   Types
+======================= */
 
-type MapRowApi = {
+type MapRow = {
   iso3: string;
   country: string;
   region: string | null;
-  year: number;
   value: number;
 };
 
-type LandingRow = {
-  indicator_code: string;
-  label: string;
-  year: number | null;
-  value: number | null;
+type MapApiResponse = {
+  rows: MapRow[];
+  error?: string;
 };
+
+/* =======================
+   Config
+======================= */
+
+const TOPO_URL =
+  "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
 const REGIONS = [
   "World",
@@ -48,169 +47,166 @@ const REGIONS = [
   "North America",
 ] as const;
 
-const INDICATORS: Array<{ code: string; label: string }> = [
+const INDICATORS: Array<{ code: string; label: string; unit?: string }> = [
   { code: "SP.POP.TOTL", label: "Population" },
-  { code: "NY.GDP.MKTP.CD", label: "GDP current US$" },
-  { code: "SP.POP.GROW", label: "Population Growth (%)" },
-  { code: "SP.DYN.CBRT.IN", label: "Birth Rate (per 1,000)" },
-  { code: "SP.DYN.CDRT.IN", label: "Death Rate (per 1,000)" },
-  { code: "SP.DYN.LE00.IN", label: "Life Expectancy (years)" },
-  { code: "SP.URB.TOTL.IN.ZS", label: "Urban Population (%)" },
+  { code: "NY.GDP.MKTP.CD", label: "GDP (current US$)", unit: "US$" },
+  { code: "SP.POP.GROW", label: "Population Growth", unit: "%" },
+  { code: "SP.DYN.LE00.IN", label: "Life Expectancy", unit: "years" },
+  { code: "SP.URB.TOTL.IN.ZS", label: "Urban Population", unit: "%" },
+  { code: "EG.ELC.ACCS.ZS", label: "Access to Electricity", unit: "%" },
 ];
 
-const THRESH_WARN = 25;
+const DEFAULT_INDICATOR = "SP.POP.TOTL";
 
-// ✅ Put your topojson file here.
-const TOPO_JSON_URL =
-  "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+/* =======================
+   Helpers
+======================= */
 
-function fmtCompact(n: number) {
-  const abs = Math.abs(n);
-  if (abs >= 1e12) return (n / 1e12).toFixed(2) + "T";
-  if (abs >= 1e9) return (n / 1e9).toFixed(2) + "B";
-  if (abs >= 1e6) return (n / 1e6).toFixed(2) + "M";
-  if (abs >= 1e3) return (n / 1e3).toFixed(2) + "K";
-  return n.toLocaleString();
+function n(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : Number(v) || 0;
 }
 
-function toErrorMessage(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  if (typeof e === "string") return e;
-  try {
-    return JSON.stringify(e);
-  } catch {
-    return String(e);
-  }
+function fmt(v: number): string {
+  if (!Number.isFinite(v)) return "—";
+  if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
+  if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
+  return v.toLocaleString();
 }
 
-async function fetchWdiMapLatest(args: {
-  indicator: string;
-  region: string | null; // null = world
-}): Promise<MapRowApi[]> {
-  const { data, error } = await supabase.rpc("fetch_wdi_map_latest", {
-    p_indicator: args.indicator,
-    p_region: args.region,
-  });
-  if (error) throw error;
-  return (data ?? []) as MapRowApi[];
+function toRegionParam(r: string): string | null {
+  return r === "World" ? null : r;
 }
 
-async function fetchLandingSnapshot(args: {
-  region: string | null;
-  iso3: string | null;
-}): Promise<LandingRow[]> {
-  const { data, error } = await supabase.rpc("fetch_landing_wdi", {
-    p_region: args.region,
-    p_iso3: args.iso3,
-  });
-  if (error) throw error;
-  return (data ?? []) as LandingRow[];
-}
+/* =======================
+   Page
+======================= */
 
 export default function Page() {
-  const [region, setRegion] = useState<string>("Sub-Saharan Africa");
-  const [indicator, setIndicator] = useState<string>("SP.POP.TOTL");
+  const [region, setRegion] = useState<string>("World");
+  const [indicator, setIndicator] = useState<string>(DEFAULT_INDICATOR);
 
-  const regionParam = useMemo(
-    () => (region === "World" ? null : region),
-    [region]
-  );
-
-  const [cov, setCov] = useState<WdiCoverageRow | null>(null);
-  const [mapApiRows, setMapApiRows] = useState<MapRowApi[]>([]);
-  const [snapshot, setSnapshot] = useState<LandingRow[]>([]);
+  const [rows, setRows] = useState<MapRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   const [selectedIso3, setSelectedIso3] = useState<string | null>(null);
 
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string>("");
+  const regionParam = useMemo(() => toRegionParam(region), [region]);
 
-  const coveragePct = useMemo(() => (cov ? asPct(cov.coverage_pct) : 0), [cov]);
-
-  const mapRows: StratifyMapRow[] = useMemo(() => {
-    return (mapApiRows ?? [])
-      .filter((r) => typeof r.value === "number" && Number.isFinite(r.value))
-      .map((r) => ({
-        iso3: String(r.iso3 ?? "").toUpperCase(),
-        country: String(r.country ?? ""),
-        region: r.region ?? null,
-        value: r.value,
-      }));
-  }, [mapApiRows]);
-
-  const indicatorLabel = useMemo(() => {
-    return INDICATORS.find((x) => x.code === indicator)?.label ?? indicator;
+  const indicatorMeta = useMemo(() => {
+    return (
+      INDICATORS.find((x) => x.code === indicator) ?? {
+        code: indicator,
+        label: indicator,
+      }
+    );
   }, [indicator]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const indicatorLabel = indicatorMeta.label;
+  const indicatorUnit = indicatorMeta.unit;
 
-    async function run() {
+  /* ---- Fetch map rows ---- */
+  useEffect(() => {
+    let alive = true;
+
+    async function load() {
       setLoading(true);
-      setErr("");
+      setErr(null);
 
       try {
-        const snap = await fetchLandingSnapshot({
-          region: regionParam,
-          iso3: null,
-        });
-        if (cancelled) return;
-        setSnapshot(snap);
+        const qp = new URLSearchParams();
+        qp.set("indicator", indicator);
+        if (regionParam) qp.set("region", regionParam);
 
-        const c = await fetchWdiCoverage({
-          indicatorCode: indicator,
-          region: regionParam,
+        const res = await fetch(`/api/map?${qp.toString()}`, {
+          cache: "no-store",
         });
-        if (cancelled) return;
-        setCov(c);
 
-        const rows = await fetchWdiMapLatest({
-          indicator,
-          region: regionParam,
-        });
-        if (cancelled) return;
-        setMapApiRows(rows);
+        const json = (await res.json()) as MapApiResponse;
+        if (!res.ok) throw new Error(json?.error ?? "Failed to load map data");
+
+        if (!alive) return;
+
+        const safeRows = Array.isArray(json.rows) ? json.rows : [];
+        setRows(safeRows);
+
+        // reset selection after filter changes
+        setSelectedIso3(null);
       } catch (e: unknown) {
-        if (!cancelled) setErr(toErrorMessage(e));
+        if (!alive) return;
+        setErr(e instanceof Error ? e.message : "Failed to load map");
+        setRows([]);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (alive) setLoading(false);
       }
     }
 
-    setSelectedIso3(null);
-    run();
-
+    load();
     return () => {
-      cancelled = true;
+      alive = false;
     };
-  }, [regionParam, indicator]);
+  }, [indicator, regionParam]);
+
+  const mapRows: StratifyMapRow[] = useMemo(
+    () =>
+      (rows ?? []).map((r) => ({
+        iso3: String(r.iso3 ?? "").toUpperCase(),
+        country: String(r.country ?? ""),
+        region: r.region ?? null,
+        value: n(r.value),
+      })),
+    [rows]
+  );
+
+  const stats: StatSection[] = useMemo(() => {
+    if (!selectedIso3) {
+      return [
+        {
+          title: "World",
+          rows: [
+            { label: "Indicator", value: indicatorLabel },
+            { label: "Region scope", value: region },
+            { label: "Countries", value: String(mapRows.length) },
+          ],
+        },
+      ];
+    }
+
+    const row = mapRows.find((r) => r.iso3 === selectedIso3) ?? null;
+
+    return [
+      {
+        title: "Selection",
+        rows: [
+          { label: "Country", value: row?.country ?? selectedIso3 },
+          { label: "ISO3", value: selectedIso3 },
+          { label: "Region", value: row?.region ?? "—" },
+          {
+            label: indicatorLabel,
+            value: `${fmt(n(row?.value))}${
+              indicatorUnit ? ` ${indicatorUnit}` : ""
+            }`,
+          },
+        ],
+      },
+    ];
+  }, [mapRows, selectedIso3, indicatorLabel, indicatorUnit, region]);
 
   return (
-    <div className="p-4">
-      <div className="mb-2 text-xs font-mono text-red-600">
-        PAGE VERSION: WDI-MAP NEW (StratifyMap)
-      </div>
-
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="text-xl font-semibold text-slate-900">
-            World • Vital Statistics
+    <div className="mx-auto max-w-7xl px-4 py-6 space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="text-xs tracking-widest text-slate-400">STRATIFY</div>
+          <h1 className="mt-1 text-2xl font-semibold text-slate-900">
+            World Map
+          </h1>
+          <div className="mt-1 text-sm text-slate-600">
+            Use the filters, then click a country to update the snapshot panel.
           </div>
-
-          {cov ? (
-            <div className="flex items-center gap-2">
-              <Badge className="rounded-full bg-black text-white">
-                Coverage: {coveragePct.toFixed(0)}% ({cov.countries_with_data}/
-                {cov.countries_in_scope})
-              </Badge>
-              <div className="text-xs text-slate-600">
-                No data: {cov.missing_countries}
-              </div>
-            </div>
-          ) : null}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Region dropdown */}
           <Select value={region} onValueChange={setRegion}>
             <SelectTrigger className="w-[240px] rounded-xl">
               <SelectValue placeholder="Region" />
@@ -224,113 +220,67 @@ export default function Page() {
             </SelectContent>
           </Select>
 
+          {/* Indicator dropdown */}
           <Select value={indicator} onValueChange={setIndicator}>
             <SelectTrigger className="w-[320px] rounded-xl">
               <SelectValue placeholder="Indicator" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="max-h-[340px]">
               {INDICATORS.map((x) => (
                 <SelectItem key={x.code} value={x.code}>
-                  {x.label} ({x.code})
+                  {x.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
 
           <Button
-            className="rounded-xl"
             variant="secondary"
+            className="rounded-xl"
             onClick={() => {
               setRegion("World");
-              setIndicator("SP.POP.TOTL");
+              setIndicator(DEFAULT_INDICATOR);
+              setSelectedIso3(null);
             }}
           >
-            Reset to World
+            Reset
           </Button>
         </div>
       </div>
 
-      {err ? <div className="mb-3 text-sm text-red-600">{err}</div> : null}
+      {err ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {err}
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-12 gap-4">
-        <Card className="col-span-12 lg:col-span-8 rounded-2xl border border-black/10">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-700">
-              Map — {region} • {indicatorLabel}
-            </CardTitle>
+        <div className="col-span-12 lg:col-span-8">
+          {loading ? (
+            <div className="h-[560px] rounded-xl bg-black/5" />
+          ) : (
+            <StratifyMap
+              rows={mapRows}
+              topoJsonUrl={TOPO_URL}
+              selectedIso3={selectedIso3}
+              onSelectIso3={setSelectedIso3}
+              indicatorLabel={indicatorLabel}
+              indicatorUnit={indicatorUnit}
+            />
+          )}
+        </div>
 
-            {cov && coveragePct < THRESH_WARN ? (
-              <div className="text-xs text-slate-600">
-                Sparse indicator coverage in this scope — gray countries are
-                expected.
-              </div>
-            ) : null}
-
-            {selectedIso3 ? (
-              <div className="text-xs text-slate-600">
-                Selected: <span className="font-semibold">{selectedIso3}</span>
-              </div>
-            ) : null}
-          </CardHeader>
-
-          <CardContent>
-            {loading ? (
-              <div className="h-[620px] w-full rounded-2xl bg-black/5" />
-            ) : (
-              <StratifyMap
-                rows={mapRows}
-                topoJsonUrl={TOPO_JSON_URL}
-                selectedIso3={selectedIso3}
-                onSelectIso3={(iso3) => setSelectedIso3(iso3)}
-              />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="col-span-12 lg:col-span-4 rounded-2xl border border-black/10">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-slate-700">SNAPSHOT</CardTitle>
-            <div className="text-xs text-slate-600">
-              Current Snapshot (latest year per metric) • Scope:{" "}
-              <span className="font-semibold">{region}</span>
-            </div>
-          </CardHeader>
-
-          <CardContent className="space-y-3">
-            {loading && snapshot.length === 0 ? (
-              <div className="h-[520px] w-full rounded-2xl bg-black/5" />
-            ) : (
-              <div className="rounded-2xl border border-black/10 bg-white overflow-hidden">
-                {snapshot.map((s) => {
-                  const v = typeof s.value === "number" ? s.value : null;
-                  const isPct = (s.label ?? "").includes("%");
-                  const display =
-                    v === null ? "—" : isPct ? v.toFixed(2) : fmtCompact(v);
-
-                  return (
-                    <div
-                      key={s.indicator_code}
-                      className="flex items-center justify-between px-4 py-3 border-b last:border-b-0 border-black/5"
-                    >
-                      <div>
-                        <div className="text-sm font-semibold text-slate-800">
-                          {s.label}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          {s.year ?? ""}
-                        </div>
-                      </div>
-
-                      <div className="text-sm font-semibold text-slate-900">
-                        {display}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <div className="col-span-12 lg:col-span-4">
+          <VitalStatsList
+            sections={stats}
+            region={selectedIso3 ?? region}
+            subtitle={
+              selectedIso3
+                ? "Snapshot for selected country"
+                : "Click a country to update stats"
+            }
+          />
+        </div>
       </div>
     </div>
   );
