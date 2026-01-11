@@ -1,6 +1,9 @@
+// app/page.tsx (Landing Page)  OR wherever your landing page.tsx is
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+
 import StratifyMap, { StratifyMapRow } from "@/app/components/StratifyMap";
 import VitalStatsList, { StatSection } from "@/app/components/VitalStatsList";
 
@@ -82,6 +85,8 @@ function toRegionParam(r: string): string | null {
 ======================= */
 
 export default function Page() {
+  const router = useRouter();
+
   const [region, setRegion] = useState<string>("World");
   const [indicator, setIndicator] = useState<string>(DEFAULT_INDICATOR);
 
@@ -158,6 +163,22 @@ export default function Page() {
     [rows]
   );
 
+  // ✅ NEW: click handler that routes to /world/country/[iso3]
+  function handleSelectIso3(iso3: string) {
+    const up = String(iso3 ?? "").toUpperCase();
+    if (!up) return;
+
+    // keep highlight
+    setSelectedIso3(up);
+
+    // navigate to country profile
+    router.push(
+      `/world/country/${encodeURIComponent(up)}?indicator=${encodeURIComponent(
+        indicator
+      )}`
+    );
+  }
+
   const stats: StatSection[] = useMemo(() => {
     if (!selectedIso3) {
       return [
@@ -201,7 +222,7 @@ export default function Page() {
             World Map
           </h1>
           <div className="mt-1 text-sm text-slate-600">
-            Use the filters, then click a country to update the snapshot panel.
+            Use the filters, then click a country to open its profile.
           </div>
         </div>
 
@@ -263,7 +284,7 @@ export default function Page() {
               rows={mapRows}
               topoJsonUrl={TOPO_URL}
               selectedIso3={selectedIso3}
-              onSelectIso3={setSelectedIso3}
+              onSelectIso3={handleSelectIso3} // ✅ routes now
               indicatorLabel={indicatorLabel}
               indicatorUnit={indicatorUnit}
             />
@@ -276,8 +297,8 @@ export default function Page() {
             region={selectedIso3 ?? region}
             subtitle={
               selectedIso3
-                ? "Snapshot for selected country"
-                : "Click a country to update stats"
+                ? "Opening selected country..."
+                : "Click a country to open profile"
             }
           />
         </div>
