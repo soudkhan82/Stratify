@@ -1,56 +1,70 @@
 import { NextResponse } from "next/server";
 import supabase from "@/app/config/supabase-config";
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Supabase RPC can return:
+ * - object (json/jsonb)
+ * - array (setof json)
+ * - null
+ * - sometimes stringified json (rare, but can happen via views/functions)
+ */
+function normalizeJsonPayload(
+  data: unknown
+): Record<string, unknown> | unknown[] {
+  if (Array.isArray(data)) return data;
+  if (isRecord(data)) return data;
+
+  if (typeof data === "string") {
+    try {
+      const parsed: unknown = JSON.parse(data);
+      if (Array.isArray(parsed)) return parsed;
+      if (isRecord(parsed)) return parsed;
+    } catch {
+      // fall through
+    }
+  }
+
+  // fallback so API always returns JSON
+  return {};
+}
+
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const iso3 = (searchParams.get("iso3") || "").toUpperCase().trim();
-  const indicator = (searchParams.get("indicator") || "").trim();
+  try {
+    const { searchParams } = new URL(req.url);
+    const iso3 = (searchParams.get("iso3") || "").toUpperCase().trim();
+    const indicator = (searchParams.get("indicator") || "SP.POP.TOTL").trim();
 
-  if (!iso3 || !indicator) {
-    return NextResponse.json(
-      { error: "iso3 and indicator are required" },
-      { status: 400 }
-    );
+    if (!iso3) {
+      return NextResponse.json({ error: "iso3 is required" }, { status: 400 });
+    }
+
+    // IMPORTANT: use the RPC signature you actually have
+    // You earlier listed: fetch_landing_wdi(p_iso3 text, p_region text)
+    // So we pass p_iso3 and p_region (null).
+    const { data, error } = await supabase.rpc("fetch_landing_wdi", {
+      p_iso3: iso3,
+      p_region: null,
+    });
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    const payload = normalizeJsonPayload(data);
+
+    // Optionally attach indicator param if your RPC returns a bundle and
+    // you want the client to know what was requested.
+    if (isRecord(payload)) {
+      return NextResponse.json({ ...payload, requested_indicator: indicator });
+    }
+
+    return NextResponse.json(payload);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
-
-  // ✅ ONLY call the correct RPC, nothing else
-  const { data, error } = await supabase.rpc("fetch_wdi_country_series", {
-    p_iso3: iso3,
-    p_indicator: indicator,
-    p_window: 25,
-  });
-
-  if (error) {
-    return NextResponse.json(
-      { error: `fetch_wdi_country_series: ${error.message}` },
-      { status: 500 }
-    );
-  }
-
-  const rows = Array.isArray(data) ? (data as any[]) : [];
-
-  const series = rows
-    .map((r) => ({
-      year: Number(r.year),
-      value: Number(r.value),
-      unit: r.unit ?? null,
-    }))
-    .filter((x) => Number.isFinite(x.year) && Number.isFinite(x.value))
-    .sort((a, b) => a.year - b.year);
-
-  const latest = series.length ? series[series.length - 1] : null;
-  const first = rows[0];
-
-  return NextResponse.json({
-    iso3,
-    country: first?.country ?? iso3,
-    region: first?.region ?? null,
-    indicator: {
-      code: indicator,
-      label: first?.indicator_label ?? indicator,
-      unit: first?.unit ?? null,
-    },
-    latest,
-    series,
-  });
 }
