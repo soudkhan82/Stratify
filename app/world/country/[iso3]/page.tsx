@@ -7,7 +7,19 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
+/* =======================
+   Types
+======================= */
+
+type FaoModule =
+  | ""
+  | "overview"
+  | "top-production"
+  | "top-import"
+  | "top-export";
+
 type WdiPoint = { year: number; value: number; unit?: string | null };
+
 type WdiResponse = {
   iso3: string;
   country: string;
@@ -18,34 +30,41 @@ type WdiResponse = {
   error?: string;
 };
 
-type FaostatTopRow = {
-  item: string;
-  value: number;
-  unit: string | null;
-};
-
-type FaostatProfile = {
+type OverviewPayload = {
   iso3: string;
   country: string;
-
   latest_year: number | null;
 
-  production_total: number | null;
+  production_qty: number | null;
   production_unit: string | null;
 
-  import_total: number | null;
+  import_qty: number | null;
   import_unit: string | null;
 
-  export_total: number | null;
+  export_qty: number | null;
   export_unit: string | null;
 
-  top_production_items: FaostatTopRow[];
-  top_import_items: FaostatTopRow[];
-  top_export_items: FaostatTopRow[];
+  kcal_per_capita_day: number | null;
+  protein_g_per_capita_day: number | null;
+  fat_g_per_capita_day: number | null;
 
-  notes?: string | null;
   error?: string;
 };
+
+type TopItem = { item: string; value: number; unit: string | null };
+
+type TopPayload = {
+  iso3: string;
+  country: string;
+  latest_year: number | null;
+  kind?: string;
+  items: TopItem[];
+  error?: string;
+};
+
+/* =======================
+   Helpers
+======================= */
 
 function fmt(n: number | null | undefined): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return "—";
@@ -81,86 +100,81 @@ function parseWdiResponse(
   iso3: string,
   indicator: string
 ): WdiResponse {
-  // Accept either correct shape OR { error: string } from API
-  if (isRecord(raw)) {
-    const maybeErr = raw.error;
-    if (typeof maybeErr === "string" && maybeErr.trim()) {
-      return {
-        iso3,
-        country: iso3,
-        region: null,
-        indicator: { code: indicator, label: indicator, unit: null },
-        latest: null,
-        series: [],
-        error: maybeErr,
-      };
-    }
-
-    // If it's already the right structure, normalize lightly
-    const country = asString(raw.country, iso3);
-    const region = asNullableString(raw.region);
-
-    const ind = isRecord(raw.indicator) ? raw.indicator : {};
-    const code = asString(ind.code, indicator);
-    const label = asString(ind.label, indicator);
-    const unit = (typeof ind.unit === "string" ? ind.unit : null) as
-      | string
-      | null;
-
-    const latestRaw = isRecord(raw.latest) ? raw.latest : null;
-    const latest: WdiPoint | null =
-      latestRaw &&
-      asNumber(latestRaw.year) !== null &&
-      asNumber(latestRaw.value) !== null
-        ? {
-            year: asNumber(latestRaw.year)!,
-            value: asNumber(latestRaw.value)!,
-            unit: typeof latestRaw.unit === "string" ? latestRaw.unit : null,
-          }
-        : null;
-    const seriesRaw = Array.isArray(raw.series) ? raw.series : [];
-
-    const series = seriesRaw
-      .map((r): WdiPoint | null => {
-        if (!isRecord(r)) return null;
-
-        const y = asNumber(r.year);
-        const v = asNumber(r.value);
-        if (y === null || v === null) return null;
-
-        return {
-          year: y,
-          value: v,
-          unit: typeof r.unit === "string" ? r.unit : null,
-        };
-      })
-      .filter((x): x is WdiPoint => x !== null);
-
+  if (!isRecord(raw)) {
     return {
       iso3,
-      country,
-      region,
-      indicator: { code, label, unit },
-      latest,
-      series,
+      country: iso3,
+      region: null,
+      indicator: { code: indicator, label: indicator, unit: null },
+      latest: null,
+      series: [],
+      error: "Invalid WDI API response (not an object).",
     };
   }
 
+  const maybeErr = raw.error;
+  if (typeof maybeErr === "string" && maybeErr.trim()) {
+    return {
+      iso3,
+      country: iso3,
+      region: null,
+      indicator: { code: indicator, label: indicator, unit: null },
+      latest: null,
+      series: [],
+      error: maybeErr,
+    };
+  }
+
+  const country = asString(raw.country, iso3);
+  const region = asNullableString(raw.region);
+
+  const ind = isRecord(raw.indicator) ? raw.indicator : {};
+  const code = asString(ind.code, indicator);
+  const label = asString(ind.label, indicator);
+  const unit = (typeof ind.unit === "string" ? ind.unit : null) as
+    | string
+    | null;
+
+  const latestRaw = isRecord(raw.latest) ? raw.latest : null;
+  const latest: WdiPoint | null =
+    latestRaw &&
+    asNumber(latestRaw.year) !== null &&
+    asNumber(latestRaw.value) !== null
+      ? {
+          year: asNumber(latestRaw.year)!,
+          value: asNumber(latestRaw.value)!,
+          unit: typeof latestRaw.unit === "string" ? latestRaw.unit : null,
+        }
+      : null;
+
+  const seriesRaw = Array.isArray(raw.series) ? raw.series : [];
+  const series = seriesRaw
+    .map((r): WdiPoint | null => {
+      if (!isRecord(r)) return null;
+      const y = asNumber(r.year);
+      const v = asNumber(r.value);
+      if (y === null || v === null) return null;
+      return {
+        year: y,
+        value: v,
+        unit: typeof r.unit === "string" ? r.unit : null,
+      };
+    })
+    .filter((x): x is WdiPoint => x !== null);
+
   return {
     iso3,
-    country: iso3,
-    region: null,
-    indicator: { code: indicator, label: indicator, unit: null },
-    latest: null,
-    series: [],
-    error: "Invalid WDI API response (not an object).",
+    country,
+    region,
+    indicator: { code, label, unit },
+    latest,
+    series,
   };
 }
 
 async function fetchJsonOrThrow(url: string): Promise<unknown> {
   const res = await fetch(url, { cache: "no-store" });
 
-  // If route is missing or server threw, surface real text
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(
@@ -170,7 +184,6 @@ async function fetchJsonOrThrow(url: string): Promise<unknown> {
     );
   }
 
-  // Sometimes Next returns HTML error pages even with 200 (rare), guard it
   const ct = res.headers.get("content-type") || "";
   if (!ct.includes("application/json")) {
     const text = await res.text().catch(() => "");
@@ -183,6 +196,25 @@ async function fetchJsonOrThrow(url: string): Promise<unknown> {
 
   return res.json();
 }
+
+function titleForFaoModule(m: FaoModule): string {
+  switch (m) {
+    case "overview":
+      return "FAOSTAT Overview";
+    case "top-production":
+      return "Top Production Items";
+    case "top-import":
+      return "Top Import Items";
+    case "top-export":
+      return "Top Export Items";
+    default:
+      return "FAOSTAT";
+  }
+}
+
+/* =======================
+   Page
+======================= */
 
 export default function CountryProfilePage({
   params,
@@ -200,8 +232,12 @@ export default function CountryProfilePage({
   const [wdi, setWdi] = useState<WdiResponse | null>(null);
   const [wdiLoading, setWdiLoading] = useState(false);
 
-  const [fao, setFao] = useState<FaostatProfile | null>(null);
+  // ✅ Only FAOSTAT states we need:
+  const [faoModule, setFaoModule] = useState<FaoModule>("");
   const [faoLoading, setFaoLoading] = useState(false);
+  const [faoError, setFaoError] = useState<string | null>(null);
+  const [faoOverview, setFaoOverview] = useState<OverviewPayload | null>(null);
+  const [faoTop, setFaoTop] = useState<TopPayload | null>(null);
 
   const quickPicks = useMemo(
     () => [
@@ -214,35 +250,32 @@ export default function CountryProfilePage({
     []
   );
 
-  // ✅ Fetch WDI (DB-backed route) with real error reporting
+  /* ================
+     WDI fetch
+  ================ */
   useEffect(() => {
     let alive = true;
 
     async function run() {
       setWdiLoading(true);
-
       try {
         const url = `/api/wdi/country?iso3=${encodeURIComponent(
           iso3
         )}&indicator=${encodeURIComponent(indicator)}`;
 
         const raw = await fetchJsonOrThrow(url);
-
         if (!alive) return;
 
         const parsed = parseWdiResponse(raw, iso3, indicator);
-
-        // If API returned empty series but no error, show a clearer message
         if (!parsed.error && parsed.series.length === 0) {
           setWdi({
             ...parsed,
             error:
               "No WDI rows returned. (API succeeded, but dataset is empty for this iso3/indicator.)",
           });
-          return;
+        } else {
+          setWdi(parsed);
         }
-
-        setWdi(parsed);
       } catch (e) {
         if (!alive) return;
         const msg = e instanceof Error ? e.message : "Unknown error";
@@ -266,51 +299,102 @@ export default function CountryProfilePage({
     };
   }, [iso3, indicator]);
 
-  // Fetch FAOSTAT when tab opened (lazy)
+  /* ================
+     FAOSTAT fetch (module-based)
+  ================ */
   useEffect(() => {
     if (tab !== "faostat") return;
+    if (!faoModule) return;
+
     let alive = true;
 
     async function run() {
       setFaoLoading(true);
+      setFaoError(null);
+
+      // clear previous module payloads (keeps UI clean)
+      setFaoOverview(null);
+      setFaoTop(null);
+
       try {
-        const res = await fetch(
-          `/api/faostat/country?iso3=${encodeURIComponent(iso3)}`,
-          {
-            cache: "no-store",
-          }
-        );
-
-        if (!res.ok) {
-          const text = await res.text().catch(() => "");
-          throw new Error(
-            `HTTP ${res.status} ${res.statusText}${
-              text ? ` — ${text.slice(0, 200)}` : ""
-            }`
+        if (faoModule === "overview") {
+          const raw = await fetchJsonOrThrow(
+            `/api/faostat/overview?iso3=${encodeURIComponent(iso3)}`
           );
-        }
+          if (!alive) return;
 
-        const json = (await res.json()) as FaostatProfile;
-        if (!alive) return;
-        setFao(json);
+          if (!isRecord(raw)) {
+            throw new Error(
+              "Invalid FAOSTAT Overview response (not an object)."
+            );
+          }
+          if (typeof raw.error === "string" && raw.error.trim()) {
+            setFaoError(raw.error);
+            return;
+          }
+
+          // minimal normalization
+          setFaoOverview({
+            iso3: asString(raw.iso3, iso3),
+            country: asString(raw.country, iso3),
+            latest_year: (asNumber(raw.latest_year) as number | null) ?? null,
+
+            production_qty:
+              (asNumber(raw.production_qty) as number | null) ?? null,
+            production_unit: asNullableString(raw.production_unit),
+
+            import_qty: (asNumber(raw.import_qty) as number | null) ?? null,
+            import_unit: asNullableString(raw.import_unit),
+
+            export_qty: (asNumber(raw.export_qty) as number | null) ?? null,
+            export_unit: asNullableString(raw.export_unit),
+
+            kcal_per_capita_day:
+              (asNumber(raw.kcal_per_capita_day) as number | null) ?? null,
+            protein_g_per_capita_day:
+              (asNumber(raw.protein_g_per_capita_day) as number | null) ?? null,
+            fat_g_per_capita_day:
+              (asNumber(raw.fat_g_per_capita_day) as number | null) ?? null,
+          });
+        } else {
+          const raw = await fetchJsonOrThrow(
+            `/api/faostat/module?iso3=${encodeURIComponent(
+              iso3
+            )}&kind=${encodeURIComponent(faoModule)}&top=10`
+          );
+          if (!alive) return;
+
+          if (!isRecord(raw)) {
+            throw new Error("Invalid FAOSTAT module response (not an object).");
+          }
+          if (typeof raw.error === "string" && raw.error.trim()) {
+            setFaoError(raw.error);
+            return;
+          }
+
+          const itemsRaw = Array.isArray(raw.items) ? raw.items : [];
+          const items: TopItem[] = itemsRaw
+            .map((r): TopItem | null => {
+              if (!isRecord(r)) return null;
+              const item = asString(r.item, "");
+              const value = asNumber(r.value);
+              if (!item || value === null) return null;
+              return { item, value, unit: asNullableString(r.unit) };
+            })
+            .filter((x): x is TopItem => x !== null);
+
+          setFaoTop({
+            iso3: asString(raw.iso3, iso3),
+            country: asString(raw.country, iso3),
+            latest_year: (asNumber(raw.latest_year) as number | null) ?? null,
+            kind: asNullableString(raw.kind) ?? undefined,
+            items,
+          });
+        }
       } catch (e) {
         if (!alive) return;
         const msg = e instanceof Error ? e.message : "Unknown error";
-        setFao({
-          iso3,
-          country: iso3,
-          latest_year: null,
-          production_total: null,
-          production_unit: null,
-          import_total: null,
-          import_unit: null,
-          export_total: null,
-          export_unit: null,
-          top_production_items: [],
-          top_import_items: [],
-          top_export_items: [],
-          error: `Failed to load FAOSTAT: ${msg}`,
-        });
+        setFaoError(msg);
       } finally {
         if (alive) setFaoLoading(false);
       }
@@ -320,7 +404,7 @@ export default function CountryProfilePage({
     return () => {
       alive = false;
     };
-  }, [tab, iso3]);
+  }, [tab, faoModule, iso3]);
 
   const countryTitle = wdi?.country ? `${wdi.country} (${iso3})` : iso3;
 
@@ -485,319 +569,195 @@ export default function CountryProfilePage({
           </TabsContent>
 
           {/* FAOSTAT TAB */}
-          {/* FAOSTAT TAB */}
           <TabsContent value="faostat" className="space-y-3">
-            {/* FAOSTAT Modules (click-to-load) */}
+            {/* Module buttons */}
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
-              {[
-                {
-                  key: "overview",
-                  label: "Overview (SUA)",
-                  desc: "Latest year + headline + nutrition",
-                },
-                {
-                  key: "top-production",
-                  label: "Top Production",
-                  desc: "Top produced items (Production table)",
-                },
-                {
-                  key: "top-import",
-                  label: "Top Imports",
-                  desc: "Top import items (SUA)",
-                },
-                {
-                  key: "top-export",
-                  label: "Top Exports",
-                  desc: "Top export items (SUA)",
-                },
-              ].map((m) => (
+              {(
+                [
+                  {
+                    key: "overview",
+                    label: "Overview (SUA)",
+                    desc: "Latest year + headline + nutrition",
+                  },
+                  {
+                    key: "top-production",
+                    label: "Top Production",
+                    desc: "Top produced items (Production table)",
+                  },
+                  {
+                    key: "top-import",
+                    label: "Top Imports",
+                    desc: "Top import items (SUA)",
+                  },
+                  {
+                    key: "top-export",
+                    label: "Top Exports",
+                    desc: "Top export items (SUA)",
+                  },
+                ] as const
+              ).map((m) => (
                 <button
                   key={m.key}
-                  onClick={() => {
-                    setFao(
-                      (prev) =>
-                        ({ ...(prev ?? ({} as any)), __module: m.key } as any)
-                    );
-                  }}
-                  className="text-left rounded-xl border p-4 hover:bg-slate-50 transition"
+                  onClick={() => setFaoModule(m.key)}
+                  className={[
+                    "text-left rounded-xl border p-4 transition",
+                    faoModule === m.key
+                      ? "bg-slate-900 text-white border-slate-900"
+                      : "hover:bg-slate-50",
+                  ].join(" ")}
                 >
-                  <div className="text-sm font-semibold text-slate-900">
-                    {m.label}
+                  <div className="text-sm font-semibold">{m.label}</div>
+                  <div
+                    className={[
+                      "mt-1 text-xs",
+                      faoModule === m.key ? "text-white/70" : "text-slate-500",
+                    ].join(" ")}
+                  >
+                    {m.desc}
                   </div>
-                  <div className="mt-1 text-xs text-slate-500">{m.desc}</div>
                 </button>
               ))}
             </div>
 
-            {(() => {
-              type Overview = {
-                iso3: string;
-                country: string;
-                latest_year: number | null;
+            {!faoModule ? (
+              <div className="text-sm text-slate-500">
+                Select a module above to load FAOSTAT insights (prevents
+                timeouts).
+              </div>
+            ) : (
+              <Card className="shadow-sm">
+                <CardHeader className="py-3">
+                  <CardTitle className="text-sm font-semibold text-slate-800">
+                    {titleForFaoModule(faoModule)}
+                  </CardTitle>
+                </CardHeader>
 
-                production_qty: number | null;
-                production_unit: string | null;
-
-                import_qty: number | null;
-                import_unit: string | null;
-
-                export_qty: number | null;
-                export_unit: string | null;
-
-                kcal_per_capita_day: number | null;
-                protein_g_per_capita_day: number | null;
-                fat_g_per_capita_day: number | null;
-
-                error?: string;
-              };
-
-              type TopPayload = {
-                iso3: string;
-                country: string;
-                latest_year: number | null;
-                kind?: string;
-                items: { item: string; value: number; unit: string | null }[];
-                error?: string;
-              };
-
-              const module = ((fao as any)?.__module ?? "") as
-                | ""
-                | "overview"
-                | "top-production"
-                | "top-import"
-                | "top-export";
-
-              const [overview, setOverview] = useState<Overview | null>(null);
-              const [top, setTop] = useState<TopPayload | null>(null);
-              const [loading, setLoading] = useState(false);
-
-              useEffect(() => {
-                if (!module) return;
-                let alive = true;
-
-                async function run() {
-                  setLoading(true);
-                  try {
-                    if (module === "overview") {
-                      const res = await fetch(
-                        `/api/faostat/overview?iso3=${encodeURIComponent(
-                          iso3
-                        )}`,
-                        {
-                          cache: "no-store",
-                        }
-                      );
-                      const json = (await res.json()) as Overview;
-                      if (!alive) return;
-                      setOverview(json);
-                      setTop(null);
-                    } else {
-                      const res = await fetch(
-                        `/api/faostat/module?iso3=${encodeURIComponent(
-                          iso3
-                        )}&kind=${encodeURIComponent(module)}&top=10`,
-                        { cache: "no-store" }
-                      );
-                      const json = (await res.json()) as TopPayload;
-                      if (!alive) return;
-                      setTop(json);
-                      setOverview(null);
-                    }
-                  } catch (e) {
-                    const msg =
-                      e instanceof Error
-                        ? e.message
-                        : "Failed to load FAOSTAT module.";
-                    if (!alive) return;
-                    if (module === "overview")
-                      setOverview({
-                        iso3,
-                        country: iso3,
-                        latest_year: null,
-                        production_qty: null,
-                        production_unit: null,
-                        import_qty: null,
-                        import_unit: null,
-                        export_qty: null,
-                        export_unit: null,
-                        kcal_per_capita_day: null,
-                        protein_g_per_capita_day: null,
-                        fat_g_per_capita_day: null,
-                        error: msg,
-                      });
-                    else
-                      setTop({
-                        iso3,
-                        country: iso3,
-                        latest_year: null,
-                        items: [],
-                        error: msg,
-                      });
-                  } finally {
-                    if (alive) setLoading(false);
-                  }
-                }
-
-                run();
-                return () => {
-                  alive = false;
-                };
-              }, [module, iso3]);
-
-              if (!module) {
-                return (
-                  <div className="text-sm text-slate-500">
-                    Select a module above to load FAOSTAT insights (prevents
-                    timeouts).
-                  </div>
-                );
-              }
-
-              return (
-                <Card className="shadow-sm">
-                  <CardHeader className="py-3">
-                    <CardTitle className="text-sm font-semibold text-slate-800">
-                      {module === "overview"
-                        ? "FAOSTAT Overview"
-                        : module === "top-production"
-                        ? "Top Production Items"
-                        : module === "top-import"
-                        ? "Top Import Items"
-                        : "Top Export Items"}
-                    </CardTitle>
-                  </CardHeader>
-
-                  <CardContent className="pt-0">
-                    {loading ? (
-                      <div className="text-sm text-slate-500">Loading…</div>
-                    ) : (overview as any)?.error || (top as any)?.error ? (
-                      <div className="text-sm text-rose-600">
-                        {(overview as any)?.error ?? (top as any)?.error}
+                <CardContent className="pt-0">
+                  {faoLoading ? (
+                    <div className="text-sm text-slate-500">Loading…</div>
+                  ) : faoError ? (
+                    <div className="text-sm text-rose-600">{faoError}</div>
+                  ) : faoModule === "overview" ? (
+                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                      <div className="rounded-lg border p-3">
+                        <div className="text-xs text-slate-500">
+                          Latest year
+                        </div>
+                        <div className="mt-1 text-2xl font-bold text-slate-900">
+                          {faoOverview?.latest_year ?? "—"}
+                        </div>
                       </div>
-                    ) : module === "overview" ? (
-                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-                        <div className="rounded-lg border p-3">
-                          <div className="text-xs text-slate-500">
-                            Latest year
-                          </div>
-                          <div className="mt-1 text-2xl font-bold text-slate-900">
-                            {overview?.latest_year ?? "—"}
-                          </div>
-                        </div>
 
-                        <div className="rounded-lg border p-3">
-                          <div className="text-xs text-slate-500">
-                            Quantities (headline)
-                          </div>
-                          <div className="mt-2 space-y-1 text-sm">
-                            <div className="flex justify-between">
-                              <span className="text-slate-600">Production</span>
-                              <span className="font-semibold text-slate-900">
-                                {fmt(overview?.production_qty ?? null)}{" "}
-                                <span className="text-xs font-normal text-slate-500">
-                                  {overview?.production_unit ?? ""}
-                                </span>
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-600">Imports</span>
-                              <span className="font-semibold text-slate-900">
-                                {fmt(overview?.import_qty ?? null)}{" "}
-                                <span className="text-xs font-normal text-slate-500">
-                                  {overview?.import_unit ?? ""}
-                                </span>
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-600">Exports</span>
-                              <span className="font-semibold text-slate-900">
-                                {fmt(overview?.export_qty ?? null)}{" "}
-                                <span className="text-xs font-normal text-slate-500">
-                                  {overview?.export_unit ?? ""}
-                                </span>
-                              </span>
-                            </div>
-                          </div>
+                      <div className="rounded-lg border p-3">
+                        <div className="text-xs text-slate-500">
+                          Quantities (headline)
                         </div>
-
-                        <div className="rounded-lg border p-3">
-                          <div className="text-xs text-slate-500">
-                            Nutrition (per capita/day)
+                        <div className="mt-2 space-y-1 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Production</span>
+                            <span className="font-semibold text-slate-900">
+                              {fmt(faoOverview?.production_qty ?? null)}{" "}
+                              <span className="text-xs font-normal text-slate-500">
+                                {faoOverview?.production_unit ?? ""}
+                              </span>
+                            </span>
                           </div>
-                          <div className="mt-2 space-y-1 text-sm">
-                            <div className="flex justify-between">
-                              <span className="text-slate-600">Calories</span>
-                              <span className="font-semibold text-slate-900">
-                                {fmt(overview?.kcal_per_capita_day ?? null)}
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Imports</span>
+                            <span className="font-semibold text-slate-900">
+                              {fmt(faoOverview?.import_qty ?? null)}{" "}
+                              <span className="text-xs font-normal text-slate-500">
+                                {faoOverview?.import_unit ?? ""}
                               </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-600">
-                                Protein (g)
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Exports</span>
+                            <span className="font-semibold text-slate-900">
+                              {fmt(faoOverview?.export_qty ?? null)}{" "}
+                              <span className="text-xs font-normal text-slate-500">
+                                {faoOverview?.export_unit ?? ""}
                               </span>
-                              <span className="font-semibold text-slate-900">
-                                {fmt(
-                                  overview?.protein_g_per_capita_day ?? null
-                                )}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-slate-600">Fat (g)</span>
-                              <span className="font-semibold text-slate-900">
-                                {fmt(overview?.fat_g_per_capita_day ?? null)}
-                              </span>
-                            </div>
+                            </span>
                           </div>
                         </div>
                       </div>
-                    ) : (
-                      <div className="max-h-[360px] overflow-auto rounded-md border">
-                        <table className="w-full text-sm">
-                          <thead className="sticky top-0 bg-white">
-                            <tr className="border-b">
-                              <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600">
-                                Item
-                              </th>
-                              <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600">
-                                Value
-                              </th>
+
+                      <div className="rounded-lg border p-3">
+                        <div className="text-xs text-slate-500">
+                          Nutrition (per capita/day)
+                        </div>
+                        <div className="mt-2 space-y-1 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Calories</span>
+                            <span className="font-semibold text-slate-900">
+                              {fmt(faoOverview?.kcal_per_capita_day ?? null)}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Protein (g)</span>
+                            <span className="font-semibold text-slate-900">
+                              {fmt(
+                                faoOverview?.protein_g_per_capita_day ?? null
+                              )}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">Fat (g)</span>
+                            <span className="font-semibold text-slate-900">
+                              {fmt(faoOverview?.fat_g_per_capita_day ?? null)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="max-h-[360px] overflow-auto rounded-md border">
+                      <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-white">
+                          <tr className="border-b">
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600">
+                              Item
+                            </th>
+                            <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600">
+                              Value
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(faoTop?.items ?? []).map((r) => (
+                            <tr
+                              key={r.item}
+                              className="border-b last:border-b-0"
+                            >
+                              <td className="px-3 py-2 text-slate-800">
+                                {r.item}
+                              </td>
+                              <td className="px-3 py-2 text-right font-semibold text-slate-900">
+                                {fmt(r.value)}{" "}
+                                <span className="text-xs font-normal text-slate-500">
+                                  {r.unit ?? ""}
+                                </span>
+                              </td>
                             </tr>
-                          </thead>
-                          <tbody>
-                            {(top?.items ?? []).map((r) => (
-                              <tr
-                                key={r.item}
-                                className="border-b last:border-b-0"
+                          ))}
+                          {(faoTop?.items?.length ?? 0) === 0 && (
+                            <tr>
+                              <td
+                                className="px-3 py-6 text-sm text-slate-500"
+                                colSpan={2}
                               >
-                                <td className="px-3 py-2 text-slate-800">
-                                  {r.item}
-                                </td>
-                                <td className="px-3 py-2 text-right font-semibold text-slate-900">
-                                  {fmt(r.value)}{" "}
-                                  <span className="text-xs font-normal text-slate-500">
-                                    {r.unit ?? ""}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                            {(top?.items?.length ?? 0) === 0 && (
-                              <tr>
-                                <td
-                                  className="px-3 py-6 text-sm text-slate-500"
-                                  colSpan={2}
-                                >
-                                  No rows found.
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })()}
+                                No rows found.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
         </Tabs>
       </div>
