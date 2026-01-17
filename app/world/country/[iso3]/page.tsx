@@ -5,7 +5,30 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
+
+import {
+  TrendingUp,
+  ArrowUpRight,
+  ArrowDownRight,
+  PieChart as PieIcon,
+  Table2,
+  Download,
+} from "lucide-react";
 
 /* =======================
    Types
@@ -16,7 +39,9 @@ type FaoModule =
   | "overview"
   | "top-production"
   | "top-import"
-  | "top-export";
+  | "top-export"
+  | "trade-import" // NEW (Option B)
+  | "trade-export"; // NEW (Option B)
 
 type WdiPoint = { year: number; value: number; unit?: string | null };
 
@@ -52,13 +77,36 @@ type OverviewPayload = {
 };
 
 type TopItem = { item: string; value: number; unit: string | null };
-
 type TopPayload = {
   iso3: string;
   country: string;
   latest_year: number | null;
   kind?: string;
   items: TopItem[];
+  error?: string;
+};
+
+type TradeItem = {
+  item: string;
+  value: number;
+  unit: string | null;
+  share_pct: number | null;
+};
+type TradeTrendPoint = { year: number; value: number };
+type TradeInsights = {
+  ok: boolean;
+  iso3: string;
+  country: string;
+  kind: "import" | "export";
+  element: string;
+  latest_year: number;
+  total_latest: number | null;
+  total_prev_year: number | null;
+  yoy_pct: number | null;
+  top1_share_pct: number | null;
+  top5_share_pct: number | null;
+  items: TradeItem[];
+  trend: TradeTrendPoint[];
   error?: string;
 };
 
@@ -71,10 +119,20 @@ function fmt(n: number | null | undefined): string {
   return new Intl.NumberFormat("en-US").format(n);
 }
 
+function fmt2(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "—";
+  return n.toFixed(2);
+}
+
+function pct(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "—";
+  return `${n.toFixed(1)}%`;
+}
+
 function qsSet(
   routerReplace: (url: string) => void,
   iso3: string,
-  code: string
+  code: string,
 ) {
   routerReplace(`/world/country/${iso3}?indicator=${encodeURIComponent(code)}`);
 }
@@ -98,7 +156,7 @@ function asNullableString(v: unknown): string | null {
 function parseWdiResponse(
   raw: unknown,
   iso3: string,
-  indicator: string
+  indicator: string,
 ): WdiResponse {
   if (!isRecord(raw)) {
     return {
@@ -178,9 +236,7 @@ async function fetchJsonOrThrow(url: string): Promise<unknown> {
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(
-      `HTTP ${res.status} ${res.statusText}${
-        text ? ` — ${text.slice(0, 300)}` : ""
-      }`
+      `HTTP ${res.status} ${res.statusText}${text ? ` — ${text.slice(0, 300)}` : ""}`,
     );
   }
 
@@ -188,9 +244,7 @@ async function fetchJsonOrThrow(url: string): Promise<unknown> {
   if (!ct.includes("application/json")) {
     const text = await res.text().catch(() => "");
     throw new Error(
-      `Expected JSON but got "${ct || "unknown"}"${
-        text ? ` — ${text.slice(0, 200)}` : ""
-      }`
+      `Expected JSON but got "${ct || "unknown"}"${text ? ` — ${text.slice(0, 200)}` : ""}`,
     );
   }
 
@@ -207,9 +261,25 @@ function titleForFaoModule(m: FaoModule): string {
       return "Top Import Items";
     case "top-export":
       return "Top Export Items";
+    case "trade-import":
+      return "Imports — Trends & Shares";
+    case "trade-export":
+      return "Exports — Trends & Shares";
     default:
       return "FAOSTAT";
   }
+}
+
+function downloadJson(name: string, obj: unknown) {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 /* =======================
@@ -232,12 +302,17 @@ export default function CountryProfilePage({
   const [wdi, setWdi] = useState<WdiResponse | null>(null);
   const [wdiLoading, setWdiLoading] = useState(false);
 
-  // ✅ Only FAOSTAT states we need:
+  // FAOSTAT state
   const [faoModule, setFaoModule] = useState<FaoModule>("");
   const [faoLoading, setFaoLoading] = useState(false);
   const [faoError, setFaoError] = useState<string | null>(null);
   const [faoOverview, setFaoOverview] = useState<OverviewPayload | null>(null);
   const [faoTop, setFaoTop] = useState<TopPayload | null>(null);
+
+  // NEW (Option B) Trade insights state
+  const [trade, setTrade] = useState<TradeInsights | null>(null);
+  const [tradeTopN, setTradeTopN] = useState(10);
+  const [tradeYears, setTradeYears] = useState(10);
 
   const quickPicks = useMemo(
     () => [
@@ -247,8 +322,23 @@ export default function CountryProfilePage({
       { label: "Life expectancy", code: "SP.DYN.LE00.IN" },
       { label: "Unemployment (%)", code: "SL.UEM.TOTL.ZS" },
     ],
-    []
+    [],
   );
+
+  const tradeTheme = useMemo(() => {
+    const isImport = faoModule === "trade-import";
+    return {
+      isImport,
+      headerGrad: isImport
+        ? "bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600"
+        : "bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600",
+      chipClass: isImport
+        ? "border-emerald-600/30 bg-emerald-600/10 text-emerald-700"
+        : "border-indigo-600/30 bg-indigo-600/10 text-indigo-700",
+      accentText: isImport ? "text-emerald-700" : "text-indigo-700",
+      donutA: isImport ? "#10b981" : "#6366f1",
+    };
+  }, [faoModule]);
 
   /* ================
      WDI fetch
@@ -259,10 +349,7 @@ export default function CountryProfilePage({
     async function run() {
       setWdiLoading(true);
       try {
-        const url = `/api/wdi/country?iso3=${encodeURIComponent(
-          iso3
-        )}&indicator=${encodeURIComponent(indicator)}`;
-
+        const url = `/api/wdi/country?iso3=${encodeURIComponent(iso3)}&indicator=${encodeURIComponent(indicator)}`;
         const raw = await fetchJsonOrThrow(url);
         if (!alive) return;
 
@@ -312,28 +399,98 @@ export default function CountryProfilePage({
       setFaoLoading(true);
       setFaoError(null);
 
-      // clear previous module payloads (keeps UI clean)
+      // Clear payloads
       setFaoOverview(null);
       setFaoTop(null);
+      setTrade(null);
 
       try {
-        if (faoModule === "overview") {
-          const raw = await fetchJsonOrThrow(
-            `/api/faostat/overview?iso3=${encodeURIComponent(iso3)}`
-          );
-          if (!alive) return;
+        // NEW: trade insights path
+        if (faoModule === "trade-import" || faoModule === "trade-export") {
+          const kind = faoModule === "trade-import" ? "import" : "export";
 
-          if (!isRecord(raw)) {
-            throw new Error(
-              "Invalid FAOSTAT Overview response (not an object)."
-            );
-          }
+          const raw = await fetchJsonOrThrow(
+            `/api/faostat/trade-insights?iso3=${encodeURIComponent(iso3)}&kind=${encodeURIComponent(kind)}&top=${encodeURIComponent(
+              String(tradeTopN),
+            )}&years=${encodeURIComponent(String(tradeYears))}`,
+          );
+
+          if (!alive) return;
+          if (!isRecord(raw))
+            throw new Error("Invalid Trade Insights response (not an object).");
           if (typeof raw.error === "string" && raw.error.trim()) {
             setFaoError(raw.error);
             return;
           }
 
-          // minimal normalization
+          const ok = raw.ok === true;
+          if (!ok) {
+            setFaoError(asString(raw.error, "Trade insights not available."));
+            return;
+          }
+
+          const itemsRaw = Array.isArray(raw.items) ? raw.items : [];
+          const items: TradeItem[] = itemsRaw
+            .map((r): TradeItem | null => {
+              if (!isRecord(r)) return null;
+              const item = asString(r.item, "");
+              const value = asNumber(r.value);
+              if (!item || value === null) return null;
+              return {
+                item,
+                value,
+                unit: asNullableString(r.unit),
+                share_pct: asNumber(r.share_pct),
+              };
+            })
+            .filter((x): x is TradeItem => x !== null);
+
+          const trendRaw = Array.isArray(raw.trend) ? raw.trend : [];
+          const trend: TradeTrendPoint[] = trendRaw
+            .map((r): TradeTrendPoint | null => {
+              if (!isRecord(r)) return null;
+              const year = asNumber(r.year);
+              const value = asNumber(r.value);
+              if (year === null || value === null) return null;
+              return { year, value };
+            })
+            .filter((x): x is TradeTrendPoint => x !== null);
+
+          setTrade({
+            ok: true,
+            iso3: asString(raw.iso3, iso3),
+            country: asString(raw.country, iso3),
+            kind: kind as "import" | "export",
+            element: asString(raw.element, ""),
+            latest_year: asNumber(raw.latest_year) ?? 0,
+            total_latest: asNumber(raw.total_latest),
+            total_prev_year: asNumber(raw.total_prev_year),
+            yoy_pct: asNumber(raw.yoy_pct),
+            top1_share_pct: asNumber(raw.top1_share_pct),
+            top5_share_pct: asNumber(raw.top5_share_pct),
+            items,
+            trend,
+          });
+
+          return;
+        }
+
+        // EXISTING: overview
+        if (faoModule === "overview") {
+          const raw = await fetchJsonOrThrow(
+            `/api/faostat/overview?iso3=${encodeURIComponent(iso3)}`,
+          );
+          if (!alive) return;
+
+          if (!isRecord(raw))
+            throw new Error(
+              "Invalid FAOSTAT Overview response (not an object).",
+            );
+          if (typeof raw.error === "string" && raw.error.trim()) {
+            setFaoError(raw.error);
+            return;
+          }
+
           setFaoOverview({
             iso3: asString(raw.iso3, iso3),
             country: asString(raw.country, iso3),
@@ -356,41 +513,40 @@ export default function CountryProfilePage({
             fat_g_per_capita_day:
               (asNumber(raw.fat_g_per_capita_day) as number | null) ?? null,
           });
-        } else {
-          const raw = await fetchJsonOrThrow(
-            `/api/faostat/module?iso3=${encodeURIComponent(
-              iso3
-            )}&kind=${encodeURIComponent(faoModule)}&top=10`
-          );
-          if (!alive) return;
-
-          if (!isRecord(raw)) {
-            throw new Error("Invalid FAOSTAT module response (not an object).");
-          }
-          if (typeof raw.error === "string" && raw.error.trim()) {
-            setFaoError(raw.error);
-            return;
-          }
-
-          const itemsRaw = Array.isArray(raw.items) ? raw.items : [];
-          const items: TopItem[] = itemsRaw
-            .map((r): TopItem | null => {
-              if (!isRecord(r)) return null;
-              const item = asString(r.item, "");
-              const value = asNumber(r.value);
-              if (!item || value === null) return null;
-              return { item, value, unit: asNullableString(r.unit) };
-            })
-            .filter((x): x is TopItem => x !== null);
-
-          setFaoTop({
-            iso3: asString(raw.iso3, iso3),
-            country: asString(raw.country, iso3),
-            latest_year: (asNumber(raw.latest_year) as number | null) ?? null,
-            kind: asNullableString(raw.kind) ?? undefined,
-            items,
-          });
+          return;
         }
+
+        // EXISTING: top module
+        const raw = await fetchJsonOrThrow(
+          `/api/faostat/module?iso3=${encodeURIComponent(iso3)}&kind=${encodeURIComponent(faoModule)}&top=10`,
+        );
+        if (!alive) return;
+
+        if (!isRecord(raw))
+          throw new Error("Invalid FAOSTAT module response (not an object).");
+        if (typeof raw.error === "string" && raw.error.trim()) {
+          setFaoError(raw.error);
+          return;
+        }
+
+        const itemsRaw = Array.isArray(raw.items) ? raw.items : [];
+        const items: TopItem[] = itemsRaw
+          .map((r): TopItem | null => {
+            if (!isRecord(r)) return null;
+            const item = asString(r.item, "");
+            const value = asNumber(r.value);
+            if (!item || value === null) return null;
+            return { item, value, unit: asNullableString(r.unit) };
+          })
+          .filter((x): x is TopItem => x !== null);
+
+        setFaoTop({
+          iso3: asString(raw.iso3, iso3),
+          country: asString(raw.country, iso3),
+          latest_year: (asNumber(raw.latest_year) as number | null) ?? null,
+          kind: asNullableString(raw.kind) ?? undefined,
+          items,
+        });
       } catch (e) {
         if (!alive) return;
         const msg = e instanceof Error ? e.message : "Unknown error";
@@ -404,9 +560,20 @@ export default function CountryProfilePage({
     return () => {
       alive = false;
     };
-  }, [tab, faoModule, iso3]);
+  }, [tab, faoModule, iso3, tradeTopN, tradeYears]);
 
   const countryTitle = wdi?.country ? `${wdi.country} (${iso3})` : iso3;
+
+  const tradeUnit = trade?.items?.[0]?.unit ?? "";
+  const donutData = useMemo(() => {
+    const top5 = trade?.top5_share_pct;
+    if (top5 === null || top5 === undefined || !Number.isFinite(top5))
+      return [];
+    return [
+      { name: "Top 5", value: top5 },
+      { name: "Others", value: Math.max(0, 100 - top5) },
+    ];
+  }, [trade]);
 
   return (
     <div className="min-h-screen bg-white">
@@ -571,7 +738,7 @@ export default function CountryProfilePage({
           {/* FAOSTAT TAB */}
           <TabsContent value="faostat" className="space-y-3">
             {/* Module buttons */}
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-6">
               {(
                 [
                   {
@@ -582,17 +749,29 @@ export default function CountryProfilePage({
                   {
                     key: "top-production",
                     label: "Top Production",
-                    desc: "Top produced items (Production table)",
+                    desc: "Top produced items (Production)",
+                  },
+                  // NEW (Option B)
+                  {
+                    key: "trade-import",
+                    label: "Imports (Insights)",
+                    desc: "Trend + shares + top items",
                   },
                   {
+                    key: "trade-export",
+                    label: "Exports (Insights)",
+                    desc: "Trend + shares + top items",
+                  },
+                  // keep legacy top lists if you still want them
+                  {
                     key: "top-import",
-                    label: "Top Imports",
-                    desc: "Top import items (SUA)",
+                    label: "Top Imports (Legacy)",
+                    desc: "Top import items only",
                   },
                   {
                     key: "top-export",
-                    label: "Top Exports",
-                    desc: "Top export items (SUA)",
+                    label: "Top Exports (Legacy)",
+                    desc: "Top export items only",
                   },
                 ] as const
               ).map((m) => (
@@ -698,7 +877,7 @@ export default function CountryProfilePage({
                             <span className="text-slate-600">Protein (g)</span>
                             <span className="font-semibold text-slate-900">
                               {fmt(
-                                faoOverview?.protein_g_per_capita_day ?? null
+                                faoOverview?.protein_g_per_capita_day ?? null,
                               )}
                             </span>
                           </div>
@@ -711,7 +890,346 @@ export default function CountryProfilePage({
                         </div>
                       </div>
                     </div>
+                  ) : faoModule === "trade-import" ||
+                    faoModule === "trade-export" ? (
+                    // ====== NEW OPTION B UI (Colorful, two-column, not full-width table)
+                    <div className="space-y-4">
+                      <div
+                        className={`rounded-2xl ${tradeTheme.headerGrad} p-4 text-white`}
+                      >
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                          <div>
+                            <div className="text-sm font-semibold">
+                              {trade?.country ?? iso3} •{" "}
+                              {trade?.latest_year
+                                ? `Latest: ${trade.latest_year}`
+                                : "—"}
+                            </div>
+                            <div className="text-xs text-white/85">
+                              Element:{" "}
+                              <span className="font-medium">
+                                {trade?.element ?? "—"}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              variant="secondary"
+                              className="bg-white/15 hover:bg-white/20 text-white border border-white/20"
+                              onClick={() => setTradeYears(10)}
+                            >
+                              10y
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              className="bg-white/15 hover:bg-white/20 text-white border border-white/20"
+                              onClick={() => setTradeYears(15)}
+                            >
+                              15y
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              className="bg-white/15 hover:bg-white/20 text-white border border-white/20"
+                              onClick={() => setTradeTopN(10)}
+                            >
+                              Top 10
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              className="bg-white/15 hover:bg-white/20 text-white border border-white/20"
+                              onClick={() => setTradeTopN(15)}
+                            >
+                              Top 15
+                            </Button>
+
+                            <Button
+                              variant="secondary"
+                              className="bg-white/15 hover:bg-white/20 text-white border border-white/20"
+                              onClick={() =>
+                                trade &&
+                                downloadJson(
+                                  `faostat_${iso3}_${trade.kind}_insights.json`,
+                                  trade,
+                                )
+                              }
+                              disabled={!trade?.ok}
+                            >
+                              <Download className="h-4 w-4 mr-2" />
+                              JSON
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+                        {/* Left insights */}
+                        <div className="lg:col-span-2 space-y-4">
+                          <div className="grid grid-cols-2 gap-3">
+                            <Card className="rounded-2xl border shadow-sm">
+                              <CardHeader className="pb-2">
+                                <CardTitle className="text-sm flex items-center gap-2">
+                                  <TrendingUp
+                                    className={`h-4 w-4 ${tradeTheme.accentText}`}
+                                  />
+                                  Total (latest)
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <div className="text-2xl font-semibold">
+                                  {fmt(trade?.total_latest ?? null)}
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  Unit: {tradeUnit || "—"}
+                                </div>
+                              </CardContent>
+                            </Card>
+
+                            <Card className="rounded-2xl border shadow-sm">
+                              <CardHeader className="pb-2">
+                                <CardTitle className="text-sm flex items-center gap-2">
+                                  {(trade?.yoy_pct ?? 0) >= 0 ? (
+                                    <ArrowUpRight className="h-4 w-4 text-emerald-600" />
+                                  ) : (
+                                    <ArrowDownRight className="h-4 w-4 text-rose-600" />
+                                  )}
+                                  YoY change
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <div className="text-2xl font-semibold">
+                                  {pct(trade?.yoy_pct ?? null)}
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  Prev: {fmt(trade?.total_prev_year ?? null)}
+                                </div>
+                              </CardContent>
+                            </Card>
+
+                            <Card className="rounded-2xl border shadow-sm">
+                              <CardHeader className="pb-2">
+                                <CardTitle className="text-sm flex items-center gap-2">
+                                  <PieIcon
+                                    className={`h-4 w-4 ${tradeTheme.accentText}`}
+                                  />
+                                  Top 1 share
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <div className="text-2xl font-semibold">
+                                  {pct(trade?.top1_share_pct ?? null)}
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  Concentration
+                                </div>
+                              </CardContent>
+                            </Card>
+
+                            <Card className="rounded-2xl border shadow-sm">
+                              <CardHeader className="pb-2">
+                                <CardTitle className="text-sm flex items-center gap-2">
+                                  <PieIcon
+                                    className={`h-4 w-4 ${tradeTheme.accentText}`}
+                                  />
+                                  Top 5 share
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <div className="text-2xl font-semibold">
+                                  {pct(trade?.top5_share_pct ?? null)}
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  Top 5 vs Others
+                                </div>
+                              </CardContent>
+                            </Card>
+                          </div>
+
+                          <Card className="rounded-2xl border shadow-sm">
+                            <CardHeader className="pb-2">
+                              <CardTitle className="text-sm flex items-center gap-2">
+                                <TrendingUp
+                                  className={`h-4 w-4 ${tradeTheme.accentText}`}
+                                />
+                                Trend (last {tradeYears} years)
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent className="h-[240px]">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={trade?.trend ?? []}>
+                                  <CartesianGrid strokeDasharray="3 3" />
+                                  <XAxis
+                                    dataKey="year"
+                                    tick={{ fontSize: 12 }}
+                                  />
+                                  <YAxis tick={{ fontSize: 12 }} />
+                                  <Tooltip
+                                    formatter={(v: any) => [
+                                      Number(v).toLocaleString(),
+                                      tradeUnit || "",
+                                    ]}
+                                    labelFormatter={(l) => `Year: ${l}`}
+                                  />
+                                  <Line
+                                    type="monotone"
+                                    dataKey="value"
+                                    strokeWidth={3}
+                                    dot={false}
+                                  />
+                                </LineChart>
+                              </ResponsiveContainer>
+                            </CardContent>
+                          </Card>
+
+                          <Card className="rounded-2xl border shadow-sm">
+                            <CardHeader className="pb-2">
+                              <CardTitle className="text-sm flex items-center gap-2">
+                                <PieIcon
+                                  className={`h-4 w-4 ${tradeTheme.accentText}`}
+                                />
+                                Composition (Top 5 vs Others)
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent className="h-[220px]">
+                              {donutData.length === 0 ? (
+                                <div className="text-sm text-slate-500">
+                                  No data
+                                </div>
+                              ) : (
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <PieChart>
+                                    <Tooltip
+                                      formatter={(v: any, n: any) => [
+                                        `${Number(v).toFixed(1)}%`,
+                                        n,
+                                      ]}
+                                    />
+                                    <Pie
+                                      data={donutData}
+                                      dataKey="value"
+                                      nameKey="name"
+                                      innerRadius={55}
+                                      outerRadius={85}
+                                      paddingAngle={2}
+                                    >
+                                      <Cell fill={tradeTheme.donutA} />
+                                      <Cell fill="#e5e7eb" />
+                                    </Pie>
+                                  </PieChart>
+                                </ResponsiveContainer>
+                              )}
+                              <div className="mt-2 flex justify-between text-xs text-slate-600">
+                                <span>
+                                  Top 5: {pct(trade?.top5_share_pct ?? null)}
+                                </span>
+                                <span>
+                                  Others:{" "}
+                                  {donutData[1]?.value !== undefined
+                                    ? `${Number(donutData[1].value).toFixed(1)}%`
+                                    : "—"}
+                                </span>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </div>
+
+                        {/* Right table */}
+                        <div className="lg:col-span-3">
+                          <Card className="rounded-2xl border shadow-sm">
+                            <CardHeader className="pb-2">
+                              <CardTitle className="text-sm flex items-center gap-2">
+                                <Table2
+                                  className={`h-4 w-4 ${tradeTheme.accentText}`}
+                                />
+                                Top items ({tradeTopN}) •{" "}
+                                {trade?.latest_year ?? "—"}
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="rounded-xl border overflow-hidden">
+                                <div className="max-h-[520px] overflow-auto">
+                                  <table className="w-full text-sm">
+                                    <thead className="sticky top-0 bg-slate-50 z-10">
+                                      <tr className="text-left">
+                                        <th className="px-3 py-2 font-medium">
+                                          #
+                                        </th>
+                                        <th className="px-3 py-2 font-medium">
+                                          Item
+                                        </th>
+                                        <th className="px-3 py-2 font-medium">
+                                          Value
+                                        </th>
+                                        <th className="px-3 py-2 font-medium">
+                                          Share
+                                        </th>
+                                        <th className="px-3 py-2 font-medium">
+                                          Unit
+                                        </th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {(trade?.items ?? []).map((r, i) => (
+                                        <tr
+                                          key={`${r.item}-${i}`}
+                                          className="border-t hover:bg-slate-50/60"
+                                        >
+                                          <td className="px-3 py-2 text-slate-500">
+                                            {i + 1}
+                                          </td>
+                                          <td className="px-3 py-2 font-medium">
+                                            {r.item}
+                                          </td>
+                                          <td className="px-3 py-2 tabular-nums">
+                                            {fmt(r.value)}
+                                          </td>
+                                          <td className="px-3 py-2 tabular-nums">
+                                            <Badge
+                                              className={`border ${tradeTheme.chipClass}`}
+                                            >
+                                              {pct(r.share_pct ?? null)}
+                                            </Badge>
+                                          </td>
+                                          <td className="px-3 py-2 text-slate-600">
+                                            {r.unit ?? "—"}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                      {(trade?.items?.length ?? 0) === 0 && (
+                                        <tr>
+                                          <td
+                                            colSpan={5}
+                                            className="px-3 py-8 text-center text-slate-500"
+                                          >
+                                            No rows found
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+
+                              <div className="mt-3 text-xs text-slate-500">
+                                Element:{" "}
+                                <span className="font-medium">
+                                  {trade?.element ?? "—"}
+                                </span>
+                                {" • "}
+                                Top 10 share sum (approx):{" "}
+                                <span className="font-medium">
+                                  {(trade?.items ?? [])
+                                    .reduce((a, b) => a + (b.share_pct ?? 0), 0)
+                                    .toFixed(1)}
+                                  %
+                                </span>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </div>
+                      </div>
+                    </div>
                   ) : (
+                    // ====== legacy simple top list (kept)
                     <div className="max-h-[360px] overflow-auto rounded-md border">
                       <table className="w-full text-sm">
                         <thead className="sticky top-0 bg-white">
