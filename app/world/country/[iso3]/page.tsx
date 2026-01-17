@@ -40,8 +40,8 @@ type FaoModule =
   | "top-production"
   | "top-import"
   | "top-export"
-  | "trade-import" // NEW (Option B)
-  | "trade-export"; // NEW (Option B)
+  | "trade-import"
+  | "trade-export";
 
 type WdiPoint = { year: number; value: number; unit?: string | null };
 
@@ -117,11 +117,6 @@ type TradeInsights = {
 function fmt(n: number | null | undefined): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return "—";
   return new Intl.NumberFormat("en-US").format(n);
-}
-
-function fmt2(n: number | null | undefined): string {
-  if (n === null || n === undefined || !Number.isFinite(n)) return "—";
-  return n.toFixed(2);
 }
 
 function pct(n: number | null | undefined): string {
@@ -282,6 +277,28 @@ function downloadJson(name: string, obj: unknown) {
   URL.revokeObjectURL(url);
 }
 
+/** Tooltip helpers (no `any`) */
+function toFiniteNumber(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function tooltipNumber(v: unknown): string {
+  const n = toFiniteNumber(v);
+  if (n === null) return "—";
+  return n.toLocaleString();
+}
+
+function tooltipPercent(v: unknown): string {
+  const n = toFiniteNumber(v);
+  if (n === null) return "—";
+  return `${n.toFixed(1)}%`;
+}
+
 /* =======================
    Page
 ======================= */
@@ -309,7 +326,7 @@ export default function CountryProfilePage({
   const [faoOverview, setFaoOverview] = useState<OverviewPayload | null>(null);
   const [faoTop, setFaoTop] = useState<TopPayload | null>(null);
 
-  // NEW (Option B) Trade insights state
+  // Trade insights state
   const [trade, setTrade] = useState<TradeInsights | null>(null);
   const [tradeTopN, setTradeTopN] = useState(10);
   const [tradeYears, setTradeYears] = useState(10);
@@ -399,13 +416,12 @@ export default function CountryProfilePage({
       setFaoLoading(true);
       setFaoError(null);
 
-      // Clear payloads
       setFaoOverview(null);
       setFaoTop(null);
       setTrade(null);
 
       try {
-        // NEW: trade insights path
+        // trade insights
         if (faoModule === "trade-import" || faoModule === "trade-export") {
           const kind = faoModule === "trade-import" ? "import" : "export";
 
@@ -475,7 +491,7 @@ export default function CountryProfilePage({
           return;
         }
 
-        // EXISTING: overview
+        // overview
         if (faoModule === "overview") {
           const raw = await fetchJsonOrThrow(
             `/api/faostat/overview?iso3=${encodeURIComponent(iso3)}`,
@@ -516,7 +532,7 @@ export default function CountryProfilePage({
           return;
         }
 
-        // EXISTING: top module
+        // legacy top module
         const raw = await fetchJsonOrThrow(
           `/api/faostat/module?iso3=${encodeURIComponent(iso3)}&kind=${encodeURIComponent(faoModule)}&top=10`,
         );
@@ -751,7 +767,6 @@ export default function CountryProfilePage({
                     label: "Top Production",
                     desc: "Top produced items (Production)",
                   },
-                  // NEW (Option B)
                   {
                     key: "trade-import",
                     label: "Imports (Insights)",
@@ -762,7 +777,6 @@ export default function CountryProfilePage({
                     label: "Exports (Insights)",
                     desc: "Trend + shares + top items",
                   },
-                  // keep legacy top lists if you still want them
                   {
                     key: "top-import",
                     label: "Top Imports (Legacy)",
@@ -892,7 +906,6 @@ export default function CountryProfilePage({
                     </div>
                   ) : faoModule === "trade-import" ||
                     faoModule === "trade-export" ? (
-                    // ====== NEW OPTION B UI (Colorful, two-column, not full-width table)
                     <div className="space-y-4">
                       <div
                         className={`rounded-2xl ${tradeTheme.headerGrad} p-4 text-white`}
@@ -1063,11 +1076,13 @@ export default function CountryProfilePage({
                                   />
                                   <YAxis tick={{ fontSize: 12 }} />
                                   <Tooltip
-                                    formatter={(v: any) => [
-                                      Number(v).toLocaleString(),
+                                    formatter={(value: unknown) => [
+                                      tooltipNumber(value),
                                       tradeUnit || "",
                                     ]}
-                                    labelFormatter={(l) => `Year: ${l}`}
+                                    labelFormatter={(label: string | number) =>
+                                      `Year: ${String(label)}`
+                                    }
                                   />
                                   <Line
                                     type="monotone"
@@ -1098,9 +1113,12 @@ export default function CountryProfilePage({
                                 <ResponsiveContainer width="100%" height="100%">
                                   <PieChart>
                                     <Tooltip
-                                      formatter={(v: any, n: any) => [
-                                        `${Number(v).toFixed(1)}%`,
-                                        n,
+                                      formatter={(
+                                        value: unknown,
+                                        name: unknown,
+                                      ) => [
+                                        tooltipPercent(value),
+                                        String(name ?? ""),
                                       ]}
                                     />
                                     <Pie
@@ -1215,7 +1233,7 @@ export default function CountryProfilePage({
                                   {trade?.element ?? "—"}
                                 </span>
                                 {" • "}
-                                Top 10 share sum (approx):{" "}
+                                Top {tradeTopN} share sum (approx):{" "}
                                 <span className="font-medium">
                                   {(trade?.items ?? [])
                                     .reduce((a, b) => a + (b.share_pct ?? 0), 0)
@@ -1229,7 +1247,6 @@ export default function CountryProfilePage({
                       </div>
                     </div>
                   ) : (
-                    // ====== legacy simple top list (kept)
                     <div className="max-h-[360px] overflow-auto rounded-md border">
                       <table className="w-full text-sm">
                         <thead className="sticky top-0 bg-white">
