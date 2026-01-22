@@ -7,7 +7,8 @@ import {
   Geographies,
   Geography,
   ZoomableGroup,
-} from "react-simple-maps";
+} from "@vnedyalk0v/react19-simple-maps";
+
 import { scaleQuantile } from "d3-scale";
 import { interpolateBlues } from "d3-scale-chromatic";
 
@@ -41,12 +42,6 @@ type GeoProps = {
   ISO3?: unknown;
   iso3?: unknown;
   iso_a3?: unknown;
-};
-
-type RsmGeo = {
-  rsmKey: string;
-  id?: unknown; // numeric ISO code in world-atlas topojson
-  properties?: GeoProps;
 };
 
 type TooltipState = {
@@ -100,9 +95,7 @@ function getLocalXY(e: React.MouseEvent<SVGPathElement, MouseEvent>): {
 }
 
 /* =======================
-   ✅ FULL ISO numeric -> ISO3 mapping
-   This is the real “forever fix” for world-atlas topojson.
-   Source: ISO 3166-1 numeric ↔ alpha-3 codes (compiled list).
+   ISO numeric -> ISO3 mapping
 ======================= */
 
 const ISO_NUM_TO_A3: Record<string, string> = {
@@ -354,17 +347,20 @@ const ISO_NUM_TO_A3: Record<string, string> = {
   "894": "ZMB",
 };
 
-function iso3FromGeo(geo: RsmGeo): string {
-  // 1) numeric id from world-atlas
-  const rawId = String(geo.id ?? "").trim();
+/** Accept unknown geo object from library and derive ISO3 safely */
+function iso3FromGeo(geo: unknown): string {
+  const g = geo as any;
+
+  // 1) numeric id from world-atlas topojson
+  const rawId = String(g?.id ?? "").trim();
   if (rawId) {
     const id = rawId.padStart(3, "0");
     const hit = ISO_NUM_TO_A3[id];
     if (hit) return hit;
   }
 
-  // 2) if you ever switch to a topo that includes ISO fields
-  const p = geo.properties ?? {};
+  // 2) if topo includes ISO fields
+  const p = (g?.properties ?? {}) as GeoProps;
   const cand = [
     p.ISO_A3,
     p.ADM0_A3,
@@ -470,10 +466,7 @@ export default function StratifyMap({
       {tip.show ? (
         <div
           className="pointer-events-none absolute z-20 max-w-[260px] rounded-lg border bg-white/95 px-3 py-2 text-xs shadow-lg"
-          style={{
-            left: tip.x + 12,
-            top: Math.max(tip.y - 10, 0),
-          }}
+          style={{ left: tip.x + 12, top: Math.max(tip.y - 10, 0) }}
         >
           <div className="text-[11px] font-semibold text-slate-900">
             {tip.country}{" "}
@@ -500,20 +493,15 @@ export default function StratifyMap({
 
       <ComposableMap
         projection="geoMercator"
-        projectionConfig={{
-          rotate: [0, 0, 0], // no skew / rotation
-          center: [0, 15],
-          scale: 190,
-        }}
         width={1200}
         height={600}
         style={{ width: "100%", height: "auto" }}
       >
         <ZoomableGroup zoom={zoom}>
           <Geographies geography={topoJsonUrl}>
-            {({ geographies }: { geographies: RsmGeo[] }) => (
+            {({ geographies }: any) => (
               <>
-                {geographies.map((geo) => {
+                {(geographies as any[]).map((geo, idx) => {
                   const iso3 = iso3FromGeo(geo);
 
                   const dbRow = iso3 ? rowByIso.get(iso3) : undefined;
@@ -526,20 +514,29 @@ export default function StratifyMap({
 
                   const isSelected = !!selected && !!iso3 && iso3 === selected;
 
-                  const geoName = String(geo.properties?.name ?? "").trim();
+                  const props = (geo as any)?.properties as
+                    | GeoProps
+                    | undefined;
+                  const geoName = String(props?.name ?? "").trim();
                   const countryName =
                     dbRow?.country?.trim() || geoName || iso3 || "—";
 
+                  // react-simple-maps usually provides rsmKey; fallback if missing
+                  const key =
+                    (geo as any)?.rsmKey ??
+                    (geo as any)?.id ??
+                    `${iso3 || "geo"}-${idx}`;
+
                   return (
                     <Geography
-                      key={geo.rsmKey}
-                      geography={geo as unknown as object}
+                      key={key}
+                      geography={geo}
                       onClick={() => {
                         if (!iso3) return;
                         onSelectIso3?.(iso3);
                       }}
                       onMouseEnter={(
-                        e: React.MouseEvent<SVGPathElement, MouseEvent>
+                        e: React.MouseEvent<SVGPathElement, MouseEvent>,
                       ) => {
                         if (!iso3) return;
                         const { x, y } = getLocalXY(e);
@@ -554,14 +551,14 @@ export default function StratifyMap({
                         });
                       }}
                       onMouseMove={(
-                        e: React.MouseEvent<SVGPathElement, MouseEvent>
+                        e: React.MouseEvent<SVGPathElement, MouseEvent>,
                       ) => {
                         if (!iso3) return;
                         const { x, y } = getLocalXY(e);
                         setTip((prev) =>
                           prev.show && prev.iso3 === iso3
                             ? { ...prev, x, y }
-                            : prev
+                            : prev,
                         );
                       }}
                       onMouseLeave={() =>
