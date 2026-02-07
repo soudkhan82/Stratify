@@ -1,4 +1,4 @@
-// app/page.tsx (Landing Page)  OR wherever your landing page.tsx is
+// app/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -135,7 +135,6 @@ export default function Page() {
         const safeRows = Array.isArray(json.rows) ? json.rows : [];
         setRows(safeRows);
 
-        // reset selection after filter changes
         setSelectedIso3(null);
       } catch (e: unknown) {
         if (!alive) return;
@@ -163,15 +162,12 @@ export default function Page() {
     [rows],
   );
 
-  // ✅ NEW: click handler that routes to /world/country/[iso3]
   function handleSelectIso3(iso3: string) {
     const up = String(iso3 ?? "").toUpperCase();
     if (!up) return;
 
-    // keep highlight
     setSelectedIso3(up);
 
-    // navigate to country profile
     router.push(
       `/world/country/${encodeURIComponent(up)}?indicator=${encodeURIComponent(
         indicator,
@@ -214,101 +210,152 @@ export default function Page() {
   }, [mapRows, selectedIso3, indicatorLabel, indicatorUnit, region]);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="text-xs tracking-widest text-slate-400">STRATIFY</div>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-900">
-            World Map
-          </h1>
-          <div className="mt-1 text-sm text-slate-600">
-            Use the filters, then click a country to open its profile.
+    <div className="relative min-h-screen overflow-hidden">
+      {/* =======================
+         Background (fixed, smooth)
+      ======================= */}
+      <div className="pointer-events-none absolute inset-0 -z-30">
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{
+            // ✅ change to /people_bg.jpg if your file is jpg
+            backgroundImage: "url(/people_bg.png)",
+            transform: "scale(1.03)",
+            filter: "saturate(0.95) contrast(0.95) brightness(0.72)",
+            opacity: 0.28,
+          }}
+        />
+        {/* Calm the busy crowd + improve contrast */}
+        <div className="absolute inset-0 bg-black/30" />
+        {/* Top-heavy veil so header/filter area is readable */}
+        <div className="absolute inset-0 bg-gradient-to-b from-white/85 via-white/70 to-white/55" />
+      </div>
+
+      {/* =======================
+         Page
+      ======================= */}
+      <div className="mx-auto max-w-7xl px-4 py-7 space-y-5">
+        {/* Header row (same layout) */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="text-xs tracking-widest text-slate-500">
+              STRATIFY
+            </div>
+            <h1 className="mt-1 text-2xl font-semibold text-slate-900">
+              World Map
+            </h1>
+            <div className="mt-1 text-sm text-slate-700">
+              Use the filters, then click a country to open its profile.
+            </div>
+
+            <div className="mt-2 max-w-3xl text-sm leading-6 text-slate-800/90">
+              <span className="font-semibold text-slate-900">Stratify</span> is
+              a unified intelligence layer that turns trusted global data into
+              decision-ready insights. It combines World Bank (WDI) indicators
+              and FAOSTAT datasets into a consistent, chart-ready experience—so
+              you can compare countries reliably, follow trends over time, and
+              move from “where” to “why” in a single click.
+            </div>
+          </div>
+
+          {/* Filters (same positions, improved glass styling) */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={region} onValueChange={setRegion}>
+              <SelectTrigger className="w-[240px] rounded-xl bg-white/70 backdrop-blur-md border border-white/60 shadow-sm">
+                <SelectValue placeholder="Region" />
+              </SelectTrigger>
+              <SelectContent>
+                {REGIONS.map((r) => (
+                  <SelectItem key={r} value={r}>
+                    {r}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={indicator} onValueChange={setIndicator}>
+              <SelectTrigger className="w-[320px] rounded-xl bg-white/70 backdrop-blur-md border border-white/60 shadow-sm">
+                <SelectValue placeholder="Indicator" />
+              </SelectTrigger>
+              <SelectContent className="max-h-[340px]">
+                {INDICATORS.map((x) => (
+                  <SelectItem key={x.code} value={x.code}>
+                    {x.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Button
+              variant="secondary"
+              className="rounded-xl bg-white/70 backdrop-blur-md border border-white/60 shadow-sm"
+              onClick={() => {
+                setRegion("World");
+                setIndicator(DEFAULT_INDICATOR);
+                setSelectedIso3(null);
+              }}
+            >
+              Reset
+            </Button>
+
+            <Button
+              variant="default"
+              className="rounded-xl text-white shadow-md ring-1 ring-white/30"
+              onClick={() => router.push("/faostat/products")}
+              style={{
+                backgroundImage:
+                  "linear-gradient(rgba(0,0,0,0.50), rgba(0,0,0,0.50)), url(/crops_bg.jpg)",
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+              }}
+            >
+              FAOSTAT Products
+            </Button>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Region dropdown */}
-          <Select value={region} onValueChange={setRegion}>
-            <SelectTrigger className="w-[240px] rounded-xl">
-              <SelectValue placeholder="Region" />
-            </SelectTrigger>
-            <SelectContent>
-              {REGIONS.map((r) => (
-                <SelectItem key={r} value={r}>
-                  {r}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {err ? (
+          <div className="rounded-lg border border-red-200 bg-red-50/90 backdrop-blur p-3 text-sm text-red-700">
+            {err}
+          </div>
+        ) : null}
 
-          {/* Indicator dropdown */}
-          <Select value={indicator} onValueChange={setIndicator}>
-            <SelectTrigger className="w-[320px] rounded-xl">
-              <SelectValue placeholder="Indicator" />
-            </SelectTrigger>
-            <SelectContent className="max-h-[340px]">
-              {INDICATORS.map((x) => (
-                <SelectItem key={x.code} value={x.code}>
-                  {x.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {/* Main grid (same layout) */}
+        <div className="grid grid-cols-12 gap-4">
+          <div className="col-span-12 lg:col-span-8">
+            {loading ? (
+              <div className="h-[560px] rounded-2xl bg-white/60 backdrop-blur-md border border-white/60 shadow-sm" />
+            ) : (
+              <div className="rounded-2xl bg-white/55 backdrop-blur-md border border-white/60 shadow-lg overflow-hidden">
+                <StratifyMap
+                  rows={mapRows}
+                  topoJsonUrl={TOPO_URL}
+                  selectedIso3={selectedIso3}
+                  onSelectIso3={handleSelectIso3}
+                  indicatorLabel={indicatorLabel}
+                  indicatorUnit={indicatorUnit}
+                />
+              </div>
+            )}
+          </div>
 
-          <Button
-            variant="secondary"
-            className="rounded-xl"
-            onClick={() => {
-              setRegion("World");
-              setIndicator(DEFAULT_INDICATOR);
-              setSelectedIso3(null);
-            }}
-          >
-            Reset
-          </Button>
-          <Button
-            variant="default"
-            className="rounded-xl"
-            onClick={() => router.push("/faostat/products")}
-          >
-            FAOSTAT Products
-          </Button>
-        </div>
-      </div>
-
-      {err ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {err}
-        </div>
-      ) : null}
-
-      <div className="grid grid-cols-12 gap-4">
-        <div className="col-span-12 lg:col-span-8">
-          {loading ? (
-            <div className="h-[560px] rounded-xl bg-black/5" />
-          ) : (
-            <StratifyMap
-              rows={mapRows}
-              topoJsonUrl={TOPO_URL}
-              selectedIso3={selectedIso3}
-              onSelectIso3={handleSelectIso3} // ✅ routes now
-              indicatorLabel={indicatorLabel}
-              indicatorUnit={indicatorUnit}
-            />
-          )}
+          <div className="col-span-12 lg:col-span-4">
+            <div className="rounded-2xl bg-white/65 backdrop-blur-md border border-white/60 shadow-lg overflow-hidden">
+              <VitalStatsList
+                sections={stats}
+                region={selectedIso3 ?? region}
+                subtitle={
+                  selectedIso3
+                    ? "Opening selected country..."
+                    : "Click a country to open profile"
+                }
+              />
+            </div>
+          </div>
         </div>
 
-        <div className="col-span-12 lg:col-span-4">
-          <VitalStatsList
-            sections={stats}
-            region={selectedIso3 ?? region}
-            subtitle={
-              selectedIso3
-                ? "Opening selected country..."
-                : "Click a country to open profile"
-            }
-          />
-        </div>
+        {/* subtle footer spacing / polish */}
+        <div className="h-2" />
       </div>
     </div>
   );

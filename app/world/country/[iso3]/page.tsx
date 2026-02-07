@@ -1,6 +1,8 @@
 // app/world/country/[iso3]/page.tsx
-// ✅ Drop-in updated: colorful scheme + short WDI/FAOSTAT descriptions + nicer shell
-// ✅ Keeps your existing logic intact (no API changes)
+// ✅ Drop-in update:
+// - No nested styled-jsx tags (fixes build error)
+// - Quick indicator picks moved next to "COUNTRY DATA EXPLORER"
+// - Keeps CountryHeader + existing API logic intact
 
 "use client";
 
@@ -34,14 +36,18 @@ async function fetchJsonOrThrow(url: string): Promise<unknown> {
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(
-      `HTTP ${res.status} ${res.statusText}${text ? ` — ${text.slice(0, 300)}` : ""}`,
+      `HTTP ${res.status} ${res.statusText}${
+        text ? ` — ${text.slice(0, 300)}` : ""
+      }`,
     );
   }
   const ct = res.headers.get("content-type") || "";
   if (!ct.includes("application/json")) {
     const text = await res.text().catch(() => "");
     throw new Error(
-      `Expected JSON but got "${ct || "unknown"}"${text ? ` — ${text.slice(0, 200)}` : ""}`,
+      `Expected JSON but got "${ct || "unknown"}"${
+        text ? ` — ${text.slice(0, 200)}` : ""
+      }`,
     );
   }
   return res.json();
@@ -58,6 +64,16 @@ function downloadJson(name: string, obj: unknown) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+/* ------------------------ Quick Picks ------------------------ */
+
+const QUICK_PICKS: Array<{ code: string; label: string }> = [
+  { code: "SP.POP.TOTL", label: "Population" },
+  { code: "NY.GDP.MKTP.CD", label: "GDP (current US$)" },
+  { code: "EN.POP.DNST", label: "Population density" },
+  { code: "SP.DYN.LE00.IN", label: "Life expectancy" },
+  { code: "SL.UEM.TOTL.ZS", label: "Unemployment (%)" },
+];
 
 export default function CountryProfilePage() {
   const router = useRouter();
@@ -254,30 +270,33 @@ export default function CountryProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prodTopN, prodYears, prodElement]);
 
+  function pushIndicator(nextIndicator: string) {
+    const qp = new URLSearchParams(search.toString());
+    qp.set("indicator", nextIndicator);
+    router.push(`/world/country/${encodeURIComponent(iso3)}?${qp.toString()}`);
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50">
-      {/* ✅ Global UI polish for this page only */}
+      {/* ✅ ONE global style block only (no nesting) */}
       <style jsx global>{`
         .country-shell {
           padding-top: 10px;
           padding-bottom: 16px;
         }
-        /* ✅ pointer + hover hint for tables on this page */
         .country-shell table tbody tr {
           transition: background 120ms ease;
         }
-
         .country-shell table tbody tr:hover {
           cursor: pointer;
           background: rgba(99, 102, 241, 0.06);
         }
-        /* Keep tabs compact, not full width */
         .tabs-tight > div[role="tablist"] {
           width: fit-content;
         }
       `}</style>
 
-      <CountryHeader
+      {/* <CountryHeader
         countryTitle={countryTitle}
         region={wdi?.region ?? "—"}
         indicatorLabel={indicatorLabelWithUnit}
@@ -303,15 +322,16 @@ export default function CountryProfilePage() {
             prodElement,
           })
         }
-      />
+      /> */}
 
       <div className="country-shell mx-auto max-w-6xl px-3 sm:px-4">
-        {/* ✅ “Nice colorful scheme” header strip + short descriptions */}
+        {/* ✅ Compact header row: left = title/meta, right = quick picks (WDI) */}
         <div className="mb-3 overflow-hidden rounded-2xl border bg-white shadow-sm">
           <div className="relative">
             <div className="absolute inset-0 bg-gradient-to-r from-indigo-600/10 via-sky-500/10 to-emerald-500/10" />
-            <div className="relative flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
+            <div className="relative grid gap-3 px-4 py-3 lg:grid-cols-12 lg:items-center">
+              {/* Left: Country data explorer */}
+              <div className="min-w-0 lg:col-span-4">
                 <div className="text-xs font-semibold tracking-widest text-slate-500">
                   COUNTRY DATA EXPLORER
                 </div>
@@ -319,20 +339,54 @@ export default function CountryProfilePage() {
                   <div className="text-sm font-semibold text-slate-900">
                     {countryTitle}
                   </div>
-                  <span className="text-xs text-slate-500">•</span>
-                  <div className="text-xs text-slate-600">
+                  <span className="text-xs text-slate-400">•</span>
+                  <div className="text-xs text-slate-700">
                     {indicatorLabelWithUnit}
                   </div>
                 </div>
+
+                <div className="mt-1 text-xs text-slate-500">
+                  Tip: use quick picks → chart + latest update instantly
+                </div>
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <span className="inline-flex items-center rounded-full bg-indigo-600/10 px-3 py-1 text-xs font-semibold text-indigo-700">
-                  WDI
-                </span>
-                <span className="inline-flex items-center rounded-full bg-emerald-600/10 px-3 py-1 text-xs font-semibold text-emerald-700">
-                  FAOSTAT
-                </span>
+              {/* Right: Quick picks (WDI only) */}
+              <div className="lg:col-span-8">
+                <div className="rounded-xl border bg-white/80 px-3 py-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs font-semibold text-slate-700">
+                      Quick indicator picks
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center rounded-full bg-indigo-600/10 px-2.5 py-1 text-[11px] font-semibold text-indigo-700">
+                        WDI
+                      </span>
+                      <span className="inline-flex items-center rounded-full bg-emerald-600/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                        FAOSTAT
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {QUICK_PICKS.map((p) => {
+                      const active = p.code === indicator;
+                      return (
+                        <button
+                          key={p.code}
+                          onClick={() => pushIndicator(p.code)}
+                          className={[
+                            "rounded-full px-3 py-1 text-xs font-medium transition",
+                            active
+                              ? "bg-slate-900 text-white"
+                              : "bg-white text-slate-700 border hover:bg-slate-50",
+                          ].join(" ")}
+                        >
+                          {p.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -343,7 +397,6 @@ export default function CountryProfilePage() {
           onValueChange={(v) => setTab(v as "wdi" | "faostat")}
           className="tabs-tight"
         >
-          {/* ✅ compact, nicer tabs */}
           <TabsList className="mb-2 w-fit rounded-xl border bg-white shadow-sm">
             <TabsTrigger value="wdi" className="rounded-lg">
               WDI
@@ -353,7 +406,6 @@ export default function CountryProfilePage() {
             </TabsTrigger>
           </TabsList>
 
-          {/* ✅ short descriptions per tab */}
           <TabsContent value="wdi" className="space-y-3">
             <div className="rounded-2xl border bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">

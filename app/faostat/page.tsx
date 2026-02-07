@@ -61,7 +61,6 @@ function fmtInt(v: any) {
 }
 
 function glowClass(dataset: MetaResp["dataset"]) {
-  // subtle differences only (keeps your neon theme)
   if (dataset === "production")
     return "from-emerald-500/10 via-sky-500/10 to-indigo-500/10";
   if (dataset === "land_inputs")
@@ -116,6 +115,7 @@ export default function FaostatOverviewPage() {
               d.key,
             )}`}
           />
+
           <CardHeader className="relative">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -251,8 +251,8 @@ export default function FaostatOverviewPage() {
         </div>
 
         <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
-          Tip: For country charts we’ll use **ISO3 → FAO area code → valid
-          item+element pairs** to guarantee charts always show data.
+          Tip: For country charts we’ll use <b>ISO3 → FAO area code → valid</b>{" "}
+          item+element pairs to guarantee charts always show data.
         </div>
       </div>
     </div>
