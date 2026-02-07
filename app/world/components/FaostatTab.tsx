@@ -1,25 +1,19 @@
-// ✅ DROP-IN #3 (UPDATED) — FaostatTab.tsx
+// ✅ DROP-IN (FIXED) — FaostatTab.tsx
 // File: app/world/country/[iso3]/components/FaostatTab.tsx
 //
-// Fixes remaining "Unexpected token '<' ..." trend bug by:
-// 1) Using safe fetchTrendJSON() (reads text first, then JSON.parse)
-// 2) Calling the correct trend route: /api/faostat/trend   ✅
-// 3) Auto-selecting dataset/element based on module:
-//    - top-production => dataset=production, element=prodElement (default "Production")
-//    - top-import     => dataset=sua,        element="Import quantity"
-//    - top-export     => dataset=sua,        element="Export quantity"
-// 4) Strong rowKeyFn to avoid duplicate React keys
-//
-// Paste this whole file (drop-in).
+// Fixes: "yearly trend not showing" after modification
+// ✅ Normalizes API trend rows to numeric {year,value} (handles Year/Value keys + comma strings)
+// ✅ Uses explicit chart heights to avoid 0-height ResponsiveContainer edge cases
+// ✅ Keeps: no bottom 7 menu, no Area Code column, Main Menu button top-left
 
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import {
   ResponsiveContainer,
@@ -38,6 +32,7 @@ import {
   Table2,
   PieChart as PieIcon,
   TrendingUp,
+  Home,
 } from "lucide-react";
 
 /* =======================
@@ -118,6 +113,8 @@ type Props = {
    Helpers
 ======================= */
 
+const MAIN_MENU_HREF = "/";
+
 // ✅ Safe fetch helper: prevents "Unexpected token '<'" crash and shows actual response preview
 async function fetchTrendJSON(url: string) {
   const res = await fetch(url, { cache: "no-store" });
@@ -148,33 +145,32 @@ async function fetchTrendJSON(url: string) {
   return j;
 }
 
-function inferProdUnit(prod: ProductionInsights | null | undefined) {
-  const units = (prod?.items || [])
-    .map((x) => String(x.unit ?? "").trim())
-    .filter(Boolean);
-
-  if (!units.length) return "—";
-
-  const unique = Array.from(new Set(units));
-  return unique.length === 1 ? unique[0] : "Mixed";
-}
-
 function safeStr(v: any) {
   const s = String(v ?? "").trim();
   return s.length ? s : "—";
 }
-function asNum(v: any) {
-  const n =
-    typeof v === "number" ? v : Number(String(v ?? "").replace(/,/g, ""));
+
+function numFromAny(v: any): number | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+
+  const s = String(v).trim();
+  if (!s) return null;
+
+  // remove commas and non-numeric (except . and -)
+  const cleaned = s.replace(/,/g, "").replace(/[^\d.-]/g, "");
+  const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;
 }
+
 function fmt(v: any, digits = 2) {
-  const n = asNum(v);
+  const n = numFromAny(v);
   if (n === null) return safeStr(v);
   return n.toLocaleString("en-US", { maximumFractionDigits: digits });
 }
+
 function fmtCompact(v: any) {
-  const n = asNum(v);
+  const n = numFromAny(v);
   if (n === null) return safeStr(v);
 
   const abs = Math.abs(n);
@@ -197,6 +193,7 @@ function toCsv(rows: AnyObj[], columns: string[]) {
     .join("\n");
   return `${head}\n${body}\n`;
 }
+
 function downloadText(filename: string, text: string, mime = "text/plain") {
   const blob = new Blob([text], { type: mime });
   const url = URL.createObjectURL(blob);
@@ -223,7 +220,7 @@ function pickRows(payload: any): AnyObj[] {
   return [];
 }
 
-function inferColumns(rows: AnyObj[]) {
+function inferColumns(rows: AnyObj[], omit?: string[]) {
   if (!rows.length) return [];
   const keys = Object.keys(rows[0] || {});
   const valueish = new Set([
@@ -238,13 +235,17 @@ function inferColumns(rows: AnyObj[]) {
     "share_pct",
     "share",
   ]);
+
+  const omitSet = new Set((omit || []).map((s) => s.toLowerCase()));
+  const filtered = keys.filter((k) => !omitSet.has(k.toLowerCase()));
+
   return [
-    ...keys.filter((k) => !valueish.has(k)),
-    ...keys.filter((k) => valueish.has(k)),
+    ...filtered.filter((k) => !valueish.has(k)),
+    ...filtered.filter((k) => valueish.has(k)),
   ];
 }
 
-/* ---- Row helpers (tolerant keys) ---- */
+/* ---- Row helpers ---- */
 function getItemCodeFromRow(r: AnyObj): number | null {
   const candidates = [
     "Item Code",
@@ -254,43 +255,86 @@ function getItemCodeFromRow(r: AnyObj): number | null {
     "item_code_fao",
   ];
   for (const k of candidates) {
-    const v = r?.[k];
-    const n = typeof v === "number" ? v : Number(String(v ?? "").trim());
-    if (Number.isFinite(n) && n > 0) return n;
+    const n = numFromAny(r?.[k]);
+    if (n !== null && n > 0) return n;
   }
   return null;
 }
+
 function getAreaCodeFromRow(r: AnyObj): number | null {
   const candidates = ["Area Code", "area_code", "AreaCode", "areacode"];
   for (const k of candidates) {
-    const v = r?.[k];
-    const n = typeof v === "number" ? v : Number(String(v ?? "").trim());
-    if (Number.isFinite(n) && n > 0) return n;
+    const n = numFromAny(r?.[k]);
+    if (n !== null && n > 0) return n;
   }
   return null;
 }
+
 function getItemNameFromRow(r: AnyObj): string {
   return safeStr(r?.item ?? r?.Item ?? r?.product ?? r?.Product ?? r?.name);
 }
+
 function getUnitFromRow(r: AnyObj): string {
   return safeStr(r?.unit ?? r?.Unit ?? "");
 }
 
-/* ---- Clickable table ---- */
+/* ✅ Normalize trend rows for Recharts (prevents blank chart) */
+function normalizeTrendRows(rows: AnyObj[]): ProductionTrendPoint[] {
+  const out: ProductionTrendPoint[] = [];
+
+  for (const r of rows || []) {
+    const y =
+      numFromAny(r?.year) ??
+      numFromAny(r?.Year) ??
+      numFromAny(r?.report_year) ??
+      numFromAny(r?.REPORT_YEAR);
+
+    const v =
+      numFromAny(r?.value) ??
+      numFromAny(r?.Value) ??
+      numFromAny(r?.amount) ??
+      numFromAny(r?.Amount);
+
+    if (y === null || v === null) continue;
+    out.push({ year: y, value: v });
+  }
+
+  // sort ascending by year
+  out.sort((a, b) => a.year - b.year);
+  return out;
+}
+
+function inferProdUnit(prod: ProductionInsights | null | undefined) {
+  const units = (prod?.items || [])
+    .map((x) => String(x.unit ?? "").trim())
+    .filter(Boolean);
+
+  if (!units.length) return "—";
+
+  const unique = Array.from(new Set(units));
+  return unique.length === 1 ? unique[0] : "Mixed";
+}
+
+/* ---- Table ---- */
 function SimpleTable({
   rows,
   maxRows = 30,
   onRowClick,
   activeKey,
   rowKeyFn,
+  omitColumns,
 }: {
   rows: AnyObj[];
   maxRows?: number;
   onRowClick?: (row: AnyObj) => void;
   activeKey?: string | number | null;
   rowKeyFn?: (row: AnyObj, idx: number) => string | number;
+  omitColumns?: string[];
 }) {
-  const cols = useMemo(() => inferColumns(rows), [rows]);
+  const cols = useMemo(
+    () => inferColumns(rows, omitColumns),
+    [rows, omitColumns],
+  );
   const view = rows.slice(0, maxRows);
 
   if (!rows.length) {
@@ -361,7 +405,7 @@ function SimpleTable({
 }
 
 /* =======================
-   Overview renderer
+   Overview renderer (unchanged)
 ======================= */
 
 function OverviewGrid({ data }: { data: AnyObj }) {
@@ -470,7 +514,7 @@ function OverviewGrid({ data }: { data: AnyObj }) {
 }
 
 /* =======================
-   Production Insights renderer
+   Production Insights renderer (unchanged)
 ======================= */
 
 function ProductionInsightsView({ prod }: { prod: ProductionInsights | null }) {
@@ -641,17 +685,19 @@ export default function FaostatTab(p: Props) {
     (faoModule === "prod-insights" && prod && typeof prod === "object") ||
     (rows.length > 0 && cols.length > 0);
 
-  // ✅ Row click → trend
+  // ✅ Trend (Top modules)
   const [selectedTopRow, setSelectedTopRow] = useState<AnyObj | null>(null);
+  const [selectedTopKey, setSelectedTopKey] = useState<string | number | null>(
+    null,
+  );
   const [topTrend, setTopTrend] = useState<ProductionTrendPoint[]>([]);
   const [topTrendLoading, setTopTrendLoading] = useState(false);
   const [topTrendErr, setTopTrendErr] = useState<string | null>(null);
 
-  // optional: if your top payload has meta.area_code, we’ll use it
   const topMetaAreaCode = useMemo(() => {
     const v = (top as any)?.meta?.area_code;
-    const n = typeof v === "number" ? v : Number(String(v ?? "").trim());
-    return Number.isFinite(n) && n > 0 ? n : null;
+    const n = numFromAny(v);
+    return n !== null && n > 0 ? n : null;
   }, [top]);
 
   function datasetAndElementForTop(mod: FaoModule) {
@@ -667,7 +713,6 @@ export default function FaostatTab(p: Props) {
     if (mod === "top-export") {
       return { dataset: "sua" as const, element: "Export quantity" };
     }
-    // fallback
     return {
       dataset: "production" as const,
       element: prodElement || "Production",
@@ -706,18 +751,20 @@ export default function FaostatTab(p: Props) {
         years,
       });
 
-      // ✅ IMPORTANT: this is the correct route now
       const url = `/api/faostat/trend?${qs.toString()}`;
-
       const j = await fetchTrendJSON(url);
-      const out = Array.isArray(j?.rows) ? j.rows : [];
 
-      if (!out.length) {
-        setTopTrendErr("No trend rows returned.");
+      const rawRows = Array.isArray(j?.rows) ? (j.rows as AnyObj[]) : [];
+      const normalized = normalizeTrendRows(rawRows);
+
+      if (!normalized.length) {
+        setTopTrendErr(
+          "Trend returned rows but could not normalize year/value (check API keys Year/Value or numeric formatting).",
+        );
         return;
       }
 
-      setTopTrend(out);
+      setTopTrend(normalized);
     } catch (e: any) {
       console.error("Trend fetch error:", e);
       setTopTrendErr(e?.message || "Trend fetch failed");
@@ -728,6 +775,7 @@ export default function FaostatTab(p: Props) {
 
   useEffect(() => {
     setSelectedTopRow(null);
+    setSelectedTopKey(null);
     setTopTrend([]);
     setTopTrendErr(null);
     setTopTrendLoading(false);
@@ -737,18 +785,67 @@ export default function FaostatTab(p: Props) {
     <div className="space-y-3">
       <Card>
         <CardHeader className="pb-2">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1">
-              <CardTitle className="text-base">
-                FAOSTAT • {moduleLabel[faoModule || "overview"]}{" "}
-                <span className="text-slate-500">({iso3})</span>
-              </CardTitle>
-              <div className="flex flex-wrap items-center gap-2">
-                {loading ? (
-                  <Badge className="bg-slate-900 text-white">Loading…</Badge>
-                ) : (
-                  <Badge variant="secondary">Ready</Badge>
-                )}
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <Button asChild variant="outline" size="sm">
+                  <Link href={MAIN_MENU_HREF} aria-label="Main menu">
+                    <Home className="mr-2 h-4 w-4" />
+                    Main Menu
+                  </Link>
+                </Button>
+
+                <div className="space-y-0.5">
+                  <CardTitle className="text-base">
+                    FAOSTAT • {moduleLabel[faoModule || "overview"]}{" "}
+                    <span className="text-slate-500">({iso3})</span>
+                  </CardTitle>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {loading ? (
+                      <Badge className="bg-slate-900 text-white">
+                        Loading…
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary">Ready</Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap justify-start gap-2 sm:justify-end">
+                <Button
+                  variant="default"
+                  size="sm"
+                  disabled={!canDownload}
+                  onClick={() => {
+                    if (faoModule === "overview") {
+                      downloadText(
+                        `faostat-${iso3}-overview.json`,
+                        JSON.stringify(overview ?? {}, null, 2),
+                        "application/json",
+                      );
+                      return;
+                    }
+                    if (faoModule === "prod-insights") {
+                      downloadText(
+                        `faostat-${iso3}-production-insights.json`,
+                        JSON.stringify(prod ?? {}, null, 2),
+                        "application/json",
+                      );
+                      return;
+                    }
+                    const csv = toCsv(rows, cols);
+                    downloadText(
+                      `faostat-${iso3}-${faoModule || "module"}.csv`,
+                      csv,
+                      "text/csv",
+                    );
+                  }}
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download
+                </Button>
               </div>
             </div>
 
@@ -807,36 +904,22 @@ export default function FaostatTab(p: Props) {
               </Button>
 
               <Button
-                variant="default"
+                variant="outline"
                 size="sm"
-                disabled={!canDownload}
-                onClick={() => {
-                  if (faoModule === "overview") {
-                    downloadText(
-                      `faostat-${iso3}-overview.json`,
-                      JSON.stringify(overview ?? {}, null, 2),
-                      "application/json",
-                    );
-                    return;
-                  }
-                  if (faoModule === "prod-insights") {
-                    downloadText(
-                      `faostat-${iso3}-production-insights.json`,
-                      JSON.stringify(prod ?? {}, null, 2),
-                      "application/json",
-                    );
-                    return;
-                  }
-                  const csv = toCsv(rows, cols);
-                  downloadText(
-                    `faostat-${iso3}-${faoModule || "module"}.csv`,
-                    csv,
-                    "text/csv",
-                  );
-                }}
+                onClick={() => onPickModule("trade-import")}
+                disabled={loading}
               >
-                <Download className="mr-2 h-4 w-4" />
-                Download
+                <Table2 className="mr-2 h-4 w-4" />
+                Trade Import
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPickModule("trade-export")}
+                disabled={loading}
+              >
+                <Table2 className="mr-2 h-4 w-4" />
+                Trade Export
               </Button>
             </div>
           </div>
@@ -847,6 +930,11 @@ export default function FaostatTab(p: Props) {
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div className="text-sm text-slate-600">
                 Year-wise totals + YoY + concentration + top items.
+                {prodUnit !== "—" ? (
+                  <span className="ml-2 text-xs text-slate-500">
+                    Unit: {prodUnit}
+                  </span>
+                ) : null}
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -961,204 +1049,174 @@ export default function FaostatTab(p: Props) {
         )}
       </Card>
 
-      <Tabs
-        value={faoModule || "overview"}
-        onValueChange={(v) => onPickModule(v as FaoModule)}
-      >
-        <TabsList className="w-full justify-start overflow-x-auto">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="prod-insights" disabled={!hasProdWiring}>
-            Production Insights
-          </TabsTrigger>
-          <TabsTrigger value="top-production">Top Production</TabsTrigger>
-          <TabsTrigger value="top-import">Top Import</TabsTrigger>
-          <TabsTrigger value="top-export">Top Export</TabsTrigger>
-          <TabsTrigger value="trade-import">Trade Import</TabsTrigger>
-          <TabsTrigger value="trade-export">Trade Export</TabsTrigger>
-        </TabsList>
+      {faoModule === "" || faoModule === "overview" ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-slate-800">Overview</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {overview && typeof overview === "object" ? (
+              <OverviewGrid data={overview as AnyObj} />
+            ) : (
+              <div className="rounded-md border bg-white p-4 text-sm text-slate-600">
+                No overview data returned.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
 
-        <TabsContent value={faoModule || "overview"} className="space-y-3">
-          {faoModule === "overview" ? (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-slate-800">
-                  Overview
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {overview && typeof overview === "object" ? (
-                  <OverviewGrid data={overview as AnyObj} />
-                ) : (
-                  <div className="rounded-md border bg-white p-4 text-sm text-slate-600">
-                    No overview data returned.
+      {faoModule === "prod-insights" ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-slate-800">
+              Production Insights{" "}
+              {prodUnit !== "—" ? (
+                <span className="ml-2 text-xs text-slate-500">
+                  Unit: {prodUnit}
+                </span>
+              ) : null}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <ProductionInsightsView prod={prod ?? null} />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {faoModule !== "" &&
+      faoModule !== "overview" &&
+      faoModule !== "prod-insights" ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-slate-800">
+              Data Preview{" "}
+              <span className="text-slate-500">({moduleLabel[faoModule]})</span>
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="space-y-3">
+            {isTopKind(faoModule) ? (
+              <div className="grid gap-3 lg:grid-cols-2">
+                <div className="space-y-2">
+                  <div className="text-xs text-slate-600">
+                    Click a row to view yearly trend.
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          ) : null}
 
-          {faoModule === "prod-insights" ? (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-slate-800">
-                  Production Insights{" "}
-                  {prodUnit !== "—" ? (
-                    <span className="ml-2 text-xs text-slate-500">
-                      Unit: {prodUnit}
-                    </span>
-                  ) : null}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <ProductionInsightsView prod={prod ?? null} />
-              </CardContent>
-            </Card>
-          ) : null}
+                  <SimpleTable
+                    rows={rows}
+                    maxRows={30}
+                    omitColumns={[
+                      "Area Code",
+                      "area_code",
+                      "AreaCode",
+                      "areacode",
+                    ]}
+                    onRowClick={(r) => {
+                      const ic = getItemCodeFromRow(r);
+                      const ac =
+                        getAreaCodeFromRow(r) ?? topMetaAreaCode ?? "na";
+                      const key = `${ic ?? "noitem"}-${ac}`;
+                      setSelectedTopKey(key);
+                      loadTrendForTopRow(r);
+                    }}
+                    rowKeyFn={(r) => {
+                      const ic = getItemCodeFromRow(r);
+                      const ac =
+                        getAreaCodeFromRow(r) ?? topMetaAreaCode ?? "na";
+                      return `${ic ?? "noitem"}-${ac}`;
+                    }}
+                    activeKey={selectedTopKey}
+                  />
+                </div>
 
-          {faoModule !== "overview" && faoModule !== "prod-insights" ? (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-slate-800">
-                  Data Preview{" "}
-                  <span className="text-slate-500">
-                    ({moduleLabel[faoModule]})
-                  </span>
-                </CardTitle>
-              </CardHeader>
+                <div className="rounded-lg border bg-white p-3">
+                  <div className="mb-2 text-sm font-semibold text-slate-800">
+                    Trend (yearly)
+                  </div>
 
-              <CardContent className="space-y-3">
-                {isTopKind(faoModule) ? (
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    <div className="space-y-2">
-                      <div className="text-xs text-slate-600">
-                        Click a row to view yearly trend.
+                  {!selectedTopRow ? (
+                    <div className="rounded-md border bg-slate-50 p-3 text-sm text-slate-700">
+                      Select a row from the table.
+                    </div>
+                  ) : topTrendLoading ? (
+                    <div className="rounded-md border bg-slate-50 p-3 text-sm text-slate-700">
+                      Loading trend…
+                    </div>
+                  ) : topTrendErr ? (
+                    <div className="rounded-md border bg-rose-50 p-3 text-sm text-rose-700">
+                      {topTrendErr}
+                    </div>
+                  ) : topTrend.length === 0 ? (
+                    <div className="rounded-md border bg-slate-50 p-3 text-sm text-slate-700">
+                      No trend rows returned.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 text-xs text-slate-600">
+                          {getItemNameFromRow(selectedTopRow)}
+                        </div>
+                        <div className="rounded-md border bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-800">
+                          {getUnitFromRow(selectedTopRow)}
+                        </div>
                       </div>
 
-                      <SimpleTable
-                        rows={rows}
-                        maxRows={30}
-                        onRowClick={loadTrendForTopRow}
-                        // ✅ Strong unique key even if same item appears
-                        rowKeyFn={(r, idx) => {
-                          const ic = getItemCodeFromRow(r);
-                          const ac =
-                            getAreaCodeFromRow(r) ?? topMetaAreaCode ?? "na";
-                          return `${ic ?? "noitem"}-${ac}-${idx}`;
-                        }}
-                        activeKey={
-                          selectedTopRow
-                            ? `${getItemCodeFromRow(selectedTopRow) ?? "noitem"}-${
-                                getAreaCodeFromRow(selectedTopRow) ??
-                                topMetaAreaCode ??
-                                "na"
-                              }`
-                            : null
-                        }
-                      />
-                    </div>
-
-                    <div className="rounded-lg border bg-white p-3">
-                      <div className="mb-2 text-sm font-semibold text-slate-800">
-                        Trend (yearly)
+                      {/* ✅ Explicit heights (avoid blank chart) */}
+                      <div style={{ height: 190, width: "100%" }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart
+                            data={topTrend}
+                            margin={{ top: 6, right: 10, left: 18, bottom: 2 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="year" tick={{ fontSize: 12 }} />
+                            <YAxis
+                              width={74}
+                              tick={{ fontSize: 12 }}
+                              tickFormatter={(v) => fmtCompact(v)}
+                            />
+                            <Tooltip formatter={(v: any) => fmt(v, 2)} />
+                            <Line
+                              type="monotone"
+                              dataKey="value"
+                              dot={false}
+                              strokeWidth={2}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
                       </div>
 
-                      {!selectedTopRow ? (
-                        <div className="rounded-md border bg-slate-50 p-3 text-sm text-slate-700">
-                          Select a row from the table.
-                        </div>
-                      ) : topTrendLoading ? (
-                        <div className="rounded-md border bg-slate-50 p-3 text-sm text-slate-700">
-                          Loading trend…
-                        </div>
-                      ) : topTrendErr ? (
-                        <div className="rounded-md border bg-rose-50 p-3 text-sm text-rose-700">
-                          {topTrendErr}
-                        </div>
-                      ) : topTrend.length === 0 ? (
-                        <div className="rounded-md border bg-slate-50 p-3 text-sm text-slate-700">
-                          No trend rows returned.
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="min-w-0 text-xs text-slate-600">
-                              {getItemNameFromRow(selectedTopRow)}
-                            </div>
-                            <div className="rounded-md border bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-800">
-                              {getUnitFromRow(selectedTopRow)}
-                            </div>
-                          </div>
-
-                          <div className="h-56 w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <LineChart
-                                data={topTrend}
-                                margin={{
-                                  top: 6,
-                                  right: 10,
-                                  left: 18,
-                                  bottom: 2,
-                                }}
-                              >
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="year" tick={{ fontSize: 12 }} />
-                                <YAxis
-                                  width={74}
-                                  tick={{ fontSize: 12 }}
-                                  tickFormatter={(v) => fmtCompact(v)}
-                                />
-                                <Tooltip
-                                  formatter={(v: any) => fmt(Number(v), 2)}
-                                />
-                                <Line
-                                  type="monotone"
-                                  dataKey="value"
-                                  dot={false}
-                                  strokeWidth={2}
-                                />
-                              </LineChart>
-                            </ResponsiveContainer>
-                          </div>
-
-                          <div className="h-56 w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <BarChart
-                                data={topTrend}
-                                margin={{
-                                  top: 6,
-                                  right: 10,
-                                  left: 18,
-                                  bottom: 2,
-                                }}
-                              >
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="year" tick={{ fontSize: 12 }} />
-                                <YAxis
-                                  width={74}
-                                  tick={{ fontSize: 12 }}
-                                  tickFormatter={(v) => fmtCompact(v)}
-                                />
-                                <Tooltip
-                                  formatter={(v: any) => fmt(Number(v), 2)}
-                                />
-                                <Bar dataKey="value" radius={[8, 8, 0, 0]} />
-                              </BarChart>
-                            </ResponsiveContainer>
-                          </div>
-                        </div>
-                      )}
+                      <div style={{ height: 190, width: "100%" }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={topTrend}
+                            margin={{ top: 6, right: 10, left: 18, bottom: 2 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="year" tick={{ fontSize: 12 }} />
+                            <YAxis
+                              width={74}
+                              tick={{ fontSize: 12 }}
+                              tickFormatter={(v) => fmtCompact(v)}
+                            />
+                            <Tooltip formatter={(v: any) => fmt(v, 2)} />
+                            <Bar dataKey="value" radius={[8, 8, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="rounded-md border bg-white p-4 text-sm text-slate-600">
-                    This view supports trend only for top modules.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ) : null}
-        </TabsContent>
-      </Tabs>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-md border bg-white p-4 text-sm text-slate-600">
+                This view supports trend only for top modules.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

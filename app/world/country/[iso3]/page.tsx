@@ -1,8 +1,8 @@
 // app/world/country/[iso3]/page.tsx
 // ✅ Drop-in update:
-// - No nested styled-jsx tags (fixes build error)
-// - Quick indicator picks moved next to "COUNTRY DATA EXPLORER"
-// - Keeps CountryHeader + existing API logic intact
+// - Removes duplicate quick picks (keeps ONLY the WdiTab quick picks)
+// - Hides the "Indicator" card/strip inside CountryHeader (scoped CSS)
+// - No nested styled-jsx tags (build-safe)
 
 "use client";
 
@@ -65,16 +65,6 @@ function downloadJson(name: string, obj: unknown) {
   URL.revokeObjectURL(url);
 }
 
-/* ------------------------ Quick Picks ------------------------ */
-
-const QUICK_PICKS: Array<{ code: string; label: string }> = [
-  { code: "SP.POP.TOTL", label: "Population" },
-  { code: "NY.GDP.MKTP.CD", label: "GDP (current US$)" },
-  { code: "EN.POP.DNST", label: "Population density" },
-  { code: "SP.DYN.LE00.IN", label: "Life expectancy" },
-  { code: "SL.UEM.TOTL.ZS", label: "Unemployment (%)" },
-];
-
 export default function CountryProfilePage() {
   const router = useRouter();
   const search = useSearchParams();
@@ -110,7 +100,6 @@ export default function CountryProfilePage() {
 
   const countryTitle = wdi?.country ? `${wdi.country} (${iso3})` : iso3;
 
-  // ✅ Unit appended right after indicator label
   const indicatorCode = wdi?.indicator?.code ?? indicator;
   const indicatorUnit = wdi?.indicator?.unit ?? null;
   const indicatorLabelRaw = wdi?.indicator?.label ?? indicator;
@@ -167,13 +156,12 @@ export default function CountryProfilePage() {
     };
   }, [iso3, indicator]);
 
-  /* ---------------- FAOSTAT load (single source of truth) ---------------- */
+  /* ---------------- FAOSTAT load ---------------- */
   async function loadFao(next: FaoModule) {
     setFaoModule(next);
     setFaoLoading(true);
     setFaoError(null);
 
-    // reset others so UI is never stale
     setFaoOverview(null);
     setFaoTop(null);
     setTrade(null);
@@ -254,7 +242,6 @@ export default function CountryProfilePage() {
     }
   }
 
-  // Auto-reload trade when params change
   useEffect(() => {
     if (tab !== "faostat") return;
     if (faoModule !== "trade-import" && faoModule !== "trade-export") return;
@@ -262,7 +249,6 @@ export default function CountryProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tradeTopN, tradeYears]);
 
-  // Auto-reload production insights when params change
   useEffect(() => {
     if (tab !== "faostat") return;
     if (faoModule !== "prod-insights") return;
@@ -270,20 +256,14 @@ export default function CountryProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prodTopN, prodYears, prodElement]);
 
-  function pushIndicator(nextIndicator: string) {
-    const qp = new URLSearchParams(search.toString());
-    qp.set("indicator", nextIndicator);
-    router.push(`/world/country/${encodeURIComponent(iso3)}?${qp.toString()}`);
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50">
-      {/* ✅ ONE global style block only (no nesting) */}
       <style jsx global>{`
         .country-shell {
-          padding-top: 10px;
-          padding-bottom: 16px;
+          padding-top: 8px;
+          padding-bottom: 12px;
         }
+
         .country-shell table tbody tr {
           transition: background 120ms ease;
         }
@@ -291,102 +271,52 @@ export default function CountryProfilePage() {
           cursor: pointer;
           background: rgba(99, 102, 241, 0.06);
         }
+
         .tabs-tight > div[role="tablist"] {
           width: fit-content;
         }
+
+        /* ✅ HIDE the CountryHeader indicator card/strip (scoped) */
+        /* This targets the "indicator card" block that sits under the title. */
+        .country-shell [data-country-indicator],
+        .country-shell .country-indicator-card,
+        .country-shell .country-indicator-strip {
+          display: none !important;
+        }
+
+        /* Fallback: hide the first big bordered "indicator" panel often rendered */
+        .country-shell .country-header-indicator {
+          display: none !important;
+        }
+
+        /* ✅ Chart height cap (best-effort) */
+        .country-shell .recharts-responsive-container,
+        .country-shell .recharts-wrapper,
+        .country-shell svg.recharts-surface {
+          max-height: 260px !important;
+        }
       `}</style>
 
-      {/* <CountryHeader
-        countryTitle={countryTitle}
-        region={wdi?.region ?? "—"}
-        indicatorLabel={indicatorLabelWithUnit}
-        indicatorCode={indicatorCode}
-        indicatorUnit={"—"} // avoid duplicate unit (we already append it)
-        wdiError={wdi?.error ?? null}
-        faoError={tab === "faostat" ? faoError : null}
-        onBack={() => router.back()}
-        onDebug={() =>
-          downloadJson(`debug-${iso3}.json`, {
-            iso3,
-            indicator,
-            wdi,
-            faoModule,
-            faoOverview,
-            faoTop,
-            trade,
-            tradeTopN,
-            tradeYears,
-            prod,
-            prodTopN,
-            prodYears,
-            prodElement,
-          })
-        }
-      /> */}
-
       <div className="country-shell mx-auto max-w-6xl px-3 sm:px-4">
-        {/* ✅ Compact header row: left = title/meta, right = quick picks (WDI) */}
-        <div className="mb-3 overflow-hidden rounded-2xl border bg-white shadow-sm">
+        {/* ✅ Country Data Explorer ONLY (no quick picks here anymore) */}
+        <div className="mb-2 overflow-hidden rounded-2xl border bg-white shadow-sm">
           <div className="relative">
             <div className="absolute inset-0 bg-gradient-to-r from-indigo-600/10 via-sky-500/10 to-emerald-500/10" />
-            <div className="relative grid gap-3 px-4 py-3 lg:grid-cols-12 lg:items-center">
-              {/* Left: Country data explorer */}
-              <div className="min-w-0 lg:col-span-4">
-                <div className="text-xs font-semibold tracking-widest text-slate-500">
-                  COUNTRY DATA EXPLORER
+            <div className="relative px-4 py-3">
+              <div className="text-xs font-semibold tracking-widest text-slate-500">
+                COUNTRY DATA EXPLORER
+              </div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                <div className="text-sm font-semibold text-slate-900">
+                  {countryTitle}
                 </div>
-                <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                  <div className="text-sm font-semibold text-slate-900">
-                    {countryTitle}
-                  </div>
-                  <span className="text-xs text-slate-400">•</span>
-                  <div className="text-xs text-slate-700">
-                    {indicatorLabelWithUnit}
-                  </div>
-                </div>
-
-                <div className="mt-1 text-xs text-slate-500">
-                  Tip: use quick picks → chart + latest update instantly
+                <span className="text-xs text-slate-400">•</span>
+                <div className="text-xs text-slate-700">
+                  {indicatorLabelWithUnit}
                 </div>
               </div>
-
-              {/* Right: Quick picks (WDI only) */}
-              <div className="lg:col-span-8">
-                <div className="rounded-xl border bg-white/80 px-3 py-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-xs font-semibold text-slate-700">
-                      Quick indicator picks
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center rounded-full bg-indigo-600/10 px-2.5 py-1 text-[11px] font-semibold text-indigo-700">
-                        WDI
-                      </span>
-                      <span className="inline-flex items-center rounded-full bg-emerald-600/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-                        FAOSTAT
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {QUICK_PICKS.map((p) => {
-                      const active = p.code === indicator;
-                      return (
-                        <button
-                          key={p.code}
-                          onClick={() => pushIndicator(p.code)}
-                          className={[
-                            "rounded-full px-3 py-1 text-xs font-medium transition",
-                            active
-                              ? "bg-slate-900 text-white"
-                              : "bg-white text-slate-700 border hover:bg-slate-50",
-                          ].join(" ")}
-                        >
-                          {p.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+              <div className="mt-1 text-xs text-slate-500">
+                Tip: use quick picks → chart + latest update instantly
               </div>
             </div>
           </div>
@@ -397,7 +327,7 @@ export default function CountryProfilePage() {
           onValueChange={(v) => setTab(v as "wdi" | "faostat")}
           className="tabs-tight"
         >
-          <TabsList className="mb-2 w-fit rounded-xl border bg-white shadow-sm">
+          <TabsList className="mb-1 w-fit rounded-xl border bg-white shadow-sm">
             <TabsTrigger value="wdi" className="rounded-lg">
               WDI
             </TabsTrigger>
@@ -406,8 +336,8 @@ export default function CountryProfilePage() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="wdi" className="space-y-3">
-            <div className="rounded-2xl border bg-white p-4 shadow-sm">
+          <TabsContent value="wdi" className="space-y-2">
+            <div className="rounded-2xl border bg-white px-4 py-3 shadow-sm">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
                 <div className="text-sm font-semibold text-slate-900">
                   World Development Indicators (WDI)
@@ -420,6 +350,7 @@ export default function CountryProfilePage() {
               <div className="mt-2 h-1 w-full rounded-full bg-gradient-to-r from-indigo-600/30 via-sky-500/30 to-emerald-500/30" />
             </div>
 
+            {/* ✅ WdiTab keeps the ONLY Quick Picks block */}
             <WdiTab
               iso3={iso3}
               indicator={indicator}
@@ -428,8 +359,8 @@ export default function CountryProfilePage() {
             />
           </TabsContent>
 
-          <TabsContent value="faostat" className="space-y-3">
-            <div className="rounded-2xl border bg-white p-4 shadow-sm">
+          <TabsContent value="faostat" className="space-y-2">
+            <div className="rounded-2xl border bg-white px-4 py-3 shadow-sm">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
                 <div className="text-sm font-semibold text-slate-900">
                   FAOSTAT (Food & Agriculture)
@@ -454,7 +385,6 @@ export default function CountryProfilePage() {
               tradeYears={tradeYears}
               setTradeTopN={setTradeTopN}
               setTradeYears={setTradeYears}
-              // Production Insights wiring
               prod={prod}
               prodTopN={prodTopN}
               prodYears={prodYears}
