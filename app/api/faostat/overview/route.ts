@@ -1,4 +1,3 @@
-// app/api/faostat/overview/route.ts
 import { NextResponse } from "next/server";
 import supabase from "@/app/config/supabase-config";
 
@@ -23,53 +22,104 @@ type OverviewPayload = {
   error?: string;
 };
 
-function asText(v: unknown): string {
-  return typeof v === "string" ? v : "";
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function normalizeRpc(data: unknown): {
+  obj: Record<string, unknown> | null;
+  arr: unknown[] | null;
+} {
+  if (Array.isArray(data)) {
+    const first = data.find(isRecord) as Record<string, unknown> | undefined;
+    return { obj: first ?? null, arr: data };
+  }
+  if (isRecord(data)) return { obj: data, arr: null };
+  if (typeof data === "string") {
+    try {
+      const parsed = JSON.parse(data) as unknown;
+      if (Array.isArray(parsed)) {
+        const first = parsed.find(isRecord) as
+          | Record<string, unknown>
+          | undefined;
+        return { obj: first ?? null, arr: parsed };
+      }
+      if (isRecord(parsed)) return { obj: parsed, arr: null };
+    } catch {}
+  }
+  return { obj: null, arr: null };
 }
 
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const iso3 = asText(searchParams.get("iso3")).trim().toUpperCase();
+  try {
+    const { searchParams } = new URL(req.url);
+    const iso3 = String(searchParams.get("iso3") || "")
+      .trim()
+      .toUpperCase();
 
-  if (!iso3) {
-    return NextResponse.json(
-      { error: "Missing query param: iso3" },
-      { status: 400 }
-    );
-  }
+    if (!iso3) {
+      return NextResponse.json(
+        { error: "Missing query param: iso3" },
+        { status: 400 },
+      );
+    }
 
-  // RPC: fetch_faostat_overview(p_iso3 text)
-  const { data, error } = await supabase.rpc("fetch_faostat_overview", {
-    p_iso3: iso3,
-  });
+    const { data, error } = await supabase.rpc("fetch_faostat_overview", {
+      p_iso3: iso3,
+    });
 
-  if (error) {
-    return NextResponse.json(
-      {
-        error: `fetch_faostat_overview RPC failed: ${error.message}`,
-      },
-      { status: 500 }
-    );
-  }
+    if (error) {
+      return NextResponse.json(
+        {
+          error: `fetch_faostat_overview RPC failed: ${error.message}`,
+          details: error.details ?? null,
+        },
+        { status: 500 },
+      );
+    }
 
-  // Your RPC can return a JSON object directly OR a row with json column.
-  const payload: OverviewPayload =
-    (data as unknown as OverviewPayload) ??
-    ({
+    const { obj } = normalizeRpc(data);
+
+    const payload: OverviewPayload = {
       iso3,
-      country: iso3,
-      latest_year: null,
-      production_qty: null,
-      production_unit: null,
-      import_qty: null,
-      import_unit: null,
-      export_qty: null,
-      export_unit: null,
-      kcal_per_capita_day: null,
-      protein_g_per_capita_day: null,
-      fat_g_per_capita_day: null,
-      error: "No data returned from RPC.",
-    } satisfies OverviewPayload);
+      country: String(obj?.country ?? iso3),
+      latest_year: (obj?.latest_year as number | null) ?? null,
 
-  return NextResponse.json(payload);
+      production_qty: (obj?.production_qty as number | null) ?? null,
+      production_unit: (obj?.production_unit as string | null) ?? null,
+
+      import_qty: (obj?.import_qty as number | null) ?? null,
+      import_unit: (obj?.import_unit as string | null) ?? null,
+
+      export_qty: (obj?.export_qty as number | null) ?? null,
+      export_unit: (obj?.export_unit as string | null) ?? null,
+
+      kcal_per_capita_day: (obj?.kcal_per_capita_day as number | null) ?? null,
+      protein_g_per_capita_day:
+        (obj?.protein_g_per_capita_day as number | null) ?? null,
+      fat_g_per_capita_day:
+        (obj?.fat_g_per_capita_day as number | null) ?? null,
+    };
+
+    // If everything is null, surface an explicit error for UI
+    const allNull =
+      payload.latest_year === null &&
+      payload.production_qty === null &&
+      payload.import_qty === null &&
+      payload.export_qty === null &&
+      payload.kcal_per_capita_day === null &&
+      payload.protein_g_per_capita_day === null &&
+      payload.fat_g_per_capita_day === null;
+
+    if (allNull)
+      payload.error = "No FAOSTAT overview data found for this ISO3.";
+
+    return NextResponse.json(payload, {
+      headers: { "Cache-Control": "no-store" },
+    });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: e?.message || "Unknown error" },
+      { status: 500 },
+    );
+  }
 }

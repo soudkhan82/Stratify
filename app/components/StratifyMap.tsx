@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ComposableMap,
   Geographies,
@@ -11,6 +11,17 @@ import {
 
 import { scaleQuantile } from "d3-scale";
 import { interpolateBlues } from "d3-scale-chromatic";
+
+import isoCountries from "i18n-iso-countries";
+import enLocale from "i18n-iso-countries/langs/en.json";
+
+/* register once */
+let __ISO_INIT__ = false;
+function initIso() {
+  if (__ISO_INIT__) return;
+  isoCountries.registerLocale(enLocale as any);
+  __ISO_INIT__ = true;
+}
 
 /* =======================
    Types
@@ -28,13 +39,15 @@ type Props = {
   topoJsonUrl: string;
   selectedIso3: string | null;
   onSelectIso3?: (iso3: string) => void;
-
   indicatorLabel: string;
   indicatorUnit?: string;
 };
 
 type GeoProps = {
   name?: unknown;
+  NAME?: unknown;
+  NAME_LONG?: unknown;
+
   ISO_A3?: unknown;
   ADM0_A3?: unknown;
   SOV_A3?: unknown;
@@ -63,11 +76,9 @@ function cleanISO3(v: unknown): string {
     .trim()
     .toUpperCase();
 }
-
 function isValidISO3(v: unknown): v is string {
   return typeof v === "string" && /^[A-Z]{3}$/.test(v);
 }
-
 function fmtNumber(v?: number): string {
   if (!Number.isFinite(v)) return "—";
   const n = v as number;
@@ -77,11 +88,9 @@ function fmtNumber(v?: number): string {
   if (Math.abs(n) >= 1e3) return n.toLocaleString();
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
 }
-
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
-
 function getLocalXY(e: React.MouseEvent<SVGPathElement, MouseEvent>): {
   x: number;
   y: number;
@@ -94,274 +103,12 @@ function getLocalXY(e: React.MouseEvent<SVGPathElement, MouseEvent>): {
   };
 }
 
-/* =======================
-   ISO numeric -> ISO3 mapping
-======================= */
-
-const ISO_NUM_TO_A3: Record<string, string> = {
-  "004": "AFG",
-  "008": "ALB",
-  "012": "DZA",
-  "016": "ASM",
-  "020": "AND",
-  "024": "AGO",
-  "028": "ATG",
-  "031": "AZE",
-  "032": "ARG",
-  "036": "AUS",
-  "040": "AUT",
-  "044": "BHS",
-  "048": "BHR",
-  "050": "BGD",
-  "051": "ARM",
-  "052": "BRB",
-  "056": "BEL",
-  "060": "BMU",
-  "064": "BTN",
-  "068": "BOL",
-  "070": "BIH",
-  "072": "BWA",
-  "076": "BRA",
-  "084": "BLZ",
-  "086": "IOT",
-  "090": "SLB",
-  "092": "VGB",
-  "096": "BRN",
-  "100": "BGR",
-  "104": "MMR",
-  "108": "BDI",
-  "112": "BLR",
-  "116": "KHM",
-  "120": "CMR",
-  "124": "CAN",
-  "132": "CPV",
-  "136": "CYM",
-  "140": "CAF",
-  "144": "LKA",
-  "148": "TCD",
-  "152": "CHL",
-  "156": "CHN",
-  "158": "TWN",
-  "162": "CXR",
-  "166": "CCK",
-  "170": "COL",
-  "174": "COM",
-  "175": "MYT",
-  "178": "COG",
-  "180": "COD",
-  "184": "COK",
-  "188": "CRI",
-  "191": "HRV",
-  "192": "CUB",
-  "196": "CYP",
-  "203": "CZE",
-  "204": "BEN",
-  "208": "DNK",
-  "212": "DMA",
-  "214": "DOM",
-  "218": "ECU",
-  "222": "SLV",
-  "226": "GNQ",
-  "231": "ETH",
-  "232": "ERI",
-  "233": "EST",
-  "234": "FRO",
-  "238": "FLK",
-  "239": "SGS",
-  "242": "FJI",
-  "246": "FIN",
-  "250": "FRA",
-  "254": "GUF",
-  "258": "PYF",
-  "260": "ATF",
-  "262": "DJI",
-  "266": "GAB",
-  "268": "GEO",
-  "270": "GMB",
-  "275": "PSE",
-  "276": "DEU",
-  "288": "GHA",
-  "292": "GIB",
-  "296": "KIR",
-  "300": "GRC",
-  "304": "GRL",
-  "308": "GRD",
-  "312": "GLP",
-  "316": "GUM",
-  "320": "GTM",
-  "324": "GIN",
-  "328": "GUY",
-  "332": "HTI",
-  "334": "HMD",
-  "336": "VAT",
-  "340": "HND",
-  "344": "HKG",
-  "348": "HUN",
-  "352": "ISL",
-  "356": "IND",
-  "360": "IDN",
-  "364": "IRN",
-  "368": "IRQ",
-  "372": "IRL",
-  "376": "ISR",
-  "380": "ITA",
-  "384": "CIV",
-  "388": "JAM",
-  "392": "JPN",
-  "398": "KAZ",
-  "400": "JOR",
-  "404": "KEN",
-  "408": "PRK",
-  "410": "KOR",
-  "414": "KWT",
-  "417": "KGZ",
-  "418": "LAO",
-  "422": "LBN",
-  "426": "LSO",
-  "428": "LVA",
-  "430": "LBR",
-  "434": "LBY",
-  "438": "LIE",
-  "440": "LTU",
-  "442": "LUX",
-  "446": "MAC",
-  "450": "MDG",
-  "454": "MWI",
-  "458": "MYS",
-  "462": "MDV",
-  "466": "MLI",
-  "470": "MLT",
-  "474": "MTQ",
-  "478": "MRT",
-  "480": "MUS",
-  "484": "MEX",
-  "492": "MCO",
-  "496": "MNG",
-  "498": "MDA",
-  "499": "MNE",
-  "500": "MSR",
-  "504": "MAR",
-  "508": "MOZ",
-  "512": "OMN",
-  "516": "NAM",
-  "520": "NRU",
-  "524": "NPL",
-  "528": "NLD",
-  "531": "CUW",
-  "533": "ABW",
-  "534": "SXM",
-  "535": "BES",
-  "540": "NCL",
-  "548": "VUT",
-  "554": "NZL",
-  "558": "NIC",
-  "562": "NER",
-  "566": "NGA",
-  "570": "NIU",
-  "574": "NFK",
-  "578": "NOR",
-  "580": "MNP",
-  "581": "UMI",
-  "583": "FSM",
-  "584": "MHL",
-  "585": "PLW",
-  "586": "PAK",
-  "591": "PAN",
-  "598": "PNG",
-  "600": "PRY",
-  "604": "PER",
-  "608": "PHL",
-  "612": "PCN",
-  "616": "POL",
-  "620": "PRT",
-  "624": "GNB",
-  "626": "TLS",
-  "630": "PRI",
-  "634": "QAT",
-  "638": "REU",
-  "642": "ROU",
-  "643": "RUS",
-  "646": "RWA",
-  "652": "BLM",
-  "654": "SHN",
-  "659": "KNA",
-  "660": "AIA",
-  "662": "LCA",
-  "663": "MAF",
-  "666": "SPM",
-  "670": "VCT",
-  "674": "SMR",
-  "678": "STP",
-  "682": "SAU",
-  "686": "SEN",
-  "688": "SRB",
-  "690": "SYC",
-  "694": "SLE",
-  "702": "SGP",
-  "703": "SVK",
-  "704": "VNM",
-  "705": "SVN",
-  "706": "SOM",
-  "710": "ZAF",
-  "716": "ZWE",
-  "724": "ESP",
-  "728": "SSD",
-  "729": "SDN",
-  "732": "ESH",
-  "740": "SUR",
-  "744": "SJM",
-  "748": "SWZ",
-  "752": "SWE",
-  "756": "CHE",
-  "760": "SYR",
-  "762": "TJK",
-  "764": "THA",
-  "768": "TGO",
-  "772": "TKL",
-  "776": "TON",
-  "780": "TTO",
-  "784": "ARE",
-  "788": "TUN",
-  "792": "TUR",
-  "795": "TKM",
-  "796": "TCA",
-  "798": "TUV",
-  "800": "UGA",
-  "804": "UKR",
-  "807": "MKD",
-  "818": "EGY",
-  "826": "GBR",
-  "831": "GGY",
-  "832": "JEY",
-  "833": "IMN",
-  "834": "TZA",
-  "840": "USA",
-  "850": "VIR",
-  "854": "BFA",
-  "858": "URY",
-  "860": "UZB",
-  "862": "VEN",
-  "876": "WLF",
-  "882": "WSM",
-  "887": "YEM",
-  "894": "ZMB",
-};
-
-/** Accept unknown geo object from library and derive ISO3 safely */
 function iso3FromGeo(geo: unknown): string {
+  initIso();
   const g = geo as any;
-
-  // 1) numeric id from world-atlas topojson
-  const rawId = String(g?.id ?? "").trim();
-  if (rawId) {
-    const id = rawId.padStart(3, "0");
-    const hit = ISO_NUM_TO_A3[id];
-    if (hit) return hit;
-  }
-
-  // 2) if topo includes ISO fields
   const p = (g?.properties ?? {}) as GeoProps;
-  const cand = [
+
+  const propCand = [
     p.ISO_A3,
     p.ADM0_A3,
     p.SOV_A3,
@@ -373,7 +120,76 @@ function iso3FromGeo(geo: unknown): string {
     .map(cleanISO3)
     .find((x) => isValidISO3(x) && x !== "ATA" && x !== "-99");
 
-  return cand ?? "";
+  if (propCand) return propCand;
+
+  const rawId = String(g?.id ?? "").trim();
+  if (rawId) {
+    const num = rawId.padStart(3, "0");
+    const a3 = isoCountries.numericToAlpha3(num);
+    const iso3 = cleanISO3(a3);
+    if (isValidISO3(iso3)) return iso3;
+  }
+
+  return "";
+}
+
+/**
+ * centroid of Polygon/MultiPolygon using bbox center.
+ * (Good enough to separate mainland France vs French Guiana in world-atlas@2.)
+ */
+function centroidLonLat(geo: any): [number, number] | null {
+  const geom = geo?.geometry;
+  if (!geom) return null;
+
+  const coords = geom.coordinates;
+  if (!coords) return null;
+
+  let minLon = Infinity,
+    minLat = Infinity,
+    maxLon = -Infinity,
+    maxLat = -Infinity;
+
+  function visitPoint(pt: any) {
+    const lon = Number(pt?.[0]);
+    const lat = Number(pt?.[1]);
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
+    if (lon < minLon) minLon = lon;
+    if (lat < minLat) minLat = lat;
+    if (lon > maxLon) maxLon = lon;
+    if (lat > maxLat) maxLat = lat;
+  }
+
+  // Polygon: [ [ [lon,lat], ... ] , [hole...], ... ]
+  // MultiPolygon: [ Polygon, Polygon, ... ]
+  if (geom.type === "Polygon") {
+    for (const ring of coords) for (const pt of ring) visitPoint(pt);
+  } else if (geom.type === "MultiPolygon") {
+    for (const poly of coords)
+      for (const ring of poly) for (const pt of ring) visitPoint(pt);
+  } else {
+    return null;
+  }
+
+  if (!Number.isFinite(minLon) || !Number.isFinite(minLat)) return null;
+  return [(minLon + maxLon) / 2, (minLat + maxLat) / 2];
+}
+
+/**
+ * ✅ FIX for world-atlas@2: FRA appears twice (mainland + overseas).
+ * Remove the overseas FRA piece(s) by longitude (western hemisphere).
+ */
+function isFranceDuplicateGeo(geo: any): boolean {
+  const iso = iso3FromGeo(geo);
+  if (iso !== "FRA") return false;
+
+  const c = centroidLonLat(geo);
+  if (!c) return false;
+
+  const [lon] = c;
+
+  // Mainland France ~ +2 lon. French Guiana ~ -53 lon.
+  // Remove any FRA geometry far west.
+  return lon < -20;
 }
 
 /* =======================
@@ -400,6 +216,45 @@ export default function StratifyMap({
     value: undefined,
   });
 
+  const [geoData, setGeoData] = useState<any>(null);
+  const [geoErr, setGeoErr] = useState<string | null>(null);
+  const [geoLoading, setGeoLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    let alive = true;
+    async function load() {
+      try {
+        setGeoErr(null);
+        setGeoLoading(true);
+
+        const url = topoJsonUrl.includes("?")
+          ? `${topoJsonUrl}&v=1`
+          : `${topoJsonUrl}?v=1`;
+
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok)
+          throw new Error(
+            `TopoJSON fetch failed: ${res.status} ${res.statusText}`,
+          );
+
+        const json = await res.json();
+        if (!alive) return;
+        setGeoData(json);
+      } catch (e: any) {
+        if (!alive) return;
+        setGeoErr(e?.message || "Failed to load map data");
+        setGeoData(null);
+      } finally {
+        if (!alive) return;
+        setGeoLoading(false);
+      }
+    }
+    load();
+    return () => {
+      alive = false;
+    };
+  }, [topoJsonUrl]);
+
   const selected = selectedIso3 ? selectedIso3.toUpperCase() : null;
 
   const rowByIso = useMemo(() => {
@@ -415,7 +270,8 @@ export default function StratifyMap({
     const m = new Map<string, number>();
     for (const r of rows || []) {
       const iso = cleanISO3(r.iso3);
-      if (isValidISO3(iso) && Number.isFinite(r.value)) m.set(iso, r.value);
+      const v = Number(r.value);
+      if (isValidISO3(iso) && Number.isFinite(v)) m.set(iso, v);
     }
     return m;
   }, [rows]);
@@ -426,11 +282,28 @@ export default function StratifyMap({
     if (!values.length) return null;
     return scaleQuantile<number>()
       .domain(values)
-      .range([0.15, 0.3, 0.45, 0.6, 0.75, 0.9]);
+      .range([0.2, 0.35, 0.5, 0.65, 0.8, 0.95]);
   }, [values]);
+
+  const MISSING_FILL = "#e5e7eb";
+  const STROKE = "#94a3b8";
+  const HOVER_FILL = "#64748b";
+  const SELECT_STROKE = "#1f2937";
+
+  const legendStops = [0.2, 0.35, 0.5, 0.65, 0.8, 0.95];
 
   return (
     <div className="relative rounded-xl border bg-white p-3">
+      {geoLoading ? (
+        <div className="mb-2 rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          Loading map…
+        </div>
+      ) : geoErr ? (
+        <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          {geoErr}
+        </div>
+      ) : null}
+
       {/* Zoom controls */}
       <div className="absolute right-3 top-3 z-10 flex flex-col gap-2">
         <button
@@ -498,30 +371,33 @@ export default function StratifyMap({
         style={{ width: "100%", height: "auto" }}
       >
         <ZoomableGroup zoom={zoom}>
-          <Geographies geography={topoJsonUrl}>
+          <Geographies
+            geography={geoData ?? { type: "FeatureCollection", features: [] }}
+          >
             {({ geographies }: any) => (
               <>
                 {(geographies as any[]).map((geo, idx) => {
-                  const iso3 = iso3FromGeo(geo);
+                  // ✅ FIX: remove France overseas duplicate
+                  if (isFranceDuplicateGeo(geo)) return null;
 
+                  const iso3 = iso3FromGeo(geo);
                   const dbRow = iso3 ? rowByIso.get(iso3) : undefined;
                   const value = iso3 ? valueByIso.get(iso3) : undefined;
 
-                  const fill =
+                  const isSelected = !!selected && !!iso3 && iso3 === selected;
+
+                  const fillColor =
                     value !== undefined && quant
                       ? interpolateBlues(quant(value)!)
-                      : "#e5e7eb";
-
-                  const isSelected = !!selected && !!iso3 && iso3 === selected;
+                      : MISSING_FILL;
 
                   const props = (geo as any)?.properties as
                     | GeoProps
                     | undefined;
-                  const geoName = String(props?.name ?? "").trim();
+                  const geoName = String((props as any)?.name ?? "").trim();
                   const countryName =
                     dbRow?.country?.trim() || geoName || iso3 || "—";
 
-                  // react-simple-maps usually provides rsmKey; fallback if missing
                   const key =
                     (geo as any)?.rsmKey ??
                     (geo as any)?.id ??
@@ -531,6 +407,32 @@ export default function StratifyMap({
                     <Geography
                       key={key}
                       geography={geo}
+                      fill={fillColor}
+                      stroke={isSelected ? SELECT_STROKE : STROKE}
+                      strokeWidth={isSelected ? 1.2 : 0.8}
+                      style={{
+                        default: {
+                          fill: fillColor,
+                          stroke: isSelected ? SELECT_STROKE : STROKE,
+                          strokeWidth: isSelected ? 1.2 : 0.8,
+                          outline: "none",
+                          cursor: iso3 ? "pointer" : "default",
+                          opacity: 1,
+                        },
+                        hover: {
+                          fill: HOVER_FILL,
+                          stroke: SELECT_STROKE,
+                          strokeWidth: 1.2,
+                          outline: "none",
+                          opacity: 1,
+                        },
+                        pressed: {
+                          fill: fillColor,
+                          stroke: SELECT_STROKE,
+                          strokeWidth: 1.2,
+                          outline: "none",
+                        },
+                      }}
                       onClick={() => {
                         if (!iso3) return;
                         onSelectIso3?.(iso3);
@@ -564,22 +466,6 @@ export default function StratifyMap({
                       onMouseLeave={() =>
                         setTip((p) => ({ ...p, show: false }))
                       }
-                      style={{
-                        default: {
-                          fill,
-                          stroke: "#ffffff",
-                          strokeWidth: 0.6,
-                          outline: "none",
-                          opacity: isSelected ? 1 : 0.96,
-                          cursor: iso3 ? "pointer" : "default",
-                        },
-                        hover: {
-                          fill: iso3 ? "#94a3b8" : fill,
-                          opacity: 1,
-                          outline: "none",
-                        },
-                        pressed: { fill, outline: "none" },
-                      }}
                     />
                   );
                 })}
@@ -593,7 +479,7 @@ export default function StratifyMap({
       <div className="mt-3 flex items-center justify-end text-xs text-slate-500">
         <div className="flex items-center gap-1">
           <span>Low</span>
-          {[0.15, 0.3, 0.45, 0.6, 0.75, 0.9].map((t) => (
+          {legendStops.map((t) => (
             <div
               key={t}
               className="h-3 w-5"

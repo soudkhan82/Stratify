@@ -1,15 +1,81 @@
 /* app/lib/faostat.ts
-   Single client helper for all FAOSTAT endpoints.
-   Use this from pages/components instead of hardcoding fetch URLs.
+   Drop-in FIX:
+   - ONE fetch helper
+   - DOES NOT throw on 200 responses that include { error } or { ok:false }
+   - Only throws on non-JSON hard failures OR non-2xx
+   - Adds optional debug logs with ?faodebug=1 or localStorage.faodebug="1"
 */
 
-export type FaoModule =
-  | "overview"
-  | "top-production"
-  | "top-import"
-  | "top-export"
-  | "trade-import"
-  | "trade-export";
+type AnyJson = any;
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function isFaoDebugEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("faodebug") === "1") return true;
+    if (window.localStorage?.getItem("faodebug") === "1") return true;
+  } catch {}
+  return false;
+}
+function dbg(...args: any[]) {
+  if (isFaoDebugEnabled()) console.log(...args);
+}
+function dberr(...args: any[]) {
+  if (isFaoDebugEnabled()) console.error(...args);
+}
+
+async function fetchJson<T>(url: string): Promise<T> {
+  const res = await fetch(url, {
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
+
+  const text = await res.text();
+  let data: unknown = null;
+
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    dberr("[FAOSTAT] Non-JSON response:", text.slice(0, 300));
+    throw new Error("FAOSTAT API returned non-JSON");
+  }
+
+  const keys = isRecord(data)
+    ? Object.keys(data)
+    : Array.isArray(data)
+      ? ["<array>"]
+      : null;
+  const lenGuess = Array.isArray(data)
+    ? data.length
+    : isRecord(data) && Array.isArray((data as any).rows)
+      ? (data as any).rows.length
+      : isRecord(data) && Array.isArray((data as any).data)
+        ? (data as any).data.length
+        : isRecord(data) && Array.isArray((data as any).items)
+          ? (data as any).items.length
+          : null;
+
+  dbg("[FAOSTAT] GET", url);
+  dbg("[FAOSTAT] status", res.status, res.statusText);
+  dbg("[FAOSTAT] keys", keys);
+  dbg("[FAOSTAT] lenGuess", lenGuess);
+
+  // Hard error: non-2xx should still throw
+  if (!res.ok) {
+    if (isRecord(data) && typeof (data as any).error === "string") {
+      throw new Error((data as any).error);
+    }
+    throw new Error(`HTTP ${res.status} from ${url}`);
+  }
+
+  // ✅ IMPORTANT: DO NOT throw on {error} or {ok:false} for 200
+  // UI will display it.
+  return data as T;
+}
 
 export type OverviewPayload = {
   iso3: string;
@@ -73,67 +139,45 @@ export type SuaTradeTotalRow = {
   unit: string | null;
 };
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { cache: "no-store" });
-  const text = await res.text();
-
-  // Try parse json always (even errors)
-  let data: unknown = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    // if non-json, wrap
-    data = { error: `Non-JSON response from ${url}`, raw: text };
-  }
-
-  if (!res.ok) {
-    // normalize
-    if (isRecord(data) && typeof data.error === "string") {
-      throw new Error(data.error);
-    }
-    throw new Error(`HTTP ${res.status} from ${url}`);
-  }
-
-  return data as T;
-}
+// ✅ DROP-IN #1 — make TOP modules include Area Code + Item Code (required for row-click trend)
+// File: app/lib/rpc/faostat.ts
+//
+// NOTE: Replace ONLY the `module()` function below.
+// If your file already has `faostatApi.module`, this is a safe drop-in override.
+// It uses your existing `/api/faostat/module` endpoint (no DB logic changes here)
+// but forces the API to return codes by requesting `include_codes=1`.
+// You must also apply DROP-IN #2 (route.ts) so the API actually includes the codes.
 
 export const faostatApi = {
-  overview: (iso3: string) =>
-    fetchJson<OverviewPayload>(
-      `/api/faostat/overview?iso3=${encodeURIComponent(iso3)}`,
-    ),
+  async overview(iso3: string) {
+    const url = `/api/faostat/overview?iso3=${encodeURIComponent(iso3)}`;
+    return fetchJson<OverviewPayload>(url);
+  },
 
-  module: (
-    iso3: string,
-    kind: "top-production" | "top-import" | "top-export",
-    top = 10,
-  ) =>
-    fetchJson<TopPayload>(
-      `/api/faostat/module?iso3=${encodeURIComponent(iso3)}&kind=${encodeURIComponent(
-        kind,
-      )}&top=${encodeURIComponent(String(top))}`,
-    ),
+  async module(iso3: string, kind: string, topN = 10) {
+    const qs = new URLSearchParams({
+      iso3,
+      kind,
+      top: String(topN),
+      include_codes: "1", // ✅ ask backend to include Item Code / Area Code
+    });
+    const url = `/api/faostat/module?${qs.toString()}`;
+    return fetchJson<any>(url); // keep flexible (your module payload varies)
+  },
 
-  tradeInsights: (
+  async tradeInsights(
     iso3: string,
     kind: "import" | "export",
-    top = 10,
+    topN = 10,
     years = 10,
-  ) =>
-    fetchJson<TradeInsights>(
-      `/api/faostat/trade-insights?iso3=${encodeURIComponent(iso3)}&kind=${encodeURIComponent(
-        kind,
-      )}&top=${encodeURIComponent(String(top))}&years=${encodeURIComponent(String(years))}`,
-    ),
-
-  suaTotals: (iso3: string, years = 15) =>
-    fetchJson<SuaTradeTotalRow[]>(
-      `/api/faostat/sua-trade-totals?iso3=${encodeURIComponent(
-        iso3,
-      )}&years=${encodeURIComponent(String(years))}`,
-    ),
+  ) {
+    const qs = new URLSearchParams({
+      iso3,
+      kind,
+      top: String(topN),
+      years: String(years),
+    });
+    const url = `/api/faostat/trade-insights?${qs.toString()}`;
+    return fetchJson<TradeInsights>(url);
+  },
 };

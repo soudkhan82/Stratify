@@ -160,7 +160,7 @@ export default function Page() {
         region: r.region ?? null,
         value: n(r.value),
       })),
-    [rows]
+    [rows],
   );
 
   // ✅ NEW: click handler that routes to /world/country/[iso3]
@@ -174,8 +174,8 @@ export default function Page() {
     // navigate to country profile
     router.push(
       `/world/country/${encodeURIComponent(up)}?indicator=${encodeURIComponent(
-        indicator
-      )}`
+        indicator,
+      )}`,
     );
   }
 
@@ -265,6 +265,13 @@ export default function Page() {
             }}
           >
             Reset
+          </Button>
+          <Button
+            variant="default"
+            className="rounded-xl"
+            onClick={() => router.push("/faostat/products")}
+          >
+            FAOSTAT Products
           </Button>
         </div>
       </div>
