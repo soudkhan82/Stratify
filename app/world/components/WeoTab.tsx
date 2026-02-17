@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
+import { Loader2 } from "lucide-react";
+
 import {
   ResponsiveContainer,
   LineChart,
@@ -125,6 +127,21 @@ function safeText(s: string, max = 52) {
   const t = (s || "").trim();
   if (t.length <= max) return t;
   return `${t.slice(0, max - 1)}…`;
+}
+
+/* =======================
+   Tiny UI helper
+======================= */
+
+function LoadingOverlay({ label = "Loading…" }: { label?: string }) {
+  return (
+    <div className="absolute inset-0 z-20 grid place-items-center rounded-lg bg-white/70 backdrop-blur-[2px]">
+      <div className="flex items-center gap-2 rounded-full border bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        {label}
+      </div>
+    </div>
+  );
 }
 
 /* =======================
@@ -363,10 +380,13 @@ export default function WeoTab({ iso3 }: { iso3: string }) {
   }
 
   // ✅ table sizing: ~10 rows visible
-  const ROW_PX = 32; // body row height
-  const HEAD_PX = 36; // sticky header height
+  const ROW_PX = 32;
+  const HEAD_PX = 36;
   const MAX_ROWS = 10;
   const TABLE_MAX_H = HEAD_PX + ROW_PX * MAX_ROWS;
+
+  // If we have something already rendered, keep it visible and show overlay during fetch
+  const showOverlay = loading;
 
   return (
     <div className="space-y-3">
@@ -451,7 +471,7 @@ export default function WeoTab({ iso3 }: { iso3: string }) {
           Main grid
       ========================== */}
       <div className="grid grid-cols-12 gap-3">
-        {/* LEFT: Trend + Table (compact card container) */}
+        {/* LEFT: Trend + Table */}
         <Card className="col-span-12 xl:col-span-8 shadow-sm">
           <CardHeader className="py-3">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
@@ -480,118 +500,135 @@ export default function WeoTab({ iso3 }: { iso3: string }) {
           </CardHeader>
 
           <CardContent className="pt-0">
-            {loading ? (
-              <div className="rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                Loading WEO…
-              </div>
-            ) : error ? (
+            {/* ✅ Keep previous visual visible and show overlay while fetching */}
+            {error && !table.length && !loading ? (
               <div className="rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-600">
                 {error}
               </div>
-            ) : table.length === 0 ? (
+            ) : table.length === 0 && !loading ? (
               <div className="rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-600">
                 No WEO series for this indicator / country.
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                {/* ✅ Reasonable chart height */}
-                <div className="h-[260px] rounded-lg border bg-white p-2">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart
-                      data={lineData}
-                      margin={{ left: 8, right: 10, top: 10, bottom: 10 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="year" />
-                      <YAxis tickFormatter={(v) => fmtCompact(Number(v))} />
-                      <Tooltip
-                        labelFormatter={(l) => `Year: ${l}`}
-                        formatter={(v: any) => fmt(Number(v))}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="value"
-                        stroke={stableColorFromKey(indicator || "weo")}
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
+              <div className="relative">
+                {showOverlay ? (
+                  <LoadingOverlay label="Loading WEO data…" />
+                ) : null}
 
-                {/* ✅ Table: vertical scroll, ~10 rows visible */}
-                <div className="rounded-lg border bg-white">
-                  <div
-                    className="overflow-y-auto overflow-x-hidden"
-                    style={{ maxHeight: TABLE_MAX_H }}
-                  >
-                    <table className="min-w-full text-xs">
-                      <thead className="sticky top-0 bg-slate-50">
-                        <tr>
-                          <th className="px-3 py-2 text-left font-semibold text-slate-700">
-                            Year
-                          </th>
-                          <th className="px-3 py-2 text-right font-semibold text-slate-700">
-                            Value
-                          </th>
-                          <th className="px-3 py-2 text-right font-semibold text-slate-700">
-                            YoY%
-                          </th>
-                        </tr>
-                      </thead>
+                <div
+                  className={
+                    showOverlay
+                      ? "pointer-events-none opacity-80 blur-[0.2px]"
+                      : ""
+                  }
+                >
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    {/* Chart */}
+                    <div className="h-[260px] rounded-lg border bg-white p-2">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={lineData}
+                          margin={{ left: 8, right: 10, top: 10, bottom: 10 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="year" />
+                          <YAxis tickFormatter={(v) => fmtCompact(Number(v))} />
+                          <Tooltip
+                            labelFormatter={(l) => `Year: ${l}`}
+                            formatter={(v: any) => fmt(Number(v))}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="value"
+                            stroke={stableColorFromKey(indicator || "weo")}
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
 
-                      <tbody>
-                        {table
-                          .slice()
-                          .sort((a, b) => b.year - a.year)
-                          .map((r) => (
-                            <tr key={r.year} className="border-t">
-                              <td
-                                className="px-3 py-2 text-slate-700"
-                                style={{ height: ROW_PX }}
-                              >
-                                {r.year}
-                              </td>
-                              <td
-                                className="px-3 py-2 text-right font-semibold text-slate-900"
-                                style={{ height: ROW_PX }}
-                              >
-                                {fmt(r.value)}
-                              </td>
-                              <td
-                                className="px-3 py-2 text-right"
-                                style={{ height: ROW_PX }}
-                              >
-                                <span
-                                  className={[
-                                    "inline-flex rounded-full border px-2 py-0.5 font-semibold",
-                                    r.yoy === null
-                                      ? "border-slate-200 text-slate-500"
-                                      : r.yoy >= 0
-                                        ? "border-emerald-200 text-emerald-700 bg-emerald-50"
-                                        : "border-rose-200 text-rose-700 bg-rose-50",
-                                  ].join(" ")}
-                                >
-                                  {r.yoy === null ? "—" : fmtPct(r.yoy)}
-                                </span>
-                              </td>
+                    {/* Table */}
+                    <div className="rounded-lg border bg-white">
+                      <div
+                        className="overflow-y-auto overflow-x-hidden"
+                        style={{ maxHeight: TABLE_MAX_H }}
+                      >
+                        <table className="min-w-full text-xs">
+                          <thead className="sticky top-0 bg-slate-50">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-semibold text-slate-700">
+                                Year
+                              </th>
+                              <th className="px-3 py-2 text-right font-semibold text-slate-700">
+                                Value
+                              </th>
+                              <th className="px-3 py-2 text-right font-semibold text-slate-700">
+                                YoY%
+                              </th>
                             </tr>
-                          ))}
-                      </tbody>
-                    </table>
+                          </thead>
+
+                          <tbody>
+                            {table
+                              .slice()
+                              .sort((a, b) => b.year - a.year)
+                              .map((r) => (
+                                <tr key={r.year} className="border-t">
+                                  <td
+                                    className="px-3 py-2 text-slate-700"
+                                    style={{ height: ROW_PX }}
+                                  >
+                                    {r.year}
+                                  </td>
+                                  <td
+                                    className="px-3 py-2 text-right font-semibold text-slate-900"
+                                    style={{ height: ROW_PX }}
+                                  >
+                                    {fmt(r.value)}
+                                  </td>
+                                  <td
+                                    className="px-3 py-2 text-right"
+                                    style={{ height: ROW_PX }}
+                                  >
+                                    <span
+                                      className={[
+                                        "inline-flex rounded-full border px-2 py-0.5 font-semibold",
+                                        r.yoy === null
+                                          ? "border-slate-200 text-slate-500"
+                                          : r.yoy >= 0
+                                            ? "border-emerald-200 text-emerald-700 bg-emerald-50"
+                                            : "border-rose-200 text-rose-700 bg-rose-50",
+                                      ].join(" ")}
+                                    >
+                                      {r.yoy === null ? "—" : fmtPct(r.yoy)}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="border-t px-3 py-2 text-[11px] text-slate-500">
+                        Showing 10 rows per view (scroll for more)
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="border-t px-3 py-2 text-[11px] text-slate-500">
-                    Showing 10 rows per view (scroll for more)
+                  <div className="mt-2 text-[11px] text-slate-500">
+                    {error ? (
+                      <span className="text-rose-700">{error}</span>
+                    ) : (
+                      <>
+                        Showing last {Math.min(24, lineData.length)} points •{" "}
+                        {iso3} • {vintage}
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
             )}
-
-            <div className="mt-2 text-[11px] text-slate-500">
-              Showing last {Math.min(24, lineData.length)} points • {iso3} •{" "}
-              {vintage}
-            </div>
           </CardContent>
         </Card>
 
