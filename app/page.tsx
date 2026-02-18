@@ -311,6 +311,19 @@ export default function Page() {
             >
               FAOSTAT Products
             </Button>
+            <Button
+              variant="default"
+              className="rounded-xl text-white shadow-md ring-1 ring-white/30"
+              onClick={() => router.push("/energy")}
+              style={{
+                backgroundImage:
+                  "linear-gradient(rgba(0,0,0,0.50), rgba(0,0,0,0.50)), url(/energy_bg.jpg)",
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+              }}
+            >
+              Energy Transition
+            </Button>
           </div>
         </div>
 

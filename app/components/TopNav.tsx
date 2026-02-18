@@ -12,8 +12,9 @@ export default function TopNav() {
   const nav: NavItem[] = [
     { label: "Home", href: "/" },
     { label: "World", href: "/world" },
-    { label: "KPI", href: "/KPI" }, // adjust if needed
-    { label: "Reports", href: "/reports" }, // adjust if needed
+    { label: "Energy", href: "/energy" }, // ✅ NEW
+    { label: "KPI", href: "/KPI" },
+    { label: "Reports", href: "/reports" },
   ];
 
   const isActive = (href: string) =>
