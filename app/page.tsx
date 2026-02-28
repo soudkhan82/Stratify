@@ -216,9 +216,9 @@ export default function Page() {
           className="absolute inset-0 bg-cover bg-center"
           style={{
             backgroundImage: "url('/people_bg.png')",
-            transform: "scale(1.03)",
-            filter: "saturate(0.95) contrast(0.95) brightness(0.72)",
-            opacity: 0.28,
+            transform: "scale(1.02)",
+            filter: "saturate(1.15) contrast(1.08) brightness(0.92)",
+            opacity: 0.55,
           }}
         />
         {/* Calm the busy crowd + improve contrast */}
