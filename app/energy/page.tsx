@@ -168,12 +168,29 @@ function energyYoYTable(series: { year: number; value: number }[]) {
 }
 
 /* tiny overlay like WEO */
+/* ✅ nicer overlay: soft glass fade + floating pill (no big rectangular block) */
 function LoadingOverlay({ label = "Loading…" }: { label?: string }) {
   return (
-    <div className="absolute inset-0 z-20 grid place-items-center rounded-lg bg-white/70 backdrop-blur-[2px]">
-      <div className="flex items-center gap-2 rounded-full border bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        {label}
+    <div className="absolute inset-0 z-20 flex items-center justify-center">
+      {/* subtle fade (keeps layout visible) */}
+      <div className="absolute inset-0 rounded-2xl bg-white/35 backdrop-blur-sm" />
+
+      {/* glow behind the pill */}
+      <div className="absolute h-28 w-28 rounded-full bg-sky-300/30 blur-2xl" />
+      <div className="absolute h-20 w-20 rounded-full bg-emerald-200/30 blur-2xl" />
+
+      {/* floating pill */}
+      <div className="relative flex items-center gap-3 rounded-full border border-white/70 bg-white/80 px-4 py-2 shadow-lg">
+        {/* custom ring spinner (looks cleaner than a box) */}
+        <span className="relative h-5 w-5">
+          <span className="absolute inset-0 rounded-full border-2 border-slate-200" />
+          <span className="absolute inset-0 rounded-full border-2 border-slate-900 border-t-transparent animate-spin" />
+        </span>
+
+        <span className="text-xs font-semibold text-slate-700">{label}</span>
+
+        {/* tiny pulse dot */}
+        <span className="ml-1 h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
       </div>
     </div>
   );

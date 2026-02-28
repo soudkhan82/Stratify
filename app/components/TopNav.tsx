@@ -11,10 +11,10 @@ export default function TopNav() {
 
   const nav: NavItem[] = [
     { label: "Home", href: "/" },
-    { label: "World", href: "/world" },
+    { label: "Debt", href: "/debt" },
     { label: "Energy", href: "/energy" }, // ✅ NEW
-    { label: "KPI", href: "/KPI" },
-    { label: "Reports", href: "/reports" },
+    { label: "FAO", href: "/faostat" },
+    { label: "Fiscal", href: "/fiscal" },
   ];
 
   const isActive = (href: string) =>
