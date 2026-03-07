@@ -3,16 +3,14 @@ export type FiscalSlug =
   | "primary-balance"
   | "overall-balance"
   | "revenue"
-  | "expenditure"
-  | "interest-revenue"
-  | "public-investment";
+  | "expenditure";
 
 export type FiscalMetric = {
   slug: FiscalSlug;
   title: string;
   subtitle: string;
   unit: string;
-  indicator_code: string | null; // null = not available yet
+  indicator_code: string;
   fmt: "pct" | "num";
 };
 
@@ -48,22 +46,6 @@ export const FISCAL_METRICS: FiscalMetric[] = [
     unit: "% of GDP",
     fmt: "pct",
     indicator_code: "GGX_NGDP",
-  },
-  {
-    slug: "interest-revenue",
-    title: "Interest Payments",
-    subtitle: "Interest payments • % of revenue (not yet available)",
-    unit: "% of revenue",
-    fmt: "pct",
-    indicator_code: null,
-  },
-  {
-    slug: "public-investment",
-    title: "Public Investment",
-    subtitle: "Public investment • % of GDP (not yet available)",
-    unit: "% of GDP",
-    fmt: "pct",
-    indicator_code: null,
   },
 ];
 

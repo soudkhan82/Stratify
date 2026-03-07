@@ -1,3 +1,4 @@
+// app/fiscal/page.tsx
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FISCAL_METRICS } from "./_lib/fiscalMeta";
@@ -22,7 +23,7 @@ export default function FiscalHome() {
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {FISCAL_METRICS.map((m) => (
             <Link key={m.slug} href={`/fiscal/${m.slug}`} className="block">
-              <Card className="hover:bg-muted/30 transition-colors">
+              <Card className="transition-colors hover:bg-muted/30">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">{m.title}</CardTitle>
                   <div className="text-xs text-muted-foreground">
@@ -35,9 +36,7 @@ export default function FiscalHome() {
                     <span className="font-medium">{m.unit}</span>
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
-                    {m.indicator_code
-                      ? `Code: ${m.indicator_code}`
-                      : "Not available yet (pending ingestion)"}
+                    {`Code: ${m.indicator_code}`}
                   </div>
                 </CardContent>
               </Card>
