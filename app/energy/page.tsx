@@ -1,4 +1,3 @@
-// app/energy/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -13,8 +12,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-
-import { Loader2 } from "lucide-react";
 
 import {
   ResponsiveContainer,
@@ -74,7 +71,7 @@ type ApiResp = {
 };
 
 /* =======================
-   Helpers (same style as WEO)
+   Helpers
 ======================= */
 
 async function fetchJson(url: string) {
@@ -96,7 +93,6 @@ async function fetchJson(url: string) {
 
 const toNum = (v: any): number | null => {
   if (v === null || v === undefined) return null;
-  // handles "1,234", " 4.3 ", etc.
   const x = Number(String(v).replaceAll(",", "").trim());
   return Number.isFinite(x) ? x : null;
 };
@@ -150,7 +146,6 @@ function yPadDomain(values: number[]) {
   return [mn0 - pad, mx0 + pad] as [number, number];
 }
 
-/* table rows: year, value, delta, deltaPct */
 function energyYoYTable(series: { year: number; value: number }[]) {
   const s = (series || [])
     .filter((p) => Number.isFinite(p.year) && Number.isFinite(p.value))
@@ -167,29 +162,44 @@ function energyYoYTable(series: { year: number; value: number }[]) {
   });
 }
 
-/* tiny overlay like WEO */
-/* ✅ nicer overlay: soft glass fade + floating pill (no big rectangular block) */
+function PageLoader({ label = "Loading dashboard..." }: { label?: string }) {
+  return (
+    <div className="relative min-h-screen overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 -z-30">
+        <div className="absolute inset-0 bg-gradient-to-b from-white via-white/90 to-white/80" />
+        <div className="absolute -top-24 -left-24 h-80 w-80 rounded-full bg-sky-300/30 blur-3xl" />
+        <div className="absolute top-40 -right-24 h-80 w-80 rounded-full bg-emerald-200/30 blur-3xl" />
+        <div className="absolute bottom-0 left-1/3 h-80 w-80 rounded-full bg-violet-200/30 blur-3xl" />
+      </div>
+
+      <div className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-4 py-7">
+        <div className="rounded-3xl border border-white/70 bg-white/80 px-10 py-8 shadow-xl backdrop-blur-md">
+          <div className="mx-auto mb-4 h-14 w-14 animate-spin rounded-full border-4 border-slate-200 border-t-slate-900" />
+          <div className="text-center">
+            <h2 className="text-xl font-semibold text-slate-900">{label}</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Please wait while the latest energy data is being prepared
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LoadingOverlay({ label = "Loading…" }: { label?: string }) {
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center">
-      {/* subtle fade (keeps layout visible) */}
       <div className="absolute inset-0 rounded-2xl bg-white/35 backdrop-blur-sm" />
-
-      {/* glow behind the pill */}
       <div className="absolute h-28 w-28 rounded-full bg-sky-300/30 blur-2xl" />
       <div className="absolute h-20 w-20 rounded-full bg-emerald-200/30 blur-2xl" />
 
-      {/* floating pill */}
       <div className="relative flex items-center gap-3 rounded-full border border-white/70 bg-white/80 px-4 py-2 shadow-lg">
-        {/* custom ring spinner (looks cleaner than a box) */}
         <span className="relative h-5 w-5">
           <span className="absolute inset-0 rounded-full border-2 border-slate-200" />
           <span className="absolute inset-0 rounded-full border-2 border-slate-900 border-t-transparent animate-spin" />
         </span>
-
         <span className="text-xs font-semibold text-slate-700">{label}</span>
-
-        {/* tiny pulse dot */}
         <span className="ml-1 h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
       </div>
     </div>
@@ -207,6 +217,7 @@ export default function EnergyPage() {
 
   const [resp, setResp] = useState<ApiResp | null>(null);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   const debug = useMemo(() => {
@@ -214,7 +225,6 @@ export default function EnergyPage() {
     return new URLSearchParams(window.location.search).get("debug") === "1";
   }, []);
 
-  /* ---------- FETCH ---------- */
   useEffect(() => {
     let alive = true;
 
@@ -235,16 +245,13 @@ export default function EnergyPage() {
 
         if (!j?.ok) setErr(j?.error || "Energy API returned ok=false");
 
-        // adopt server correction (invalid country/metric combos)
         if (j?.ok && j.country && j.country !== country) setCountry(j.country);
 
-        // adopt server default year (only when rankYear not set yet)
         if (rankYear == null && j?.ok && typeof j.rankYear === "number") {
           setRankYear(j.rankYear);
         }
 
         if (debug) {
-          // eslint-disable-next-line no-console
           console.log("[energy] fetched:", {
             country: j.country,
             metric: j.metric,
@@ -259,7 +266,10 @@ export default function EnergyPage() {
         setResp(null);
         setErr(e?.message || "Failed to load energy data");
       } finally {
-        if (alive) setLoading(false);
+        if (alive) {
+          setLoading(false);
+          setInitialLoading(false);
+        }
       }
     })();
 
@@ -272,6 +282,7 @@ export default function EnergyPage() {
   const countries = resp?.meta?.countries?.length
     ? resp.meta.countries
     : ["World"];
+
   const metrics = resp?.meta?.metrics?.length
     ? resp.meta.metrics
     : ([
@@ -286,7 +297,6 @@ export default function EnergyPage() {
   const metricMeta =
     resp?.metric_meta ?? metrics.find((m) => m.key === metric) ?? metrics[0];
 
-  /* ---------- NORMALIZE SERIES (this is the “must-have”) ---------- */
   const cleanSeries = useMemo(() => {
     const raw = Array.isArray(resp?.series) ? resp!.series : [];
     const out = raw
@@ -296,7 +306,6 @@ export default function EnergyPage() {
       .sort((a, b) => a.year - b.year);
 
     if (debug) {
-      // eslint-disable-next-line no-console
       console.log("[energy] cleanSeries:", {
         rawLen: raw.length,
         cleanLen: out.length,
@@ -311,7 +320,7 @@ export default function EnergyPage() {
 
   const lineData = useMemo(() => {
     if (!table.length) return [];
-    const take = 40; // energy often has longer series, show more
+    const take = 40;
     return table.slice(Math.max(0, table.length - take));
   }, [table]);
 
@@ -338,9 +347,8 @@ export default function EnergyPage() {
     return yPadDomain(vals);
   }, [lineData]);
 
-  const showOverlay = loading;
+  const showOverlay = loading && !initialLoading;
 
-  /* ---------- rank years ---------- */
   const rankYearOptions = useMemo(() => {
     if (!minYear || !maxYear) return [];
     const out: number[] = [];
@@ -350,13 +358,12 @@ export default function EnergyPage() {
 
   const top10 = resp?.top10 ?? [];
 
-  /* =======================
-     UI
-  ======================= */
+  if (initialLoading) {
+    return <PageLoader label="Loading dashboard..." />;
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      {/* light glass background */}
       <div className="pointer-events-none absolute inset-0 -z-30">
         <div className="absolute inset-0 bg-gradient-to-b from-white via-white/90 to-white/80" />
         <div className="absolute -top-24 -left-24 h-80 w-80 rounded-full bg-sky-300/30 blur-3xl" />
@@ -365,7 +372,6 @@ export default function EnergyPage() {
       </div>
 
       <div className="mx-auto max-w-7xl px-4 py-7 space-y-4">
-        {/* header + filters */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <div className="text-xs tracking-widest text-slate-500">
@@ -398,7 +404,7 @@ export default function EnergyPage() {
               value={metric}
               onValueChange={(v) => {
                 setMetric(v);
-                setRankYear(null); // let API pick a valid rank year again
+                setRankYear(null);
               }}
             >
               <SelectTrigger className="w-[320px] rounded-xl bg-white/70 backdrop-blur-md border border-white/60 shadow-sm">
@@ -443,14 +449,12 @@ export default function EnergyPage() {
           </div>
         </div>
 
-        {/* error */}
         {err ? (
           <div className="rounded-xl border border-rose-200 bg-rose-50/90 backdrop-blur p-3 text-sm text-rose-700">
             {err}
           </div>
         ) : null}
 
-        {/* summary cards (like WEO’s top row) */}
         <Card className="shadow-sm bg-white/70 border border-white/60 rounded-2xl">
           <CardHeader className="py-3">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -536,9 +540,7 @@ export default function EnergyPage() {
           </CardContent>
         </Card>
 
-        {/* main grid: left trend + table, right top10 */}
         <div className="grid grid-cols-12 gap-4">
-          {/* LEFT */}
           <Card className="col-span-12 lg:col-span-8 shadow-sm bg-white/70 border border-white/60 rounded-2xl">
             <CardHeader className="py-3">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
@@ -556,7 +558,7 @@ export default function EnergyPage() {
                   {debug ? (
                     <Badge className="bg-slate-900 text-white">debug=1</Badge>
                   ) : null}
-                  {loading ? (
+                  {loading && !initialLoading ? (
                     <Badge className="bg-slate-900 text-white">Loading…</Badge>
                   ) : null}
                 </div>
@@ -575,7 +577,7 @@ export default function EnergyPage() {
               ) : (
                 <div className="relative">
                   {showOverlay ? (
-                    <LoadingOverlay label="Loading energy data…" />
+                    <LoadingOverlay label="Loading energy data..." />
                   ) : null}
 
                   <div
@@ -586,9 +588,7 @@ export default function EnergyPage() {
                     }
                   >
                     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                      {/* Chart */}
                       <div className="h-[300px] rounded-lg border bg-white p-2">
-                        {/* IMPORTANT: fixed height parent + ResponsiveContainer (same as WEO) */}
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart
                             data={lineData}
@@ -633,7 +633,6 @@ export default function EnergyPage() {
                         ) : null}
                       </div>
 
-                      {/* Table */}
                       <div className="rounded-lg border bg-white">
                         <div className="max-h-[300px] overflow-y-auto overflow-x-hidden">
                           <table className="min-w-full text-xs">
@@ -717,7 +716,6 @@ export default function EnergyPage() {
             </CardContent>
           </Card>
 
-          {/* RIGHT Top10 */}
           <Card className="col-span-12 lg:col-span-4 shadow-sm bg-white/70 border border-white/60 rounded-2xl overflow-hidden">
             <CardHeader className="py-3">
               <CardTitle className="text-sm font-semibold text-slate-800">
@@ -729,7 +727,7 @@ export default function EnergyPage() {
             </CardHeader>
 
             <CardContent className="pt-0">
-              {loading ? (
+              {loading && !initialLoading ? (
                 <div className="space-y-2 py-2">
                   {Array.from({ length: 10 }).map((_, i) => (
                     <div

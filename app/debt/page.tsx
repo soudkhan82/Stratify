@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Download, RefreshCw, Search, ArrowUp } from "lucide-react";
+import { Download, RefreshCw, Search } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -112,24 +112,40 @@ function bandColor(b: RiskBand) {
   }
 }
 
+function PageLoader({ label = "Loading dashboard..." }: { label?: string }) {
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-4 py-6">
+        <div className="rounded-3xl border border-border bg-card px-10 py-8 shadow-xl">
+          <div className="mx-auto mb-4 h-14 w-14 animate-spin rounded-full border-4 border-muted border-t-foreground" />
+          <div className="text-center">
+            <h2 className="text-xl font-semibold">{label}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Please wait while the latest debt data is being prepared
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DebtPage() {
-  // ✅ Separate loading flags
   const [loadingRanking, setLoadingRanking] = useState(true);
   const [loadingSeries, setLoadingSeries] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const [err, setErr] = useState<string | null>(null);
 
-  // ✅ Separate state for ranking vs series
   const [rankingData, setRankingData] = useState<RankingResp | null>(null);
   const [seriesData, setSeriesData] = useState<SeriesResp | null>(null);
 
   const [region, setRegion] = useState<string>("ALL");
-  const [rankYear, setRankYear] = useState<string>(""); // input box
+  const [rankYear, setRankYear] = useState<string>("");
   const [q, setQ] = useState<string>("");
 
   const [selectedIso3, setSelectedIso3] = useState<string | null>(null);
 
-  // Prevent race conditions in rapid clicks
   const seriesReqId = useRef(0);
 
   const buildCommonParams = () => {
@@ -139,15 +155,12 @@ export default function DebtPage() {
     return params;
   };
 
-  // ✅ Fetch ranking ONLY
   const fetchRanking = async () => {
     setLoadingRanking(true);
     setErr(null);
 
     try {
       const params = buildCommonParams();
-
-      // If your backend supports mode:
       params.set("mode", "ranking");
 
       const res = await fetch(`/api/debt?${params.toString()}`, {
@@ -155,8 +168,6 @@ export default function DebtPage() {
       });
 
       const json = (await res.json()) as any;
-
-      // If backend doesn't support mode=ranking, it will still return ok + ranking + series.
       if (!json.ok) throw new Error(json.error ?? "API error");
 
       const rankResp: RankingResp = {
@@ -169,24 +180,22 @@ export default function DebtPage() {
 
       setRankingData(rankResp);
 
-      // Default selection once (or keep current if still present)
       const firstIso3 = rankResp.ranking?.[0]?.country_code ?? null;
 
-      setSelectedIso3((prev) => {
-        if (prev && rankResp.ranking.some((r) => r.country_code === prev))
-          return prev;
-        return prev ?? firstIso3;
-      });
-
-      // Ensure we have a chart on first load
       const isoToLoad =
         selectedIso3 &&
         rankResp.ranking.some((r) => r.country_code === selectedIso3)
           ? selectedIso3
           : firstIso3;
 
+      setSelectedIso3((prev) => {
+        if (prev && rankResp.ranking.some((r) => r.country_code === prev)) {
+          return prev;
+        }
+        return isoToLoad;
+      });
+
       if (isoToLoad) {
-        // Fetch series, but DOES NOT reload ranking/table UI
         await fetchSeries(isoToLoad);
       } else {
         setSeriesData(null);
@@ -197,10 +206,10 @@ export default function DebtPage() {
       setSeriesData(null);
     } finally {
       setLoadingRanking(false);
+      setInitialLoading(false);
     }
   };
 
-  // ✅ Fetch series ONLY (triggered by row click)
   const fetchSeries = async (iso3: string) => {
     const req = ++seriesReqId.current;
     setLoadingSeries(true);
@@ -209,8 +218,6 @@ export default function DebtPage() {
     try {
       const params = buildCommonParams();
       params.set("iso3", iso3);
-
-      // If your backend supports mode:
       params.set("mode", "series");
 
       const res = await fetch(`/api/debt?${params.toString()}`, {
@@ -219,8 +226,6 @@ export default function DebtPage() {
 
       const json = (await res.json()) as any;
       if (!json.ok) throw new Error(json.error ?? "API error");
-
-      // Ignore outdated responses
       if (req !== seriesReqId.current) return;
 
       const sResp: SeriesResp = {
@@ -240,7 +245,6 @@ export default function DebtPage() {
     }
   };
 
-  // Initial load (ranking + default series)
   useEffect(() => {
     fetchRanking();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -295,13 +299,6 @@ export default function DebtPage() {
     return { n, med, p75, p25, max, bandCounts, highExtreme };
   }, [ranking, valuesSortedAsc]);
 
-  const selected = useMemo(() => {
-    if (!selectedIso3) return null;
-    const idx = ranking.findIndex((r) => r.country_code === selectedIso3);
-    if (idx === -1) return null;
-    return { row: ranking[idx], rank: idx + 1, total: ranking.length };
-  }, [ranking, selectedIso3]);
-
   const seriesPoints = useMemo(() => {
     return (seriesData?.series?.points ?? []).map((p) => ({
       year: p.year,
@@ -312,10 +309,13 @@ export default function DebtPage() {
   const headerVintage = rankingData?.vintage ?? seriesData?.vintage ?? "—";
   const headerYear = rankingData?.rank_year ?? seriesData?.rank_year ?? "—";
 
+  if (initialLoading) {
+    return <PageLoader label="Loading dashboard..." />;
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto max-w-7xl px-4 py-6">
-        {/* Header */}
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <div className="text-xs text-muted-foreground">
@@ -336,7 +336,6 @@ export default function DebtPage() {
           </div>
 
           <div className="flex gap-2">
-            {/* Refresh ranking + (default) series */}
             <Button
               variant="outline"
               onClick={fetchRanking}
@@ -371,7 +370,6 @@ export default function DebtPage() {
           </div>
         </div>
 
-        {/* Error */}
         {err && (
           <div className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm">
             <div className="font-medium">API Error</div>
@@ -379,7 +377,6 @@ export default function DebtPage() {
           </div>
         )}
 
-        {/* Summary cards (your compact grid is already good) */}
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Card className="h-full">
             <CardHeader className="pb-2">
@@ -388,9 +385,7 @@ export default function DebtPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
-              <div className="text-3xl font-semibold">
-                {loadingRanking ? "—" : stats.n || "—"}
-              </div>
+              <div className="text-3xl font-semibold">{stats.n || "—"}</div>
               <div className="text-xs text-muted-foreground">
                 Top list size = {Math.min(50, stats.n) || 0} by default
               </div>
@@ -447,9 +442,7 @@ export default function DebtPage() {
           </Card>
         </div>
 
-        {/* Filters + Ranking + Trend */}
         <div className="mt-3 grid gap-3 lg:grid-cols-12">
-          {/* Ranking */}
           <Card className="lg:col-span-7">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Debt ranking table</CardTitle>
@@ -483,7 +476,6 @@ export default function DebtPage() {
                     onChange={(e) => setRankYear(e.target.value)}
                     placeholder="Year (blank = latest)"
                   />
-                  {/* ✅ Apply now ONLY refetches ranking (and then loads series for selected/default) */}
                   <Button
                     variant="outline"
                     onClick={fetchRanking}
@@ -561,7 +553,7 @@ export default function DebtPage() {
                                 "hover:bg-muted/50",
                                 active ? "bg-muted/60" : "",
                               ].join(" ")}
-                              style={{ cursor: "pointer" }} // ✅ guarantees pointer on table rows
+                              style={{ cursor: "pointer" }}
                               role="button"
                               tabIndex={0}
                               onKeyDown={(e) => {
@@ -618,7 +610,6 @@ export default function DebtPage() {
             </CardContent>
           </Card>
 
-          {/* Trend */}
           <Card className="lg:col-span-5">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">
@@ -635,7 +626,6 @@ export default function DebtPage() {
 
             <CardContent>
               <div className="h-[340px] rounded-lg border relative">
-                {/* ✅ Only chart shows loading overlay */}
                 {loadingSeries && (
                   <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm z-10">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -672,7 +662,6 @@ export default function DebtPage() {
           </Card>
         </div>
 
-        {/* Keep your other sections below if you want (breakdown/snapshot) */}
         <div className="mt-6 text-xs text-muted-foreground">
           Bands: Low &lt; 35 • Moderate 35–70 • High 70–120 • Extreme &gt; 120
           (Debt/GDP). Scoring caps above 120%.

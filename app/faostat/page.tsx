@@ -1,4 +1,3 @@
-// app/faoproducts/page.tsx
 "use client";
 import Link from "next/link";
 import { Home } from "lucide-react";
@@ -19,7 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Globe, TrendingUp, Download, FilterX } from "lucide-react";
+import { Globe, TrendingUp, Download, FilterX, RefreshCw } from "lucide-react";
 
 /* =========================
    Types
@@ -95,6 +94,35 @@ function downloadText(filename: string, text: string, mime = "text/plain") {
   URL.revokeObjectURL(url);
 }
 
+function PageLoader({ label = "Loading dashboard..." }: { label?: string }) {
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-4">
+      <div className="flex min-h-[70vh] items-center justify-center">
+        <div className="rounded-3xl border border-slate-200 bg-white px-10 py-8 shadow-xl">
+          <div className="mx-auto mb-4 h-14 w-14 animate-spin rounded-full border-4 border-slate-200 border-t-slate-900" />
+          <div className="text-center">
+            <h2 className="text-xl font-semibold text-slate-900">{label}</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Please wait while FAOSTAT data is being prepared
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionLoader({ label }: { label: string }) {
+  return (
+    <div className="flex h-full min-h-[220px] items-center justify-center rounded-xl border bg-white">
+      <div className="flex items-center gap-2 text-sm text-slate-600">
+        <RefreshCw className="h-4 w-4 animate-spin" />
+        {label}
+      </div>
+    </div>
+  );
+}
+
 /* =========================
    Page
 ========================= */
@@ -102,34 +130,31 @@ function downloadText(filename: string, text: string, mime = "text/plain") {
 export default function FaostatProductsPage() {
   const [dataset, setDataset] = useState<Dataset>("production");
 
-  // meta
   const [meta, setMeta] = useState<ElementsMeta | null>(null);
 
   const [element, setElement] = useState<string>("");
   const [year, setYear] = useState<number>(0);
 
-  // Area dropdown (search + pick)
   const [areaQ, setAreaQ] = useState<string>("");
   const [areaOptions, setAreaOptions] = useState<AreaOpt[]>([]);
   const [areaName, setAreaName] = useState<string>("");
   const [areaCode, setAreaCode] = useState<string>("");
   const [areaOpen, setAreaOpen] = useState(false);
 
-  // products
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [selected, setSelected] = useState<ProductRow | null>(null);
   const [productQ, setProductQ] = useState<string>("");
 
-  // paging
   const [limit, setLimit] = useState<number>(100);
   const [offset, setOffset] = useState<number>(0);
 
-  // chart
   const [trend, setTrend] = useState<TrendPoint[]>([]);
   const [trendLoading, setTrendLoading] = useState(false);
   const [view, setView] = useState<"line" | "bar">("line");
 
-  // errors
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
+
   const [productsError, setProductsError] = useState<string>("");
   const [trendError, setTrendError] = useState<string>("");
 
@@ -137,7 +162,6 @@ export default function FaostatProductsPage() {
 
   const unitLabel = selected?.unit || "Value";
 
-  // ✅ stable key for selection + fetch dependency
   const selectedKey = useMemo(() => {
     return selected ? `${selected.dataset}:${selected.item_code}` : "";
   }, [selected]);
@@ -153,7 +177,6 @@ export default function FaostatProductsPage() {
     return `Products • ${el} • ${y}`;
   }, [element, year]);
 
-  // close area dropdown on outside click
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
       if (!areaBoxRef.current) return;
@@ -168,17 +191,20 @@ export default function FaostatProductsPage() {
     let dead = false;
 
     (async () => {
+      setPageLoading(true);
+
       setMeta(null);
       setElement("");
       setYear(0);
 
-      // reset on dataset change
       setProducts([]);
       setSelected(null);
       setTrend([]);
       setOffset(0);
       setProductsError("");
       setTrendError("");
+      setProductsLoading(false);
+      setTrendLoading(false);
 
       setAreaQ("");
       setAreaOptions([]);
@@ -186,25 +212,30 @@ export default function FaostatProductsPage() {
       setAreaCode("");
       setAreaOpen(false);
 
-      const res = await fetch(
-        `/api/faostat/items/elements?dataset=${dataset}`,
-        {
-          cache: "no-store",
-        },
-      );
-      const j = await res.json().catch(() => null);
-      if (dead) return;
+      try {
+        const res = await fetch(
+          `/api/faostat/items/elements?dataset=${dataset}`,
+          {
+            cache: "no-store",
+          },
+        );
+        const j = await res.json().catch(() => null);
+        if (dead) return;
 
-      if (!j?.ok || !j?.meta) return;
+        if (!j?.ok || !j?.meta) {
+          setPageLoading(false);
+          return;
+        }
 
-      const m: ElementsMeta = j.meta;
-      setMeta(m);
+        const m: ElementsMeta = j.meta;
+        setMeta(m);
 
-      const firstEl = String(m.elements?.[0] ?? "");
-      setElement(firstEl);
-
-      // ✅ default latest year
-      setYear(Number(m.max_year ?? 0));
+        const firstEl = String(m.elements?.[0] ?? "");
+        setElement(firstEl);
+        setYear(Number(m.max_year ?? 0));
+      } finally {
+        if (!dead) setPageLoading(false);
+      }
     })();
 
     return () => {
@@ -212,33 +243,45 @@ export default function FaostatProductsPage() {
     };
   }, [dataset]);
 
-  /* ---- Load initial areas list (so dropdown works without typing) ---- */
+  /* ---- Load initial areas list ---- */
   useEffect(() => {
     let dead = false;
     const ctrl = new AbortController();
 
     (async () => {
-      const url = `/api/faostat/areas/search?dataset=${encodeURIComponent(
-        dataset,
-      )}&q=&lim=200`;
+      try {
+        const url = `/api/faostat/areas/search?dataset=${encodeURIComponent(
+          dataset,
+        )}&q=&lim=200`;
 
-      if (DEBUG) console.log("[AREAS:init] url:", url);
+        if (DEBUG) console.log("[AREAS:init] url:", url);
 
-      const res = await fetch(url, { cache: "no-store", signal: ctrl.signal });
-      const j = await res.json().catch(() => null);
-      if (dead) return;
+        const res = await fetch(url, {
+          cache: "no-store",
+          signal: ctrl.signal,
+        });
+        const j = await res.json().catch(() => null);
+        if (dead) return;
 
-      const rows: AreaOpt[] = Array.isArray(j?.rows)
-        ? j.rows
-        : Array.isArray(j)
-          ? j
-          : [];
+        const rows: AreaOpt[] = Array.isArray(j?.rows)
+          ? j.rows
+          : Array.isArray(j)
+            ? j
+            : [];
 
-      setAreaOptions(rows);
-    })().catch((e) => {
-      if (e?.name === "AbortError") return;
-      if (DEBUG) console.log("[AREAS:init] error:", e);
-    });
+        setAreaOptions(rows);
+
+        // ✅ auto-pick first area so page renders immediately
+        if (rows.length && !areaCode) {
+          setAreaName(rows[0].area);
+          setAreaCode(String(rows[0].area_code));
+          setAreaQ(rows[0].area);
+        }
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        if (DEBUG) console.log("[AREAS:init] error:", e);
+      }
+    })();
 
     return () => {
       dead = true;
@@ -246,11 +289,9 @@ export default function FaostatProductsPage() {
     };
   }, [dataset]);
 
-  /* ---- Area suggestions (when typing) ---- */
+  /* ---- Area suggestions ---- */
   useEffect(() => {
     const q = areaQ.trim();
-
-    // If blank, do NOT clear options (keep initial list)
     if (!q) return;
 
     const t = setTimeout(async () => {
@@ -291,6 +332,7 @@ export default function FaostatProductsPage() {
       setSelected(null);
       setTrend([]);
       setProductsError("");
+      setProductsLoading(false);
       return;
     }
 
@@ -298,43 +340,51 @@ export default function FaostatProductsPage() {
     const ctrl = new AbortController();
 
     (async () => {
+      setProductsLoading(true);
       setProductsError("");
       setProducts([]);
       setSelected(null);
       setTrend([]);
       setTrendError("");
 
-      const url =
-        `/api/faostat/items/products?dataset=${dataset}` +
-        `&element=${encodeURIComponent(element)}` +
-        `&year=${year}` +
-        `&area_code=${encodeURIComponent(areaCode.trim())}` +
-        `&limit=${limit}&offset=${offset}`;
+      try {
+        const url =
+          `/api/faostat/items/products?dataset=${dataset}` +
+          `&element=${encodeURIComponent(element)}` +
+          `&year=${year}` +
+          `&area_code=${encodeURIComponent(areaCode.trim())}` +
+          `&limit=${limit}&offset=${offset}`;
 
-      if (DEBUG) console.log("[PRODUCTS] url:", url);
+        if (DEBUG) console.log("[PRODUCTS] url:", url);
 
-      const res = await fetch(url, { cache: "no-store", signal: ctrl.signal });
-      const j = await res.json().catch(() => null);
-      if (dead) return;
+        const res = await fetch(url, {
+          cache: "no-store",
+          signal: ctrl.signal,
+        });
+        const j = await res.json().catch(() => null);
+        if (dead) return;
 
-      const rows: ProductRow[] =
-        j?.ok && Array.isArray(j?.rows) ? j.rows : Array.isArray(j) ? j : [];
+        const rows: ProductRow[] =
+          j?.ok && Array.isArray(j?.rows) ? j.rows : Array.isArray(j) ? j : [];
 
-      if (!rows.length) {
-        const errMsg =
-          (j && typeof j === "object" && "error" in j && (j as any).error) ||
-          "";
-        setProductsError(errMsg || "No products returned for this slice.");
-        setProducts([]);
-        return;
+        if (!rows.length) {
+          const errMsg =
+            (j && typeof j === "object" && "error" in j && (j as any).error) ||
+            "";
+          setProductsError(errMsg || "No products returned for this slice.");
+          setProducts([]);
+          return;
+        }
+
+        setProducts(rows);
+        setSelected(rows[0]);
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        setProductsError(e?.message || "Products request failed.");
+      } finally {
+        if (!dead) setProductsLoading(false);
       }
-
-      setProducts(rows);
-      setSelected(rows[0]);
-    })().catch((e: any) => {
-      if (e?.name === "AbortError") return;
-      setProductsError(e?.message || "Products request failed.");
-    });
+    })();
 
     return () => {
       dead = true;
@@ -342,7 +392,7 @@ export default function FaostatProductsPage() {
     };
   }, [isSliceReady, dataset, element, year, areaCode, limit, offset]);
 
-  /* ---- Load Trend (last 5 years ending at selected year) ---- */
+  /* ---- Load Trend ---- */
   useEffect(() => {
     if (!selected || !element || !areaCode.trim() || !year) {
       setTrend([]);
@@ -358,64 +408,63 @@ export default function FaostatProductsPage() {
       setTrendLoading(true);
       setTrendError("");
 
-      const urlEndYear =
-        `/api/faostat/items/trend?dataset=${selected.dataset}` +
-        `&item_code=${encodeURIComponent(selected.item_code)}` +
-        `&element=${encodeURIComponent(element)}` +
-        `&end_year=${year}` +
-        `&area_code=${encodeURIComponent(areaCode.trim())}`;
-
-      if (DEBUG) console.log("[TREND] url:", urlEndYear);
-
-      const res = await fetch(urlEndYear, {
-        cache: "no-store",
-        signal: ctrl.signal,
-      });
-
-      let j: any = await res.json().catch(() => null);
-
-      // ✅ fallback if backend not updated yet (old param years=5)
-      if (!j?.ok) {
-        const urlFallback =
+      try {
+        const urlEndYear =
           `/api/faostat/items/trend?dataset=${selected.dataset}` +
           `&item_code=${encodeURIComponent(selected.item_code)}` +
           `&element=${encodeURIComponent(element)}` +
-          `&years=${TREND_YEARS}` +
+          `&end_year=${year}` +
           `&area_code=${encodeURIComponent(areaCode.trim())}`;
 
-        if (DEBUG) console.log("[TREND] fallback url:", urlFallback);
+        if (DEBUG) console.log("[TREND] url:", urlEndYear);
 
-        const res2 = await fetch(urlFallback, {
+        const res = await fetch(urlEndYear, {
           cache: "no-store",
           signal: ctrl.signal,
         });
-        j = await res2.json().catch(() => null);
-      }
 
-      if (dead) return;
+        let j: any = await res.json().catch(() => null);
 
-      const rows: any[] =
-        j?.ok && Array.isArray(j?.rows) ? j.rows : Array.isArray(j) ? j : [];
+        if (!j?.ok) {
+          const urlFallback =
+            `/api/faostat/items/trend?dataset=${selected.dataset}` +
+            `&item_code=${encodeURIComponent(selected.item_code)}` +
+            `&element=${encodeURIComponent(element)}` +
+            `&years=${TREND_YEARS}` +
+            `&area_code=${encodeURIComponent(areaCode.trim())}`;
 
-      if (!rows.length) {
-        const errMsg =
-          (j && typeof j === "object" && "error" in j && (j as any).error) ||
-          "";
-        setTrendError(errMsg || "No trend data returned.");
-        setTrend([]);
-        return;
-      }
+          if (DEBUG) console.log("[TREND] fallback url:", urlFallback);
 
-      setTrend(rows as TrendPoint[]);
-    })()
-      .catch((e: any) => {
+          const res2 = await fetch(urlFallback, {
+            cache: "no-store",
+            signal: ctrl.signal,
+          });
+          j = await res2.json().catch(() => null);
+        }
+
+        if (dead) return;
+
+        const rows: any[] =
+          j?.ok && Array.isArray(j?.rows) ? j.rows : Array.isArray(j) ? j : [];
+
+        if (!rows.length) {
+          const errMsg =
+            (j && typeof j === "object" && "error" in j && (j as any).error) ||
+            "";
+          setTrendError(errMsg || "No trend data returned.");
+          setTrend([]);
+          return;
+        }
+
+        setTrend(rows as TrendPoint[]);
+      } catch (e: any) {
         if (e?.name === "AbortError") return;
         setTrendError(e?.message || "Trend request failed.");
         setTrend([]);
-      })
-      .finally(() => {
+      } finally {
         if (!dead) setTrendLoading(false);
-      });
+      }
+    })();
 
     return () => {
       dead = true;
@@ -423,14 +472,12 @@ export default function FaostatProductsPage() {
     };
   }, [selectedKey, element, year, areaCode]);
 
-  /* ---- Client-side product search ---- */
   const filteredProducts = useMemo(() => {
     const q = productQ.trim().toLowerCase();
     if (!q) return products;
     return products.filter((p) => p.item.toLowerCase().includes(q));
   }, [products, productQ]);
 
-  // keep selection valid when filtering/paging changes
   useEffect(() => {
     if (!filteredProducts.length) return;
     if (!selected) {
@@ -444,7 +491,6 @@ export default function FaostatProductsPage() {
     if (!stillThere) setSelected(filteredProducts[0]);
   }, [filteredProducts, selected]);
 
-  // Year dropdown: latest..latest-5
   const yearOptions = useMemo(() => {
     if (!meta?.max_year) return [];
     const maxY = meta.max_year;
@@ -454,9 +500,12 @@ export default function FaostatProductsPage() {
     );
   }, [meta]);
 
+  if (pageLoading || !meta || !element || !year) {
+    return <PageLoader label="Loading FAOSTAT products..." />;
+  }
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-4 space-y-4">
-      {/* ✅ Strong pointer enforcement + nicer hover/selected */}
       <style jsx global>{`
         .products-scroll {
           scrollbar-gutter: stable;
@@ -475,14 +524,12 @@ export default function FaostatProductsPage() {
           background: rgba(148, 163, 184, 0.15) !important;
         }
 
-        /* ✅ FORCE pointer even if table CSS overrides it */
         .row-click,
         .row-click * {
           cursor: pointer !important;
         }
       `}</style>
 
-      {/* Header + Filters */}
       <Card>
         <CardHeader className="pb-2">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -516,7 +563,6 @@ export default function FaostatProductsPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {/* Dataset */}
               <select
                 className="rounded-xl border bg-white px-3 py-2 text-sm"
                 value={dataset}
@@ -535,7 +581,6 @@ export default function FaostatProductsPage() {
                 <option value="sua">SUA (Supply Utilization Accounts)</option>
               </select>
 
-              {/* Element */}
               <select
                 className="rounded-xl border bg-white px-3 py-2 text-sm min-w-[220px]"
                 value={element}
@@ -552,7 +597,6 @@ export default function FaostatProductsPage() {
                 ))}
               </select>
 
-              {/* Year (latest..latest-5) */}
               <select
                 className="rounded-xl border bg-white px-3 py-2 text-sm"
                 value={year || ""}
@@ -569,7 +613,6 @@ export default function FaostatProductsPage() {
                 ))}
               </select>
 
-              {/* Area search + pick (dropdown values) */}
               <div className="relative" ref={areaBoxRef}>
                 <Input
                   value={areaQ}
@@ -621,7 +664,6 @@ export default function FaostatProductsPage() {
                 ) : null}
               </div>
 
-              {/* Top N */}
               <select
                 className="rounded-xl border bg-white px-3 py-2 text-sm"
                 value={limit}
@@ -645,6 +687,7 @@ export default function FaostatProductsPage() {
               >
                 Prev
               </Button>
+
               <Button
                 variant="outline"
                 className="rounded-xl"
@@ -653,6 +696,7 @@ export default function FaostatProductsPage() {
               >
                 Next
               </Button>
+
               <Link href="/" prefetch>
                 <Button variant="outline" className="rounded-xl">
                   <Home className="mr-2 h-4 w-4" />
@@ -685,9 +729,7 @@ export default function FaostatProductsPage() {
         </CardHeader>
       </Card>
 
-      {/* Main */}
       <div className="grid gap-4 lg:grid-cols-12">
-        {/* Products */}
         <div className="lg:col-span-5">
           <Card>
             <CardHeader className="pb-2">
@@ -711,13 +753,16 @@ export default function FaostatProductsPage() {
                   Select <b>Element</b>, <b>Year</b>, then <b>pick an Area</b>{" "}
                   to load products.
                 </div>
+              ) : productsLoading ? (
+                <div className="p-4">
+                  <SectionLoader label="Loading products..." />
+                </div>
               ) : productsError ? (
                 <div className="p-4 text-sm text-rose-700">
                   <div className="font-semibold">Products API error</div>
                   <div className="mt-1">{productsError}</div>
                   <div className="mt-2 text-xs text-slate-500">
-                    Tip: choose a valid FAOSTAT area from dropdown (with real{" "}
-                    <b>Area Code</b>).
+                    Tip: choose a valid FAOSTAT area from dropdown.
                   </div>
                 </div>
               ) : filteredProducts.length === 0 ? (
@@ -759,7 +804,7 @@ export default function FaostatProductsPage() {
                               role="button"
                               tabIndex={0}
                               className={[
-                                "row-click select-none", // ✅ force pointer
+                                "row-click select-none",
                                 "border-b transition-colors",
                                 "hover:bg-indigo-50/70",
                                 "active:bg-indigo-100",
@@ -767,7 +812,7 @@ export default function FaostatProductsPage() {
                                   ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200"
                                   : "",
                               ].join(" ")}
-                              style={{ cursor: "pointer" }} // ✅ inline hard-force
+                              style={{ cursor: "pointer" }}
                               onClick={() => {
                                 setSelected({ ...p });
                                 setTrend([]);
@@ -836,7 +881,6 @@ export default function FaostatProductsPage() {
           </Card>
         </div>
 
-        {/* Trend */}
         <div className="lg:col-span-7">
           <Card>
             <CardHeader className="pb-2">
@@ -873,9 +917,7 @@ export default function FaostatProductsPage() {
                   {trendError}
                 </div>
               ) : trendLoading ? (
-                <div className="h-full rounded-xl border bg-white flex items-center justify-center text-sm text-slate-600">
-                  Loading trend…
-                </div>
+                <SectionLoader label="Loading trend..." />
               ) : !trend.length ? (
                 <div className="h-full rounded-xl border bg-white flex items-center justify-center text-sm text-slate-600">
                   No trend data.
@@ -889,7 +931,7 @@ export default function FaostatProductsPage() {
                           year: d.year,
                           value: toNum(d.value),
                         }))}
-                        margin={{ top: 10, right: 14, bottom: 6, left: 34 }} // ✅ increase left
+                        margin={{ top: 10, right: 14, bottom: 6, left: 34 }}
                       >
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="year" />
@@ -916,7 +958,7 @@ export default function FaostatProductsPage() {
                           year: d.year,
                           value: toNum(d.value),
                         }))}
-                        margin={{ top: 10, right: 14, bottom: 6, left: 34 }} // ✅ increase left
+                        margin={{ top: 10, right: 14, bottom: 6, left: 34 }}
                       >
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="year" />
