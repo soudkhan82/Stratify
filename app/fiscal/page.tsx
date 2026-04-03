@@ -1,4 +1,3 @@
-// app/fiscal/page.tsx
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FISCAL_METRICS } from "./_lib/fiscalMeta";
@@ -22,7 +21,12 @@ export default function FiscalHome() {
 
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {FISCAL_METRICS.map((m) => (
-            <Link key={m.slug} href={`/fiscal/${m.slug}`} className="block">
+            <Link
+              key={m.slug}
+              href={`/fiscal/${m.slug}`}
+              prefetch={false}
+              className="block"
+            >
               <Card className="transition-colors hover:bg-muted/30">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">{m.title}</CardTitle>
@@ -30,6 +34,7 @@ export default function FiscalHome() {
                     {m.subtitle}
                   </div>
                 </CardHeader>
+
                 <CardContent>
                   <div className="text-sm">
                     <span className="text-muted-foreground">Unit:</span>{" "}

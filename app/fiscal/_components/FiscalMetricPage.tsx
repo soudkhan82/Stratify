@@ -1,4 +1,3 @@
-// app/fiscal/_components/FiscalMetricPage.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -31,6 +30,8 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
+
+import DashboardLoading from "./dashboard-loading";
 
 type RankRow = {
   country_code: string;
@@ -298,13 +299,31 @@ export default function FiscalMetricPage({
   );
 
   const fmt = data?.meta?.fmt ?? "pct";
-
-  // ✅ make ~12 rows visible: 12 * 48px + header (~44px) ≈ 620px
   const TABLE_VIEWPORT_PX = 620;
+
+  if (loadingFull && !data) {
+    return <DashboardLoading />;
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto max-w-7xl px-4 py-6">
+        {loadingFull && data && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-[1px]">
+            <div className="flex flex-col items-center gap-4 rounded-2xl border border-slate-800 bg-black px-8 py-10 shadow-2xl">
+              <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-700 border-t-white" />
+              <div className="text-center">
+                <p className="text-base font-semibold text-white">
+                  Loading dashboard...
+                </p>
+                <p className="mt-1 text-sm text-slate-400">
+                  Fetching fiscal data and preparing visuals
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
@@ -431,7 +450,6 @@ export default function FiscalMetricPage({
 
         {/* Controls + Table + Trend */}
         <div className="mt-3 grid gap-3 lg:grid-cols-12">
-          {/* Table */}
           <Card className="lg:col-span-7">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Ranking</CardTitle>
@@ -477,38 +495,28 @@ export default function FiscalMetricPage({
             </CardHeader>
 
             <CardContent>
-              {/* ✅ ENERGY STANDARD TABLE TEMPLATE */}
               <div className="rounded-lg border bg-white">
                 <div
                   className="max-h-[620px] overflow-y-auto overflow-x-hidden"
                   style={{ maxHeight: TABLE_VIEWPORT_PX }}
                 >
                   <table className="min-w-full text-sm">
-                    {/* ✅ Sticky header like Energy */}
                     <thead className="sticky top-0 z-10 bg-slate-900">
                       <tr className="text-white">
-                        <th className="px-3 py-2 w-[60px] text-left font-semibold">
+                        <th className="w-[60px] px-3 py-2 text-left font-semibold">
                           #
                         </th>
                         <th className="px-3 py-2 text-left font-semibold">
                           Country
                         </th>
-                        <th className="px-3 py-2 w-[160px] text-right font-semibold">
+                        <th className="w-[160px] px-3 py-2 text-right font-semibold">
                           Value
                         </th>
                       </tr>
                     </thead>
 
                     <tbody>
-                      {loadingFull && (
-                        <tr className="border-t">
-                          <td className="px-3 py-10 text-slate-500" colSpan={3}>
-                            Loading…
-                          </td>
-                        </tr>
-                      )}
-
-                      {!loadingFull && filtered.length === 0 && (
+                      {filtered.length === 0 && (
                         <tr className="border-t">
                           <td className="px-3 py-10 text-slate-500" colSpan={3}>
                             No results.
@@ -516,60 +524,58 @@ export default function FiscalMetricPage({
                         </tr>
                       )}
 
-                      {!loadingFull &&
-                        filtered.map((r, i) => {
-                          const active = r.country_code === selectedIso3;
+                      {filtered.map((r, i) => {
+                        const active = r.country_code === selectedIso3;
 
-                          return (
-                            <tr
-                              key={`${r.country_code}-${r.year}`}
-                              onClick={() => {
+                        return (
+                          <tr
+                            key={`${r.country_code}-${r.year}`}
+                            onClick={() => {
+                              if (r.country_code === selectedIso3) return;
+                              setSelectedIso3(r.country_code);
+                              fetchSeriesOnly(r.country_code);
+                            }}
+                            className={[
+                              "border-b transition-colors",
+                              "hover:bg-muted/50",
+                              active ? "bg-muted/60" : "",
+                            ].join(" ")}
+                            style={{ cursor: "pointer" }}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
                                 if (r.country_code === selectedIso3) return;
                                 setSelectedIso3(r.country_code);
                                 fetchSeriesOnly(r.country_code);
-                              }}
-                              className={[
-                                "border-b transition-colors",
-                                "hover:bg-muted/50",
-                                active ? "bg-muted/60" : "",
-                              ].join(" ")}
-                              style={{ cursor: "pointer" }} // ✅ GUARANTEES pointer for the row
-                              role="button"
-                              tabIndex={0}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                  e.preventDefault();
-                                  if (r.country_code === selectedIso3) return;
-                                  setSelectedIso3(r.country_code);
-                                  fetchSeriesOnly(r.country_code);
-                                }
-                              }}
-                              title="Click to update trend (table will not refresh)"
-                            >
-                              <td className="px-3 py-2 text-muted-foreground cursor-pointer">
-                                {i + 1}
-                              </td>
+                              }
+                            }}
+                            title="Click to update trend (table will not refresh)"
+                          >
+                            <td className="cursor-pointer px-3 py-2 text-muted-foreground">
+                              {i + 1}
+                            </td>
 
-                              <td className="px-3 py-2 cursor-pointer">
-                                <div className="font-medium">
-                                  {r.country_name}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {r.country_code} • {r.region ?? "—"}
-                                </div>
-                              </td>
+                            <td className="cursor-pointer px-3 py-2">
+                              <div className="font-medium">
+                                {r.country_name}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {r.country_code} • {r.region ?? "—"}
+                              </div>
+                            </td>
 
-                              <td className="px-3 py-2 font-medium cursor-pointer">
-                                {fmtValue(Number(r.value), fmt)} {metaUnit}
-                              </td>
-                            </tr>
-                          );
-                        })}
+                            <td className="cursor-pointer px-3 py-2 font-medium">
+                              {fmtValue(Number(r.value), fmt)} {metaUnit}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
 
-                {/* Footer hint like Energy */}
                 <div className="border-t px-3 py-2 text-[11px] text-slate-500">
                   Scroll for more rows
                 </div>
@@ -579,7 +585,7 @@ export default function FiscalMetricPage({
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                   <div>
                     Selected:{" "}
-                    <span className="text-foreground font-medium">
+                    <span className="font-medium text-foreground">
                       {selected.row.country_name}
                     </span>{" "}
                     ({selected.row.country_code}) • Rank #{selected.rank}/
@@ -587,7 +593,7 @@ export default function FiscalMetricPage({
                   </div>
                   <div className="flex items-center gap-2">
                     {signPill(Number(selected.row.value))}
-                    <span className="text-foreground font-medium">
+                    <span className="font-medium text-foreground">
                       {fmtValue(Number(selected.row.value), fmt)} {metaUnit}
                     </span>
                   </div>
@@ -596,7 +602,6 @@ export default function FiscalMetricPage({
             </CardContent>
           </Card>
 
-          {/* Trend */}
           <Card className="lg:col-span-5">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">
@@ -608,7 +613,7 @@ export default function FiscalMetricPage({
             </CardHeader>
 
             <CardContent>
-              <div className="h-[340px] rounded-lg border relative">
+              <div className="relative h-[340px] rounded-lg border">
                 {loadingSeries && (
                   <div className="absolute inset-0 grid place-items-center bg-background/60">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
