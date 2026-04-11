@@ -15,6 +15,7 @@ export default function TopNav() {
     { label: "Energy", href: "/energy" }, // ✅ NEW
     { label: "FAO", href: "/faostat" },
     { label: "Fiscal", href: "/fiscal" },
+    { label: "Policy Intelligence", href: "/policy-intelligence" },
   ];
 
   const isActive = (href: string) =>

@@ -77,7 +77,7 @@ export async function GET(req: Request) {
     if (!iso3 || !indicator) {
       return NextResponse.json(
         { error: "iso3 and indicator are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -90,7 +90,7 @@ export async function GET(req: Request) {
     if (error) {
       return NextResponse.json(
         { error: `fetch_wdi_country_series: ${error.message}` },
-        { status: 500 }
+        { status: 500 },
       );
     }
 

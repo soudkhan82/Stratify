@@ -120,3 +120,98 @@
     @apply bg-background text-foreground;
   }
 }
+:root {
+  --app-bg: #f7f8fa;
+  --surface: #ffffff;
+  --surface-alt: #f8fafc;
+  --border: #dbe3ea;
+  --text: #0f172a;
+  --muted: #475569;
+  --accent: #0ea75a;
+  --accent-dark: #0b8a4b;
+  --accent-soft: #e7f7ef;
+  --nav-dark: #0f172a;
+}
+
+body {
+  background: var(--app-bg);
+  color: var(--text);
+}
+
+.app-shell {
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(14, 167, 90, 0.08),
+      transparent 22%
+    ),
+    linear-gradient(to bottom, #fbfcfd, #f4f7fa);
+  min-height: 100vh;
+}
+
+.ws-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+}
+
+.ws-card-soft {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbf9 100%);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+}
+
+.ws-chip {
+  border: 1px solid #cfe9d9;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  border-radius: 9999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ws-btn {
+  height: 44px;
+  border-radius: 14px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.ws-btn-primary {
+  background: var(--accent);
+  color: white;
+  border: 1px solid var(--accent);
+}
+
+.ws-btn-primary:hover {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+}
+
+.ws-btn-secondary {
+  background: white;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.ws-btn-secondary:hover {
+  background: #f8fafc;
+}
+
+.ws-section-title {
+  font-size: 28px;
+  line-height: 1.1;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.ws-subtitle {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
