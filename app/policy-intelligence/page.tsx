@@ -86,6 +86,8 @@ export default function PolicyIntelligencePage() {
       setError(null);
 
       try {
+        // IMPORTANT: this must match your actual file:
+        // app/api/policy-intelligence/filter/route.ts
         const json = await fetchJsonSafe<FilterResponse>(
           "/api/policy-intelligence/filter",
         );
@@ -104,8 +106,8 @@ export default function PolicyIntelligencePage() {
         setRegions(nextRegions);
         setCountries(nextCountries);
 
-        if (!country && nextCountries.length > 0) {
-          setCountry(nextCountries[0].iso3);
+        if (nextCountries.length > 0) {
+          setCountry((prev) => prev || nextCountries[0].iso3);
         }
       } catch (e) {
         if (!alive) return;
@@ -145,7 +147,7 @@ export default function PolicyIntelligencePage() {
           <div className="text-lg font-semibold">
             Failed to load Policy Intelligence
           </div>
-          <div className="mt-2 text-sm">{error}</div>
+          <div className="mt-2 break-words text-sm">{error}</div>
         </div>
       </div>
     );
