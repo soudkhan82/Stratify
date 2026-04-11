@@ -1,148 +1,118 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import PolicyHeader from "./_components/PolicyHeader";
-import PolicyFilters from "./_components/PolicyFilters";
-import PolicySectorTabs from "./_components/PolicySectorTabs";
-import PolicyKpiGrid from "./_components/PolicyKpiGrid";
-import PolicyMapboxCard from "./_components/PolicyMapboxCard";
-import PolicySnapshotCard from "./_components/PolicySnapshotCard";
-import PolicyProgramsTable from "./_components/PolicyProgramsTable";
-import PolicyEvidenceTable from "./_components/PolicyEvidenceTable";
-import SectorIntro from "./_components/SectorIntro";
-import { POLICY_SECTORS } from "./_lib/sector-config";
 
-type FilterCountry = {
+type CountryItem = {
   iso3: string;
   country: string;
   region: string;
 };
 
-type RegionCount = {
-  region: string;
-  count: number;
-};
-
-type FiltersResponse = {
-  ok?: boolean;
-  regions: string[];
-  countries: FilterCountry[];
+type FilterResponse = {
+  ok: boolean;
   error?: string;
-  debug?: {
-    totalRows?: number;
-    validCountries?: number;
-    countsByRegion?: RegionCount[];
-    sample?: FilterCountry[];
-  };
+  regions: string[];
+  countries: CountryItem[];
 };
 
-export default function Page() {
-  const [sector, setSector] = useState(POLICY_SECTORS[0]?.key ?? "health");
+function LoadingBlock({ label = "Loading..." }: { label?: string }) {
+  return (
+    <div className="flex min-h-[420px] items-center justify-center">
+      <div className="flex min-w-[260px] flex-col items-center rounded-3xl border border-slate-200 bg-white px-8 py-8 shadow-sm">
+        <div className="mb-4 h-12 w-12 animate-spin rounded-full border-[3px] border-slate-200 border-t-slate-900" />
+        <div className="text-base font-semibold text-slate-900">{label}</div>
+        <div className="mt-1 text-sm text-slate-500">
+          Please wait while data is being fetched
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SafeImage({
+  src,
+  alt,
+  className,
+  fallback = "/placeholder.png",
+}: {
+  src?: string | null;
+  alt: string;
+  className?: string;
+  fallback?: string;
+}) {
+  const [imgSrc, setImgSrc] = useState(src && src.trim() ? src : fallback);
+
+  return (
+    <img
+      src={imgSrc}
+      alt={alt}
+      className={className}
+      onError={() => setImgSrc(fallback)}
+    />
+  );
+}
+
+async function fetchJsonSafe<T>(url: string): Promise<T> {
+  const res = await fetch(url, { cache: "no-store" });
+  const text = await res.text();
+
+  if (!res.ok) {
+    throw new Error(`Request failed: ${res.status} ${text.slice(0, 200)}`);
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    console.error("Non-JSON API response:", text);
+    throw new Error("API returned invalid JSON");
+  }
+}
+
+export default function PolicyIntelligencePage() {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [regions, setRegions] = useState<string[]>([]);
+  const [countries, setCountries] = useState<CountryItem[]>([]);
 
   const [region, setRegion] = useState("World");
   const [country, setCountry] = useState("");
-  const [countryIso3, setCountryIso3] = useState("");
-  const [yearRange, setYearRange] = useState("2000 - 2024");
-  const [evidenceFilter, setEvidenceFilter] = useState("All evidence");
-
-  const [regionOptions, setRegionOptions] = useState<string[]>(["World"]);
-  const [allCountries, setAllCountries] = useState<FilterCountry[]>([]);
-  const [loadingFilters, setLoadingFilters] = useState(false);
-  const [filtersError, setFiltersError] = useState<string | null>(null);
-  const [filtersDebug, setFiltersDebug] = useState<FiltersResponse["debug"]>();
-
-  const activeSector = useMemo(() => {
-    return (
-      POLICY_SECTORS.find((item) => item.key === sector) ?? POLICY_SECTORS[0]
-    );
-  }, [sector]);
 
   useEffect(() => {
     let alive = true;
 
     async function loadFilters() {
-      setLoadingFilters(true);
-      setFiltersError(null);
+      setLoading(true);
+      setError(null);
 
       try {
-        const res = await fetch("/api/policy-intelligence/filters", {
-          cache: "no-store",
-        });
-
-        const contentType = res.headers.get("content-type") || "";
-        if (!contentType.includes("application/json")) {
-          throw new Error(
-            "Filters API is not returning JSON. Check /api/policy-intelligence/filters.",
-          );
-        }
-
-        const json = (await res.json()) as FiltersResponse;
-
-        if (!res.ok || json.ok === false) {
-          throw new Error(json.error ?? "Failed to load filters");
-        }
+        const json = await fetchJsonSafe<FilterResponse>(
+          "/api/policy-intelligence/filter",
+        );
 
         if (!alive) return;
 
-        const safeRegions = Array.isArray(json.regions)
-          ? json.regions.filter(
-              (item): item is string =>
-                typeof item === "string" && item.trim().length > 0,
-            )
-          : ["World"];
+        if (!json.ok) {
+          throw new Error(json.error || "Failed to load filters");
+        }
 
-        const safeCountries = Array.isArray(json.countries)
-          ? json.countries.filter(
-              (item): item is FilterCountry =>
-                !!item &&
-                typeof item.iso3 === "string" &&
-                item.iso3.trim().length > 0 &&
-                typeof item.country === "string" &&
-                item.country.trim().length > 0 &&
-                typeof item.region === "string" &&
-                item.region.trim().length > 0,
-            )
+        const nextRegions = Array.isArray(json.regions) ? json.regions : [];
+        const nextCountries = Array.isArray(json.countries)
+          ? json.countries
           : [];
 
-        setRegionOptions(safeRegions.length ? safeRegions : ["World"]);
-        setAllCountries(safeCountries);
-        setFiltersDebug(json.debug);
+        setRegions(nextRegions);
+        setCountries(nextCountries);
 
-        const pakistan =
-          safeCountries.find((item) => item.iso3 === "PAK") ?? safeCountries[0];
-
-        if (pakistan) {
-          setRegion(pakistan.region);
-          setCountry(pakistan.country);
-          setCountryIso3(pakistan.iso3);
-        } else {
-          setRegion("World");
-          setCountry("");
-          setCountryIso3("");
+        if (!country && nextCountries.length > 0) {
+          setCountry(nextCountries[0].iso3);
         }
-
-        console.log("[policy filters] loaded", {
-          regionCount: safeRegions.length,
-          countryCount: safeCountries.length,
-          debug: json.debug,
-        });
-      } catch (error) {
+      } catch (e) {
         if (!alive) return;
-
-        const message =
-          error instanceof Error ? error.message : "Failed to load filters";
-
-        setFiltersError(message);
-        setRegionOptions(["World"]);
-        setAllCountries([]);
-        setRegion("World");
-        setCountry("");
-        setCountryIso3("");
-        setFiltersDebug(undefined);
-
-        console.error("[policy filters] failed", message);
+        setError(e instanceof Error ? e.message : "Unknown client error");
       } finally {
-        if (alive) setLoadingFilters(false);
+        if (!alive) return;
+        setLoading(false);
       }
     }
 
@@ -154,231 +124,126 @@ export default function Page() {
   }, []);
 
   const filteredCountries = useMemo(() => {
-    if (region === "World") return allCountries;
-    return allCountries.filter((item) => item.region === region);
-  }, [region, allCountries]);
-
-  const countryOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        filteredCountries
-          .map((item) => item.country)
-          .filter((item) => typeof item === "string" && item.trim().length > 0),
-      ),
-    ).sort((a, b) => a.localeCompare(b));
-  }, [filteredCountries]);
+    if (region === "World") return countries;
+    return countries.filter((c) => c.region === region);
+  }, [countries, region]);
 
   useEffect(() => {
-    if (!filteredCountries.length) {
-      setCountry("");
-      setCountryIso3("");
-      return;
+    if (!filteredCountries.find((c) => c.iso3 === country)) {
+      setCountry(filteredCountries[0]?.iso3 ?? "");
     }
+  }, [filteredCountries, country]);
 
-    const exists = filteredCountries.some((item) => item.country === country);
+  if (loading) {
+    return <LoadingBlock label="Loading Policy Intelligence..." />;
+  }
 
-    if (!exists) {
-      const fallback = filteredCountries[0];
-      setCountry(fallback.country);
-      setCountryIso3(fallback.iso3);
-    }
-  }, [region, filteredCountries, country]);
-
-  useEffect(() => {
-    if (!country) {
-      setCountryIso3("");
-      return;
-    }
-
-    const found = allCountries.find((item) => item.country === country);
-    if (found) {
-      setCountryIso3(found.iso3);
-    }
-  }, [country, allCountries]);
-
-  const kpis = useMemo(
-    () => [
-      {
-        title: "Tracked programs",
-        value: "24",
-        subtitle: "Across active policy intelligence registry",
-      },
-      {
-        title: "Indicators mapped",
-        value: "18",
-        subtitle: `Aligned to ${activeSector.label.toLowerCase()} sector`,
-      },
-      {
-        title: "Impact coverage",
-        value: "Quant + Qual",
-        subtitle: "Economic and social outcome lens",
-      },
-      {
-        title: "Active country",
-        value: country || "—",
-        subtitle: "Default workspace context",
-      },
-    ],
-    [activeSector.label, country],
-  );
-
-  const filteredPreview = filteredCountries.slice(0, 25);
+  if (error) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-6">
+        <div className="rounded-3xl border border-red-200 bg-red-50 p-6 text-red-700 shadow-sm">
+          <div className="text-lg font-semibold">
+            Failed to load Policy Intelligence
+          </div>
+          <div className="mt-2 text-sm">{error}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="app-shell px-4 py-10">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <PolicyHeader
-          eyebrow="WorldStats360 • Stratify"
-          title="Policy Intelligence"
-          description="Explore sector-focused government programs, strategic priorities, and measurable economic and social impact."
-        />
-
-        <PolicyFilters
-          region={region}
-          onRegionChange={setRegion}
-          yearRange={yearRange}
-          onYearRangeChange={setYearRange}
-          country={country}
-          onCountryChange={setCountry}
-          countryOptions={countryOptions}
-          evidenceFilter={evidenceFilter}
-          onEvidenceFilterChange={setEvidenceFilter}
-          regionOptions={regionOptions}
-        />
-
-        {filtersError ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            <div className="font-semibold">Filters diagnostic failed</div>
-            <div className="mt-1">{filtersError}</div>
-          </div>
-        ) : null}
-
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-          <div className="font-semibold text-slate-800">Filters diagnostic</div>
-
-          <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
-            <div>Loading: {loadingFilters ? "Yes" : "No"}</div>
-            <div>Regions loaded: {regionOptions.length}</div>
-            <div>Countries loaded: {allCountries.length}</div>
-            <div>Filtered countries: {countryOptions.length}</div>
-            <div>Selected region: {region || "—"}</div>
-            <div>Selected country: {country || "—"}</div>
-            <div>Selected ISO3: {countryIso3 || "—"}</div>
-            <div>
-              API debug:{" "}
-              {filtersDebug
-                ? `${filtersDebug.validCountries ?? 0} valid / ${filtersDebug.totalRows ?? 0} rows`
-                : "—"}
-            </div>
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Region counts
+    <div className="min-h-screen bg-slate-50">
+      <div className="mx-auto max-w-7xl px-4 py-6">
+        <div className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+          <aside className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-5 py-5">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                Control Panel
               </div>
-              <div className="mt-2 max-h-44 overflow-y-auto space-y-1 text-sm">
-                {filtersDebug?.countsByRegion?.length ? (
-                  filtersDebug.countsByRegion.map((item) => (
-                    <div
-                      key={item.region}
-                      className="flex items-center justify-between rounded-md border border-slate-100 px-2 py-1"
-                    >
-                      <span>{item.region}</span>
-                      <span className="font-medium">{item.count}</span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-slate-400">
-                    No region counts available.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Filtered country preview
-              </div>
-              <div className="mt-2 max-h-44 overflow-y-auto space-y-1 text-sm">
-                {filteredPreview.length ? (
-                  filteredPreview.map((item) => (
-                    <div
-                      key={`${item.iso3}-${item.country}`}
-                      className="flex items-center justify-between rounded-md border border-slate-100 px-2 py-1"
-                    >
-                      <span>{item.country}</span>
-                      <span className="text-slate-500">{item.iso3}</span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-slate-400">
-                    No countries in this region.
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <PolicySectorTabs
-          value={sector}
-          onChange={setSector}
-          sectors={POLICY_SECTORS}
-        />
-
-        <PolicyKpiGrid items={kpis} />
-
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-          <div className="space-y-6 xl:col-span-8">
-            <SectorIntro
-              title={activeSector.label}
-              description={activeSector.description}
-              shortIntro={activeSector.shortIntro}
-              accentClass="text-[#0b8a4b]"
-            />
-
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <PolicyMapboxCard
-                country={country || "No country"}
-                iso3={countryIso3 || "PAK"}
-                region={region}
-              />
-
-              <PolicySnapshotCard
-                sector={activeSector.label}
-                focus={activeSector.shortIntro}
-                country={country || "—"}
-                status={
-                  loadingFilters
-                    ? "Loading workspace filters..."
-                    : filtersError
-                      ? "Filter loading failed."
-                      : "Filters now come from country_dim_clean and stay synchronized."
-                }
-              />
-            </div>
-
-            <PolicyProgramsTable
-              sector={activeSector.label}
-              country={country || "—"}
-              rows={[]}
-            />
-
-            <PolicyEvidenceTable sector={activeSector.label} rows={[]} />
-          </div>
-
-          <div className="space-y-6 xl:col-span-4">
-            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-900">
-                Workspace summary
-              </h3>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                Region and country now come from the same source table and stay
-                synchronized.
+              <h2 className="mt-2 text-2xl font-bold text-slate-900">
+                Policy Intelligence
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Choose region and country to explore.
               </p>
             </div>
-          </div>
+
+            <div className="space-y-4 px-5 py-5">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Region
+                </label>
+                <select
+                  value={region}
+                  onChange={(e) => setRegion(e.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-slate-400 focus:bg-white"
+                >
+                  {regions.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Country
+                </label>
+                <select
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-slate-400 focus:bg-white"
+                >
+                  {filteredCountries.map((c) => (
+                    <option key={c.iso3} value={c.iso3}>
+                      {c.country}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </aside>
+
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-2xl font-bold text-slate-900">
+                  Policy Intelligence Dashboard
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Region: {region} {country ? `• Country: ${country}` : ""}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-5 md:grid-cols-2">
+              <div className="rounded-3xl border border-slate-200 p-4">
+                <div className="mb-3 text-sm font-semibold text-slate-700">
+                  Selected Country
+                </div>
+                <div className="text-xl font-bold text-slate-900">
+                  {filteredCountries.find((c) => c.iso3 === country)?.country ||
+                    "—"}
+                </div>
+                <div className="mt-1 text-sm text-slate-500">
+                  {country || "—"}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-slate-200 p-4">
+                <div className="mb-3 text-sm font-semibold text-slate-700">
+                  Preview Image
+                </div>
+                <SafeImage
+                  src="/policy-intelligence-cover.png"
+                  alt="Policy Intelligence"
+                  className="h-48 w-full rounded-2xl object-cover"
+                  fallback="/placeholder.png"
+                />
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </div>
