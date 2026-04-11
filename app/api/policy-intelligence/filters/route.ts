@@ -1,17 +1,26 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+type CountryRow = {
+  country_code: string | null;
+  country_name: string | null;
+  region: string | null;
+};
 
 export async function GET() {
   try {
-    if (!supabaseUrl || !serviceRoleKey) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseAnonKey) {
       return NextResponse.json(
         {
           ok: false,
           error:
-            "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
+            "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY",
           regions: [],
           countries: [],
         },
@@ -19,7 +28,7 @@ export async function GET() {
       );
     }
 
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
     const { data, error } = await supabase
       .from("country_dim_clean")
@@ -42,7 +51,9 @@ export async function GET() {
       );
     }
 
-    const rows = Array.isArray(data) ? data : [];
+    const rows: CountryRow[] = Array.isArray(data)
+      ? (data as CountryRow[])
+      : [];
 
     const countries = rows
       .map((row) => ({
