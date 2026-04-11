@@ -452,7 +452,9 @@ export default function CountryProfilePage() {
                 </>
               )}
 
-              {!tabSwitchLoading && tab === "weo" && <WeoTab iso3={iso3} />}
+              {!tabSwitchLoading && tab === "weo" && (
+                <WeoTab iso3={iso3} initialIndicator={indicator} />
+              )}
             </div>
           </section>
         </div>

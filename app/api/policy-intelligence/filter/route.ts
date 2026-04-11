@@ -58,8 +58,8 @@ export async function GET() {
     const countries = rows
       .map((row) => ({
         iso3: String(row.country_code ?? "")
-          .toUpperCase()
-          .trim(),
+          .trim()
+          .toUpperCase(),
         country: String(row.country_name ?? "").trim(),
         region: String(row.region ?? "").trim(),
       }))
