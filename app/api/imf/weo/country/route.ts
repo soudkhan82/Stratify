@@ -3,18 +3,55 @@ import supabase from "@/app/config/supabase-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 type WeoRpcRow = {
-  year: number;
-  value: number | null;
-  indicator_code?: string;
-  indicator_label?: string;
-  unit?: string;
-  country?: string;
-  iso3?: string;
-  vintage?: string;
+  year: number | string | null;
+  value: number | string | null;
+  vintage?: string | null;
+  country?: string | null;
+  iso3?: string | null;
+  indicator_code?: string | null;
+  indicator_label?: string | null;
 };
+
+function normalizePoints(rows: WeoRpcRow[] | null | undefined) {
+  return (rows || [])
+    .map((row) => ({
+      year: Number(row.year),
+      value: Number(row.value),
+    }))
+    .filter((row) => Number.isFinite(row.year) && Number.isFinite(row.value))
+    .sort((a, b) => a.year - b.year);
+}
+
+async function getLatestVintage(): Promise<string | null> {
+  const { data, error } = await supabase.rpc("weo_latest_vintage");
+
+  if (error) {
+    console.error("weo_latest_vintage failed:", error.message);
+    return null;
+  }
+
+  if (typeof data === "string") return data;
+
+  if (Array.isArray(data) && data.length > 0) {
+    const first = data[0] as {
+      weo_latest_vintage?: string;
+      vintage?: string;
+    };
+    return first.weo_latest_vintage || first.vintage || null;
+  }
+
+  if (data && typeof data === "object") {
+    const row = data as {
+      weo_latest_vintage?: string;
+      vintage?: string;
+    };
+    return row.weo_latest_vintage || row.vintage || null;
+  }
+
+  return null;
+}
 
 export async function GET(req: Request) {
   try {
@@ -24,15 +61,38 @@ export async function GET(req: Request) {
       .trim()
       .toUpperCase();
 
-    const indicator = String(searchParams.get("indicator") || "").trim();
+    const indicator = String(searchParams.get("indicator") || "")
+      .trim()
+      .toUpperCase();
 
-    // 🔥 HARDCODE OR DEFAULT VINTAGE (IMPORTANT)
-    const vintage = String(searchParams.get("vintage") || "WEO_2025_10");
+    let vintage = String(searchParams.get("vintage") || "").trim();
 
     if (!iso3 || !indicator) {
       return NextResponse.json(
-        { ok: false, error: "Missing iso3 or indicator", rows: [] },
+        {
+          ok: false,
+          error: "Missing iso3 or indicator",
+          points: [],
+        },
         { status: 400 },
+      );
+    }
+
+    if (!vintage) {
+      const latestVintage = await getLatestVintage();
+      if (latestVintage) {
+        vintage = latestVintage;
+      }
+    }
+
+    if (!vintage) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Could not resolve WEO vintage",
+          points: [],
+        },
+        { status: 500 },
       );
     }
 
@@ -43,52 +103,40 @@ export async function GET(req: Request) {
     });
 
     if (error) {
+      console.error("weo_country_series failed:", error.message);
+
       return NextResponse.json(
-        { ok: false, error: error.message, rows: [] },
+        {
+          ok: false,
+          error: error.message,
+          points: [],
+        },
         { status: 500 },
       );
     }
 
-    const rows: WeoRpcRow[] = Array.isArray(data) ? data : [];
-
-    if (rows.length === 0) {
-      return NextResponse.json({
-        ok: true,
-        rows: [],
-        iso3,
-        indicator,
-        vintage,
-      });
-    }
-
-    const first = rows[0];
-
-    const points = rows
-      .map((r) => ({
-        year: Number(r.year),
-        value:
-          r.value === null || r.value === undefined ? null : Number(r.value),
-      }))
-      .filter((p) => Number.isFinite(p.year))
-      .sort((a, b) => a.year - b.year);
+    const rows = (data || []) as WeoRpcRow[];
+    const points = normalizePoints(rows);
 
     return NextResponse.json({
       ok: true,
-      rows: [
-        {
-          indicator_code: first.indicator_code ?? indicator,
-          indicator_label: first.indicator_label ?? indicator,
-          unit: first.unit ?? null,
-          country: first.country ?? iso3,
-          iso3: first.iso3 ?? iso3,
-          vintage: first.vintage ?? vintage,
-          points,
-        },
-      ],
+      iso3,
+      country: rows[0]?.country || iso3,
+      indicator_code: rows[0]?.indicator_code || indicator,
+      indicator_label: rows[0]?.indicator_label || indicator,
+      vintage: rows[0]?.vintage || vintage,
+      points,
+      points_returned: points.length,
     });
-  } catch (e: any) {
+  } catch (error) {
+    console.error("IMF WEO route failed:", error);
+
     return NextResponse.json(
-      { ok: false, error: e.message, rows: [] },
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+        points: [],
+      },
       { status: 500 },
     );
   }

@@ -95,6 +95,78 @@ const WEO_QUICK_PICKS: QuickPick[] = [
   { label: "Investment", indicator: "NID_NGDP" },
 ];
 
+const WEO_ALL_INDICATORS: QuickPick[] = [
+  { label: "GDP growth", indicator: "NGDP_RPCH" },
+  { label: "GDP, current prices", indicator: "NGDPD" },
+  { label: "GDP, constant prices", indicator: "NGDP_R" },
+  { label: "GDP per capita, current prices", indicator: "NGDPDPC" },
+  { label: "GDP, PPP", indicator: "PPPGDP" },
+  { label: "GDP per capita, PPP", indicator: "PPPPC" },
+  { label: "Population", indicator: "LP" },
+  { label: "Unemployment rate", indicator: "LUR" },
+  { label: "Employment", indicator: "LE" },
+  { label: "Inflation, average consumer prices", indicator: "PCPIPCH" },
+  { label: "Inflation, end of period consumer prices", indicator: "PCPIEPCH" },
+  {
+    label: "Imports of goods and services, volume growth",
+    indicator: "TM_RPCH",
+  },
+  {
+    label: "Exports of goods and services, volume growth",
+    indicator: "TX_RPCH",
+  },
+  { label: "Imports of goods, volume growth", indicator: "TMG_RPCH" },
+  { label: "Exports of goods, volume growth", indicator: "TXG_RPCH" },
+  { label: "Current account balance", indicator: "BCA" },
+  { label: "Current account balance, percent of GDP", indicator: "BCA_NGDPD" },
+  { label: "General government total expenditure", indicator: "GGX" },
+  { label: "General government revenue", indicator: "GGR" },
+  { label: "Net lending/borrowing", indicator: "GGXCNL" },
+  { label: "Overall net lending/borrowing", indicator: "GGXONLB" },
+  {
+    label: "Overall net lending/borrowing, percent of GDP",
+    indicator: "GGXONLB_NGDP",
+  },
+  { label: "Gross debt", indicator: "GGXWDN" },
+  { label: "Gross debt, percent of GDP", indicator: "GGXWDN_NGDP" },
+  { label: "Net debt", indicator: "GGXWDG" },
+  { label: "Net debt, percent of GDP", indicator: "GGXWDG_NGDP" },
+  { label: "National savings, percent of GDP", indicator: "NGSD_NGDP" },
+  { label: "Investment, percent of GDP", indicator: "NID_NGDP" },
+  { label: "Unemployment rate, percent", indicator: "LUR_PT" },
+  { label: "PPP exchange rate", indicator: "PPPEX" },
+  { label: "Fiscal year GDP", indicator: "NGDP_FY" },
+  {
+    label: "Inflation excl. food and energy",
+    indicator: "PCPIFBT",
+  },
+  { label: "Consumer prices index", indicator: "PCPI" },
+  { label: "Revenue, percent of GDP", indicator: "GGR_NGDP" },
+  { label: "Expenditure, percent of GDP", indicator: "GGX_NGDP" },
+  { label: "Net lending/borrowing, percent of GDP", indicator: "GGXCNL_NGDP" },
+  { label: "Exports of goods, USD", indicator: "TXG_FOB_USD" },
+  { label: "Imports of goods, USD", indicator: "TMG_CIF_USD" },
+  { label: "Exports of goods and services, BOP", indicator: "TXGSBOP" },
+  { label: "Imports of goods and services, BOP", indicator: "TMGSBOP" },
+  { label: "Exports of goods", indicator: "TXG" },
+  { label: "Imports of goods", indicator: "TMG" },
+  { label: "Government cash balance", indicator: "GGCB" },
+  { label: "Government structural balance", indicator: "GGSB" },
+  { label: "Real GDP per capita, PPP", indicator: "NGDPRPPPPC" },
+  { label: "Share of world GDP at PPP", indicator: "PPPSH" },
+  { label: "GDP, current prices, USD", indicator: "NGDPDUS" },
+  { label: "Nominal GDP level", indicator: "LNNGDP" },
+];
+
+const WEO_VALID_CODES = new Set(
+  [...WEO_QUICK_PICKS, ...WEO_ALL_INDICATORS].map((x) =>
+    x.indicator.toUpperCase(),
+  ),
+);
+
+const DEFAULT_WDI_INDICATOR = "SP.POP.TOTL";
+const DEFAULT_WEO_INDICATOR = "NGDPD";
+
 /* ---------------- page ---------------- */
 
 export default function CountryProfilePage() {
@@ -103,11 +175,21 @@ export default function CountryProfilePage() {
   const { iso3: rawIso3 } = useParams<{ iso3?: string }>();
 
   const iso3 = String(rawIso3 ?? "").toUpperCase();
-  const indicator = (search.get("indicator") || "SP.POP.TOTL").trim();
 
   const initialTab = (search.get("dataset") || "wdi").toLowerCase();
   const safeInitialTab =
     initialTab === "faostat" || initialTab === "weo" ? initialTab : "wdi";
+
+  const rawIndicator = (search.get("indicator") || "").trim();
+
+  const normalizedIndicator = useMemo(() => {
+    if (safeInitialTab === "weo") {
+      const candidate = rawIndicator.toUpperCase();
+      return WEO_VALID_CODES.has(candidate) ? candidate : DEFAULT_WEO_INDICATOR;
+    }
+
+    return rawIndicator || DEFAULT_WDI_INDICATOR;
+  }, [rawIndicator, safeInitialTab]);
 
   const [tab, setTab] = useState<"wdi" | "faostat" | "weo">(
     safeInitialTab as "wdi" | "faostat" | "weo",
@@ -122,6 +204,8 @@ export default function CountryProfilePage() {
   const [wdiLoading, setWdiLoading] = useState(false);
 
   useEffect(() => {
+    if (tab !== "wdi") return;
+
     let alive = true;
 
     (async () => {
@@ -130,18 +214,22 @@ export default function CountryProfilePage() {
         const raw = await fetchJsonOrThrow(
           `/api/wdi/country?iso3=${encodeURIComponent(
             iso3,
-          )}&indicator=${encodeURIComponent(indicator)}`,
+          )}&indicator=${encodeURIComponent(normalizedIndicator)}`,
         );
 
         if (!alive) return;
-        setWdi(parseWdiResponse(raw, iso3, indicator));
+        setWdi(parseWdiResponse(raw, iso3, normalizedIndicator));
       } catch (e: any) {
         if (!alive) return;
         setWdi({
           iso3,
           country: iso3,
           region: null,
-          indicator: { code: indicator, label: indicator, unit: null },
+          indicator: {
+            code: normalizedIndicator,
+            label: normalizedIndicator,
+            unit: null,
+          },
           latest: null,
           series: [],
           error: e?.message ?? "Failed to load WDI",
@@ -154,7 +242,7 @@ export default function CountryProfilePage() {
     return () => {
       alive = false;
     };
-  }, [iso3, indicator]);
+  }, [iso3, normalizedIndicator, tab]);
 
   /* ---------------- FAOSTAT ---------------- */
 
@@ -205,11 +293,42 @@ export default function CountryProfilePage() {
     }
   }
 
-  /* ---------------- tab url sync ---------------- */
+  /* ---------------- url sync ---------------- */
 
   useEffect(() => {
     const params = new URLSearchParams(search.toString());
-    params.set("dataset", tab);
+
+    let changed = false;
+
+    if (params.get("dataset") !== tab) {
+      params.set("dataset", tab);
+      changed = true;
+    }
+
+    if (tab === "weo") {
+      const current = String(params.get("indicator") || "").toUpperCase();
+      const next = WEO_VALID_CODES.has(current)
+        ? current
+        : DEFAULT_WEO_INDICATOR;
+
+      if (params.get("indicator") !== next) {
+        params.set("indicator", next);
+        changed = true;
+      }
+    }
+
+    if (tab === "wdi") {
+      const current = String(params.get("indicator") || "").trim();
+      const next = current || DEFAULT_WDI_INDICATOR;
+
+      if (params.get("indicator") !== next) {
+        params.set("indicator", next);
+        changed = true;
+      }
+    }
+
+    if (!changed) return;
+
     router.replace(`/world/country/${iso3}?${params.toString()}`, {
       scroll: false,
     });
@@ -225,8 +344,32 @@ export default function CountryProfilePage() {
   }
 
   function handleTabChange(nextTab: string) {
+    const next = nextTab as "wdi" | "faostat" | "weo";
+
     setTabSwitchLoading(true);
-    setTab(nextTab as "wdi" | "faostat" | "weo");
+    setTab(next);
+    setSidebarSearch("");
+
+    const params = new URLSearchParams(search.toString());
+    params.set("dataset", next);
+
+    if (next === "weo") {
+      const current = String(params.get("indicator") || "").toUpperCase();
+      if (!WEO_VALID_CODES.has(current)) {
+        params.set("indicator", DEFAULT_WEO_INDICATOR);
+      }
+    }
+
+    if (next === "wdi") {
+      const current = String(params.get("indicator") || "").trim();
+      if (!current || WEO_VALID_CODES.has(current.toUpperCase())) {
+        params.set("indicator", DEFAULT_WDI_INDICATOR);
+      }
+    }
+
+    router.replace(`/world/country/${iso3}?${params.toString()}`, {
+      scroll: false,
+    });
 
     window.clearTimeout((handleTabChange as any)._timer);
     (handleTabChange as any)._timer = window.setTimeout(() => {
@@ -236,29 +379,50 @@ export default function CountryProfilePage() {
 
   /* ---------------- sidebar data ---------------- */
 
-  const currentQuickPicks = useMemo(() => {
-    if (tab === "weo") return WEO_QUICK_PICKS;
-    if (tab === "faostat") return [];
-    return WDI_QUICK_PICKS;
-  }, [tab]);
-
   const filteredQuickPicks = useMemo(() => {
     const q = sidebarSearch.trim().toLowerCase();
-    if (!q) return currentQuickPicks;
 
-    return currentQuickPicks.filter(
+    if (tab === "weo") {
+      if (!q) return WEO_QUICK_PICKS;
+      return WEO_QUICK_PICKS.filter(
+        (item) =>
+          item.label.toLowerCase().includes(q) ||
+          item.indicator.toLowerCase().includes(q),
+      );
+    }
+
+    if (tab === "faostat") return [];
+
+    if (!q) return WDI_QUICK_PICKS;
+    return WDI_QUICK_PICKS.filter(
       (item) =>
         item.label.toLowerCase().includes(q) ||
         item.indicator.toLowerCase().includes(q),
     );
-  }, [sidebarSearch, currentQuickPicks]);
+  }, [sidebarSearch, tab]);
+
+  const filteredWeoAllIndicators = useMemo(() => {
+    if (tab !== "weo") return [];
+
+    const q = sidebarSearch.trim().toLowerCase();
+    if (!q) return WEO_ALL_INDICATORS;
+
+    return WEO_ALL_INDICATORS.filter(
+      (item) =>
+        item.label.toLowerCase().includes(q) ||
+        item.indicator.toLowerCase().includes(q),
+    );
+  }, [sidebarSearch, tab]);
 
   const activeIndicatorLabel = useMemo(() => {
     const found =
-      WDI_QUICK_PICKS.find((x) => x.indicator === indicator)?.label ||
-      WEO_QUICK_PICKS.find((x) => x.indicator === indicator)?.label;
-    return found || indicator;
-  }, [indicator]);
+      WDI_QUICK_PICKS.find((x) => x.indicator === normalizedIndicator)?.label ||
+      WEO_QUICK_PICKS.find((x) => x.indicator === normalizedIndicator)?.label ||
+      WEO_ALL_INDICATORS.find((x) => x.indicator === normalizedIndicator)
+        ?.label;
+
+    return found || normalizedIndicator;
+  }, [normalizedIndicator]);
 
   /* ---------------- ui ---------------- */
 
@@ -309,7 +473,7 @@ export default function CountryProfilePage() {
         </div>
 
         {/* body */}
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
           {/* left sidebar */}
           <aside className="xl:sticky xl:top-6 xl:h-[calc(100vh-48px)]">
             <div className="flex h-full flex-col overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/90 shadow-[0_10px_35px_rgba(15,23,42,0.08)] backdrop-blur">
@@ -321,7 +485,9 @@ export default function CountryProfilePage() {
                   Indicators
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Search, select and jump between quick picks.
+                  {tab === "weo"
+                    ? "Search, select and jump between IMF WEO quick picks and full indicator list."
+                    : "Search, select and jump between quick picks."}
                 </p>
               </div>
 
@@ -342,6 +508,7 @@ export default function CountryProfilePage() {
                     <label className="mb-2 block text-sm font-semibold text-slate-700">
                       Indicator search
                     </label>
+
                     <div className="relative mb-4">
                       <input
                         value={sidebarSearch}
@@ -359,7 +526,7 @@ export default function CountryProfilePage() {
                         {activeIndicatorLabel}
                       </div>
                       <div className="mt-1 break-all text-xs text-slate-500">
-                        {indicator}
+                        {normalizedIndicator}
                       </div>
                     </div>
 
@@ -374,10 +541,10 @@ export default function CountryProfilePage() {
 
                     <div className="space-y-2">
                       {filteredQuickPicks.map((item) => {
-                        const active = item.indicator === indicator;
+                        const active = item.indicator === normalizedIndicator;
                         return (
                           <button
-                            key={item.indicator}
+                            key={`${tab}-quick-${item.indicator}`}
                             onClick={() => updateIndicator(item.indicator)}
                             className={cx(
                               "group w-full rounded-2xl border px-4 py-3 text-left transition-all",
@@ -403,12 +570,64 @@ export default function CountryProfilePage() {
                         );
                       })}
 
-                      {filteredQuickPicks.length === 0 && (
+                      {filteredQuickPicks.length === 0 && tab !== "weo" && (
                         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
                           No indicators matched your search.
                         </div>
                       )}
                     </div>
+
+                    {tab === "weo" && (
+                      <>
+                        <div className="mb-3 mt-6 flex items-center justify-between">
+                          <div className="text-sm font-semibold text-slate-800">
+                            All IMF indicators
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            {filteredWeoAllIndicators.length} items
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          {filteredWeoAllIndicators.map((item) => {
+                            const active =
+                              item.indicator === normalizedIndicator;
+                            return (
+                              <button
+                                key={`weo-all-${item.indicator}`}
+                                onClick={() => updateIndicator(item.indicator)}
+                                className={cx(
+                                  "group w-full rounded-2xl border px-4 py-3 text-left transition-all",
+                                  active
+                                    ? "border-indigo-600 bg-indigo-600 text-white shadow-lg"
+                                    : "border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-indigo-50 hover:shadow-sm",
+                                )}
+                              >
+                                <div className="line-clamp-2 text-sm font-semibold">
+                                  {item.label}
+                                </div>
+                                <div
+                                  className={cx(
+                                    "mt-1 text-xs",
+                                    active
+                                      ? "text-indigo-100"
+                                      : "text-slate-500 group-hover:text-slate-600",
+                                  )}
+                                >
+                                  {item.indicator}
+                                </div>
+                              </button>
+                            );
+                          })}
+
+                          {filteredWeoAllIndicators.length === 0 && (
+                            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                              No IMF indicators matched your search.
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </>
                 )}
               </div>
@@ -423,7 +642,7 @@ export default function CountryProfilePage() {
               {!tabSwitchLoading && tab === "wdi" && (
                 <WdiTab
                   iso3={iso3}
-                  indicator={indicator}
+                  indicator={normalizedIndicator}
                   wdi={wdi}
                   loading={wdiLoading}
                 />
@@ -453,7 +672,7 @@ export default function CountryProfilePage() {
               )}
 
               {!tabSwitchLoading && tab === "weo" && (
-                <WeoTab iso3={iso3} initialIndicator={indicator} />
+                <WeoTab iso3={iso3} initialIndicator={normalizedIndicator} />
               )}
             </div>
           </section>
