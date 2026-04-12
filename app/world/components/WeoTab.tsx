@@ -23,6 +23,10 @@ type WeoResponse = {
   indicator_code?: string;
   indicator_label?: string;
   vintage?: string | null;
+  unit?: string | null;
+  unit_label?: string | null;
+  uom?: string | null;
+  scale?: string | null;
   points?: Array<{
     year: number | string;
     value: number | string;
@@ -51,6 +55,89 @@ function fmtYoY(value: number | null) {
   if (value === null || !Number.isFinite(value)) return "—";
   const sign = value > 0 ? "+" : "";
   return `${sign}${fmt(value)}`;
+}
+
+function getIndicatorUnit(indicator?: string | null): {
+  short: string;
+  long: string;
+} {
+  const code = (indicator || "").toUpperCase().trim();
+
+  // Inflation / prices
+  if (code === "PCPIPCH") {
+    return { short: "%", long: "Annual percent change" };
+  }
+
+  // GDP current prices
+  if (code === "NGDPD") {
+    return { short: "US$ bn", long: "US dollars (billions)" };
+  }
+
+  // GDP per capita, current prices
+  if (code === "NGDPDPC") {
+    return { short: "US$", long: "US dollars per capita" };
+  }
+
+  // GDP constant prices
+  if (code === "NGDP_R" || code === "NGDPR") {
+    return { short: "National currency", long: "Constant prices" };
+  }
+
+  // GDP growth
+  if (code === "NGDP_RPCH") {
+    return { short: "%", long: "Annual percent change" };
+  }
+
+  // GDP PPP
+  if (code === "PPPGDP") {
+    return { short: "PPP$", long: "Purchasing power parity dollars" };
+  }
+
+  // GDP per capita PPP
+  if (code === "NGDPRPPPPC" || code === "PPPPC") {
+    return { short: "PPP$", long: "PPP dollars per capita" };
+  }
+
+  // Current account
+  if (code === "BCA_NGDPD" || code === "BCA_NGDP") {
+    return { short: "% of GDP", long: "Percent of GDP" };
+  }
+  if (code === "BCA") {
+    return { short: "US$ bn", long: "US dollars (billions)" };
+  }
+
+  // Fiscal
+  if (
+    code === "GGXONLB_NGDP" ||
+    code === "GGXCNL_NGDP" ||
+    code === "NGSD_NGDP" ||
+    code === "NID_NGDP"
+  ) {
+    return { short: "% of GDP", long: "Percent of GDP" };
+  }
+
+  if (code === "GGXONLB" || code === "GGXCNL") {
+    return { short: "National currency", long: "National currency" };
+  }
+
+  // Common rule-based fallbacks
+  if (code.endsWith("_NGDP") || code.endsWith("_NGDPD")) {
+    return { short: "% of GDP", long: "Percent of GDP" };
+  }
+
+  if (code.endsWith("DPC")) {
+    return { short: "US$", long: "US dollars per capita" };
+  }
+
+  if (code.endsWith("RPCH") || code.endsWith("PCH")) {
+    return { short: "%", long: "Annual percent change" };
+  }
+
+  if (code.includes("GDP") && !code.includes("NGDP")) {
+    return { short: "US$", long: "US dollars" };
+  }
+
+  return { short: "", long: "" };
 }
 
 export default function WeoTab({ iso3, initialIndicator }: Props) {
@@ -128,6 +215,10 @@ export default function WeoTab({ iso3, initialIndicator }: Props) {
   const minVal = points.length ? Math.min(...points.map((p) => p.value)) : NaN;
   const maxVal = points.length ? Math.max(...points.map((p) => p.value)) : NaN;
 
+  const unitMeta = useMemo(() => {
+    return getIndicatorUnit(payload?.indicator_code || initialIndicator);
+  }, [payload, initialIndicator]);
+
   if (loading) {
     return (
       <div className="flex min-h-[360px] items-center justify-center">
@@ -180,6 +271,7 @@ export default function WeoTab({ iso3, initialIndicator }: Props) {
 
         <div className="mt-1.5 text-xs text-slate-500">
           {payload?.country || iso3} • {payload?.vintage || "Latest vintage"}
+          {unitMeta.long ? ` • Unit: ${unitMeta.long}` : ""}
         </div>
       </div>
 
@@ -189,6 +281,11 @@ export default function WeoTab({ iso3, initialIndicator }: Props) {
           <div className="mt-2 text-[40px] font-bold tracking-tight text-slate-950">
             {fmt(latest)}
           </div>
+          {unitMeta.short ? (
+            <div className="mt-2 text-xs font-medium text-slate-500">
+              {unitMeta.short}
+            </div>
+          ) : null}
         </div>
 
         <div className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-sm">
@@ -196,6 +293,11 @@ export default function WeoTab({ iso3, initialIndicator }: Props) {
           <div className="mt-2 text-[40px] font-bold tracking-tight text-slate-950">
             {fmt(minVal)}
           </div>
+          {unitMeta.short ? (
+            <div className="mt-2 text-xs font-medium text-slate-500">
+              {unitMeta.short}
+            </div>
+          ) : null}
         </div>
 
         <div className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-sm">
@@ -203,6 +305,11 @@ export default function WeoTab({ iso3, initialIndicator }: Props) {
           <div className="mt-2 text-[40px] font-bold tracking-tight text-slate-950">
             {fmt(maxVal)}
           </div>
+          {unitMeta.short ? (
+            <div className="mt-2 text-xs font-medium text-slate-500">
+              {unitMeta.short}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -234,11 +341,16 @@ export default function WeoTab({ iso3, initialIndicator }: Props) {
                   <YAxis
                     stroke="#CBD5E1"
                     tick={{ fill: "#475569", fontSize: 10 }}
-                    width={48}
+                    width={56}
                     tickFormatter={(v) => fmt(Number(v))}
                   />
                   <Tooltip
-                    formatter={(value: number) => [fmt(Number(value)), "Value"]}
+                    formatter={(value: number) => [
+                      unitMeta.short
+                        ? `${fmt(Number(value))} ${unitMeta.short}`
+                        : fmt(Number(value)),
+                      "Value",
+                    ]}
                     labelFormatter={(label) => `Year: ${label}`}
                     contentStyle={{
                       borderRadius: 14,
