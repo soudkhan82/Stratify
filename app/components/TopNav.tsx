@@ -1,49 +1,59 @@
 "use client";
 
-import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-type NavItem = { label: string; href: string };
+const NAV_ITEMS = [
+  { label: "Home", href: "/" },
+  { label: "Debt", href: "/debt" },
+  { label: "Energy", href: "/energy" },
+  { label: "FAO", href: "/faostat" },
+  { label: "Fiscal", href: "/fiscal" },
+];
 
 export default function TopNav() {
   const pathname = usePathname();
 
-  const nav: NavItem[] = [
-    { label: "Home", href: "/" },
-    { label: "Debt", href: "/debt" },
-    { label: "Energy", href: "/energy" }, // ✅ NEW
-    { label: "FAO", href: "/faostat" },
-    { label: "Fiscal", href: "/fiscal" },
-    { label: "Policy Intelligence", href: "/policy-intelligence" },
-  ];
-
-  const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
-
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/90 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-[1400px] items-center justify-start px-4 sm:px-6 lg:px-8">
-        <nav>
-          <div className="flex items-center gap-1 rounded-2xl border border-slate-200 bg-white px-1 py-1 shadow-sm">
-            {nav.map((n) => {
-              const active = isActive(n.href);
-              return (
-                <Link
-                  key={n.href}
-                  href={n.href}
-                  className={[
-                    "rounded-xl px-4 py-2 text-sm font-medium transition",
-                    active
-                      ? "bg-slate-900 text-white shadow-sm"
-                      : "text-slate-700 hover:bg-slate-100",
-                  ].join(" ")}
-                >
-                  {n.label}
-                </Link>
-              );
-            })}
+    <header className="sticky top-0 z-40 border-b border-[#eceef5] bg-white/88 backdrop-blur-xl">
+      <div className="mx-auto flex h-[72px] w-full max-w-[1480px] items-center gap-5 px-4 sm:px-6 lg:px-8">
+        <Link href="/" className="flex items-center gap-2">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-blue-600 text-lg font-black text-white shadow-lg shadow-violet-200">
+            S
           </div>
+
+          <div className="leading-tight">
+            <div className="text-lg font-black tracking-tight text-slate-950">
+              Stratify
+            </div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+              Analytics
+            </div>
+          </div>
+        </Link>
+
+        <nav className="ml-auto flex items-center gap-1 rounded-full border border-[#e6e8ef] bg-[#f8f9fd] p-1.5 shadow-sm">
+          {NAV_ITEMS.map((item) => {
+            const active =
+              item.href === "/"
+                ? pathname === "/"
+                : pathname.startsWith(item.href);
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={[
+                  "rounded-full px-4 py-2 text-sm font-bold transition-all",
+                  active
+                    ? "bg-gradient-to-r from-violet-600 to-blue-600 text-white shadow-md shadow-violet-200"
+                    : "text-slate-600 hover:bg-white hover:text-slate-950 hover:shadow-sm",
+                ].join(" ")}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
       </div>
     </header>
