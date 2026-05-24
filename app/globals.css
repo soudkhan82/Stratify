@@ -1,6 +1,15 @@
 @import "tailwindcss";
 
-/* STRATIFY TYPOGRAPHY REVAMP - WORKSPORA STYLE */
+/* STRATIFY TYPOGRAPHY REVAMP - SOFTER WORKSPORA STYLE */
+
+:root {
+  --stratify-indigo: #3730a3;
+  --stratify-indigo-soft: #4338ca;
+  --stratify-text: #1e293b;
+  --stratify-muted: #64748b;
+  --stratify-border: #e2e8f0;
+  --stratify-bg: #f1f5f9;
+}
 
 html,
 body {
@@ -17,8 +26,8 @@ body {
     "Helvetica Neue",
     Arial,
     sans-serif !important;
-  color: #0f172a;
-  background: #f1f5f9;
+  color: var(--stratify-text);
+  background: var(--stratify-bg);
 }
 
 body {
@@ -29,7 +38,7 @@ body {
 
 * {
   box-sizing: border-box;
-  border-color: #e2e8f0;
+  border-color: var(--stratify-border);
 }
 
 button,
@@ -43,7 +52,6 @@ button {
   cursor: pointer;
 }
 
-/* Remove old serif/academic style */
 h1,
 h2,
 h3,
@@ -71,29 +79,28 @@ div {
     sans-serif !important;
 }
 
-/* Clean headings like Workspora */
 h1 {
-  font-size: 40px;
-  line-height: 1.1;
-  font-weight: 900;
-  letter-spacing: -0.04em;
-  color: #020617;
+  font-size: 34px;
+  line-height: 1.12;
+  font-weight: 760;
+  letter-spacing: -0.035em;
+  color: var(--stratify-indigo);
 }
 
 h2 {
-  font-size: 28px;
-  line-height: 1.15;
-  font-weight: 850;
-  letter-spacing: -0.035em;
-  color: #020617;
+  font-size: 25px;
+  line-height: 1.18;
+  font-weight: 740;
+  letter-spacing: -0.03em;
+  color: var(--stratify-indigo);
 }
 
 h3 {
-  font-size: 22px;
-  line-height: 1.2;
-  font-weight: 800;
-  letter-spacing: -0.025em;
-  color: #020617;
+  font-size: 20px;
+  line-height: 1.22;
+  font-weight: 720;
+  letter-spacing: -0.02em;
+  color: var(--stratify-indigo-soft);
 }
 
 p {
@@ -102,7 +109,6 @@ p {
   color: #475569;
 }
 
-/* Remove black underlines everywhere */
 a,
 a:hover,
 a:focus,
@@ -111,70 +117,70 @@ a:active {
   text-decoration: none !important;
 }
 
-/* Workspora-style small section label */
+/* Small section label */
 .stratify-eyebrow {
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 850;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: #059669;
 }
 
-/* Workspora-style hero title */
+/* Main hero title - softer, smaller, indigo */
 .stratify-hero-title {
-  font-size: clamp(34px, 5vw, 58px);
-  line-height: 0.98;
-  font-weight: 950;
-  letter-spacing: -0.055em;
-  color: #020617;
+  font-size: clamp(32px, 4.2vw, 48px);
+  line-height: 1.05;
+  font-weight: 760;
+  letter-spacing: -0.045em;
+  color: var(--stratify-indigo);
 }
 
-/* Workspora-style hero paragraph */
+/* Hero paragraph */
 .stratify-hero-text {
   max-width: 720px;
   font-size: 15px;
-  line-height: 1.8;
+  line-height: 1.75;
   font-weight: 500;
   color: #475569;
 }
 
-/* Clean navbar typography */
+/* Navbar typography */
 .stratify-nav-link {
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 760;
   color: #334155;
   text-decoration: none !important;
 }
 
 .stratify-nav-link:hover {
-  color: #059669;
+  color: var(--stratify-indigo);
 }
 
 /* Logo text */
 .stratify-logo-title {
-  font-size: 19px;
+  font-size: 18px;
   line-height: 1;
-  font-weight: 950;
-  letter-spacing: -0.035em;
-  color: #020617;
+  font-weight: 780;
+  letter-spacing: -0.03em;
+  color: var(--stratify-indigo);
 }
 
 .stratify-logo-subtitle {
   margin-top: 3px;
   font-size: 11px;
   line-height: 1;
-  font-weight: 800;
+  font-weight: 760;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: #64748b;
 }
 
-/* Card/table text like Workspora */
+/* Card/table text */
 .stratify-card-title {
   font-size: 18px;
-  font-weight: 900;
+  font-weight: 760;
   letter-spacing: -0.025em;
-  color: #020617;
+  color: var(--stratify-indigo);
 }
 
 .stratify-card-text {
@@ -186,5 +192,28 @@ a:active {
 .stratify-muted {
   font-size: 13px;
   font-weight: 600;
-  color: #64748b;
+  color: var(--stratify-muted);
+}
+
+/* Override overly black utility text where used on landing */
+.text-slate-950,
+.text-slate-900 {
+  color: #1e293b !important;
+}
+
+.font-black {
+  font-weight: 780 !important;
+}
+
+.font-extrabold {
+  font-weight: 740 !important;
+}
+
+/* Softer active nav, if your page uses bg-slate-950 */
+.bg-slate-950 {
+  background-color: #4f46e5 !important;
+}
+
+.hover\:text-slate-950:hover {
+  color: #3730a3 !important;
 }
