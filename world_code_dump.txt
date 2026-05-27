@@ -1,0 +1,4259 @@
+
+
+==================== app\layout.tsx ====================
+
+import "./globals.css";
+import type { Metadata } from "next";
+import TopNav from "./components/TopNav";
+
+export const metadata: Metadata = {
+  title: "Stratify Analytics",
+  description: "Global intelligence analytics portal",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body>
+        <TopNav />
+        <main>{children}</main>
+      </body>
+    </html>
+  );
+}
+
+
+==================== app\globals.css ====================
+
+@import "tailwindcss";
+
+/* STRATIFY TYPOGRAPHY REVAMP - SOFTER WORKSPORA STYLE */
+
+:root {
+  --stratify-indigo: #3730a3;
+  --stratify-indigo-soft: #4338ca;
+  --stratify-text: #1e293b;
+  --stratify-muted: #64748b;
+  --stratify-border: #e2e8f0;
+  --stratify-bg: #f1f5f9;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif !important;
+  color: var(--stratify-text);
+  background: var(--stratify-bg);
+}
+
+body {
+  font-size: 14px;
+  line-height: 1.6;
+  font-weight: 400;
+}
+
+* {
+  box-sizing: border-box;
+  border-color: var(--stratify-border);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+span,
+label,
+button,
+select,
+input,
+textarea,
+a,
+div {
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Arial,
+    sans-serif !important;
+}
+
+h1 {
+  font-size: 34px;
+  line-height: 1.12;
+  font-weight: 760;
+  letter-spacing: -0.035em;
+  color: var(--stratify-indigo);
+}
+
+h2 {
+  font-size: 25px;
+  line-height: 1.18;
+  font-weight: 740;
+  letter-spacing: -0.03em;
+  color: var(--stratify-indigo);
+}
+
+h3 {
+  font-size: 20px;
+  line-height: 1.22;
+  font-weight: 720;
+  letter-spacing: -0.02em;
+  color: var(--stratify-indigo-soft);
+}
+
+p {
+  font-size: 14px;
+  line-height: 1.7;
+  color: #475569;
+}
+
+a,
+a:hover,
+a:focus,
+a:active {
+  color: inherit;
+  text-decoration: none !important;
+}
+
+/* Small section label */
+.stratify-eyebrow {
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #059669;
+}
+
+/* Main hero title - softer, smaller, indigo */
+.stratify-hero-title {
+  font-size: clamp(32px, 4.2vw, 48px);
+  line-height: 1.05;
+  font-weight: 760;
+  letter-spacing: -0.045em;
+  color: var(--stratify-indigo);
+}
+
+/* Hero paragraph */
+.stratify-hero-text {
+  max-width: 720px;
+  font-size: 15px;
+  line-height: 1.75;
+  font-weight: 500;
+  color: #475569;
+}
+
+/* Navbar typography */
+.stratify-nav-link {
+  font-size: 14px;
+  font-weight: 760;
+  color: #334155;
+  text-decoration: none !important;
+}
+
+.stratify-nav-link:hover {
+  color: var(--stratify-indigo);
+}
+
+/* Logo text */
+.stratify-logo-title {
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 780;
+  letter-spacing: -0.03em;
+  color: var(--stratify-indigo);
+}
+
+.stratify-logo-subtitle {
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 760;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+/* Card/table text */
+.stratify-card-title {
+  font-size: 18px;
+  font-weight: 760;
+  letter-spacing: -0.025em;
+  color: var(--stratify-indigo);
+}
+
+.stratify-card-text {
+  font-size: 14px;
+  line-height: 1.65;
+  color: #475569;
+}
+
+.stratify-muted {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--stratify-muted);
+}
+
+/* Override overly black utility text where used on landing */
+.text-slate-950,
+.text-slate-900 {
+  color: #1e293b !important;
+}
+
+.font-black {
+  font-weight: 780 !important;
+}
+
+.font-extrabold {
+  font-weight: 740 !important;
+}
+
+/* Softer active nav, if your page uses bg-slate-950 */
+.bg-slate-950 {
+  background-color: #4f46e5 !important;
+}
+
+.hover\:text-slate-950:hover {
+  color: #3730a3 !important;
+}
+
+
+==================== app\components\TopNav.tsx ====================
+
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+const NAV_ITEMS = [
+  { label: "Home", href: "/" },
+  { label: "Debt", href: "/debt" },
+  { label: "Energy", href: "/energy" },
+  { label: "FAO", href: "/faostat" },
+  { label: "Fiscal", href: "/fiscal" },
+  { label: "IMF", href: "/imf" },
+  { label: "WDI", href: "/wdi" },
+];
+
+function isActivePath(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
+
+  if (href === "/wdi") {
+    return pathname === "/wdi" || pathname.startsWith("/wdi-map");
+  }
+
+  if (href === "/imf") {
+    return pathname === "/imf" || pathname.startsWith("/world");
+  }
+
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+export default function TopNav() {
+  const pathname = usePathname();
+
+  return (
+    <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 shadow-sm backdrop-blur-xl">
+      <div className="mx-auto flex h-[72px] w-full max-w-[1480px] items-center gap-5 px-4 sm:px-6 lg:px-8">
+        <Link href="/" className="flex shrink-0 items-center gap-2">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-blue-600 text-lg font-black text-white shadow-lg shadow-violet-200">
+            S
+          </div>
+
+          <div className="leading-tight">
+            <div className="text-lg font-black tracking-tight text-slate-950">
+              Stratify
+            </div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+              Analytics
+            </div>
+          </div>
+        </Link>
+
+        <nav className="ml-auto hidden items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1.5 shadow-sm md:flex">
+          {NAV_ITEMS.map((item) => {
+            const active = isActivePath(pathname, item.href);
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={[
+                  "rounded-full px-4 py-2 text-sm font-bold transition-all",
+                  active
+                    ? "bg-gradient-to-r from-violet-600 to-blue-600 text-white shadow-md shadow-violet-200"
+                    : "text-slate-600 hover:bg-white hover:text-slate-950 hover:shadow-sm",
+                ].join(" ")}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="ml-auto flex items-center gap-2 md:hidden">
+          <Link
+            href="/"
+            className="rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700"
+          >
+            Home
+          </Link>
+          <Link
+            href="/wdi"
+            className="rounded-full bg-violet-600 px-3 py-2 text-xs font-black text-white shadow-md shadow-violet-200"
+          >
+            WDI
+          </Link>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+
+==================== app\page.tsx ====================
+
+// app/page.tsx
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+
+import StratifyMap, { StratifyMapRow } from "@/app/components/StratifyMap";
+import VitalStatsList, { StatSection } from "@/app/components/VitalStatsList";
+
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+
+/* =======================
+   Types
+======================= */
+
+type MapRow = {
+  iso3: string;
+  country: string;
+  region: string | null;
+  value: number;
+};
+
+type MapApiResponse = {
+  rows: MapRow[];
+  error?: string;
+};
+
+/* =======================
+   Config
+======================= */
+
+const TOPO_URL =
+  "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+
+const REGIONS = [
+  "World",
+  "Sub-Saharan Africa",
+  "Europe & Central Asia",
+  "Middle East & North Africa",
+  "South Asia",
+  "East Asia & Pacific",
+  "Latin America & Caribbean",
+  "North America",
+] as const;
+
+const INDICATORS: Array<{ code: string; label: string; unit?: string }> = [
+  { code: "SP.POP.TOTL", label: "Population" },
+  { code: "NY.GDP.MKTP.CD", label: "GDP (current US$)", unit: "US$" },
+  { code: "SP.POP.GROW", label: "Population Growth", unit: "%" },
+  { code: "SP.DYN.LE00.IN", label: "Life Expectancy", unit: "years" },
+  { code: "SP.URB.TOTL.IN.ZS", label: "Urban Population", unit: "%" },
+  { code: "EG.ELC.ACCS.ZS", label: "Access to Electricity", unit: "%" },
+];
+
+const DEFAULT_INDICATOR = "SP.POP.TOTL";
+
+const NAV_ITEMS = [
+  { label: "Home", href: "/" },
+
+  { label: "Debt", href: "/debt" },
+  { label: "Energy", href: "/energy" },
+  { label: "FAO", href: "/fao" },
+  { label: "Fiscal", href: "/fiscal" },
+  { label: "IMF", href: "/imf" },
+  { label: "WDI", href: "/wdi" },
+];
+
+/* =======================
+   Helpers
+======================= */
+
+function n(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : Number(v) || 0;
+}
+
+function fmt(v: number): string {
+  if (!Number.isFinite(v)) return "—";
+  if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
+  if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
+  return v.toLocaleString();
+}
+
+function toRegionParam(r: string): string | null {
+  return r === "World" ? null : r;
+}
+
+function isActivePath(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/* =======================
+   Top Navbar
+======================= */
+
+function TopNav() {
+  const pathname = usePathname();
+
+  return (
+    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur-xl shadow-sm">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4">
+        <Link href="/" className="flex items-center gap-3">
+          <div className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-sm font-black text-white shadow-md">
+            S
+          </div>
+
+          <div>
+            <div className="stratify-logo-title">Stratify</div>
+            <div className="stratify-logo-subtitle">Analytics</div>
+          </div>
+        </Link>
+
+        <nav className="hidden items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1 shadow-sm lg:flex">
+          {NAV_ITEMS.map((item) => {
+            const active = isActivePath(pathname, item.href);
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={[
+                  "rounded-full px-4 py-2 text-sm font-extrabold transition",
+                  active
+                    ? "bg-slate-950 text-white shadow-sm"
+                    : "text-slate-600 hover:bg-white hover:text-slate-950",
+                ].join(" ")}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="hidden items-center gap-2 sm:flex">
+          <Link
+            href="/world"
+            className="rounded-full bg-slate-100 px-4 py-2 text-sm font-extrabold text-slate-700 hover:bg-slate-200"
+          >
+            Explore
+          </Link>
+
+          <Link
+            href="/imf"
+            className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-extrabold text-white shadow-sm hover:bg-emerald-700"
+          >
+            IMF Data
+          </Link>
+        </div>
+      </div>
+
+      <div className="border-t border-slate-100 bg-white/95 px-4 py-2 lg:hidden">
+        <div className="mx-auto flex max-w-7xl gap-2 overflow-x-auto">
+          {NAV_ITEMS.map((item) => {
+            const active = isActivePath(pathname, item.href);
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={[
+                  "shrink-0 rounded-full px-3 py-1.5 text-xs font-extrabold",
+                  active
+                    ? "bg-slate-950 text-white"
+                    : "bg-slate-100 text-slate-700",
+                ].join(" ")}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    </header>
+  );
+}
+
+/* =======================
+   Page
+======================= */
+
+export default function Page() {
+  const router = useRouter();
+
+  const [region, setRegion] = useState<string>("World");
+  const [indicator, setIndicator] = useState<string>(DEFAULT_INDICATOR);
+
+  const [rows, setRows] = useState<MapRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const [selectedIso3, setSelectedIso3] = useState<string | null>(null);
+
+  const regionParam = useMemo(() => toRegionParam(region), [region]);
+
+  const indicatorMeta = useMemo(() => {
+    return (
+      INDICATORS.find((x) => x.code === indicator) ?? {
+        code: indicator,
+        label: indicator,
+      }
+    );
+  }, [indicator]);
+
+  const indicatorLabel = indicatorMeta.label;
+  const indicatorUnit = indicatorMeta.unit;
+
+  useEffect(() => {
+    let alive = true;
+
+    async function load() {
+      setLoading(true);
+      setErr(null);
+
+      try {
+        const qp = new URLSearchParams();
+        qp.set("indicator", indicator);
+        if (regionParam) qp.set("region", regionParam);
+
+        const res = await fetch(`/api/map?${qp.toString()}`, {
+          cache: "no-store",
+        });
+
+        const json = (await res.json()) as MapApiResponse;
+        if (!res.ok) throw new Error(json?.error ?? "Failed to load map data");
+
+        if (!alive) return;
+
+        const safeRows = Array.isArray(json.rows) ? json.rows : [];
+        setRows(safeRows);
+        setSelectedIso3(null);
+      } catch (e: unknown) {
+        if (!alive) return;
+        setErr(e instanceof Error ? e.message : "Failed to load map");
+        setRows([]);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+
+    load();
+
+    return () => {
+      alive = false;
+    };
+  }, [indicator, regionParam]);
+
+  const mapRows: StratifyMapRow[] = useMemo(
+    () =>
+      (rows ?? []).map((r) => ({
+        iso3: String(r.iso3 ?? "").toUpperCase(),
+        country: String(r.country ?? ""),
+        region: r.region ?? null,
+        value: n(r.value),
+      })),
+    [rows],
+  );
+
+  function handleSelectIso3(iso3: string) {
+    const up = String(iso3 ?? "").toUpperCase();
+    if (!up) return;
+
+    setSelectedIso3(up);
+
+    router.push(
+      `/world/country/${encodeURIComponent(up)}?indicator=${encodeURIComponent(
+        indicator,
+      )}`,
+    );
+  }
+
+  const stats: StatSection[] = useMemo(() => {
+    if (!selectedIso3) {
+      return [
+        {
+          title: "World",
+          rows: [
+            { label: "Indicator", value: indicatorLabel },
+            { label: "Region scope", value: region },
+            { label: "Countries", value: String(mapRows.length) },
+          ],
+        },
+      ];
+    }
+
+    const row = mapRows.find((r) => r.iso3 === selectedIso3) ?? null;
+
+    return [
+      {
+        title: "Selection",
+        rows: [
+          { label: "Country", value: row?.country ?? selectedIso3 },
+          { label: "ISO3", value: selectedIso3 },
+          { label: "Region", value: row?.region ?? "—" },
+          {
+            label: indicatorLabel,
+            value: `${fmt(n(row?.value))}${
+              indicatorUnit ? ` ${indicatorUnit}` : ""
+            }`,
+          },
+        ],
+      },
+    ];
+  }, [mapRows, selectedIso3, indicatorLabel, indicatorUnit, region]);
+
+  return (
+    <main className="min-h-screen bg-slate-100">
+      <TopNav />
+
+      <div className="pointer-events-none fixed inset-0 z-0">
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{
+            backgroundImage: "url('/people_bg.png')",
+            transform: "scale(1.02)",
+            filter: "saturate(1.15) contrast(1.08) brightness(0.92)",
+            opacity: 0.48,
+          }}
+        />
+        <div className="absolute inset-0 bg-black/25" />
+        <div className="absolute inset-0 bg-gradient-to-b from-white/90 via-white/76 to-white/62" />
+      </div>
+
+      <div className="relative z-10 min-h-screen overflow-hidden">
+        <div className="mx-auto max-w-7xl space-y-5 px-4 py-7">
+          <div className="rounded-[28px] border border-white/70 bg-white/75 p-5 shadow-xl backdrop-blur-xl">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+              <div>
+                <div className="stratify-eyebrow">Stratify Analytics</div>
+
+                <h1 className="stratify-hero-title mt-2">
+                  World Intelligence Dashboard
+                </h1>
+
+                <p className="stratify-hero-text mt-4">
+                  Explore trusted global indicators, country profiles, and
+                  development insights through a clean analytics portal built
+                  for fast comparison and decision-making.
+                </p>
+
+                <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-700">
+                  <span className="font-bold text-slate-950">Stratify</span>{" "}
+                  turns World Bank, FAO, fiscal, debt, energy, and macro
+                  datasets into structured country intelligence.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Select value={region} onValueChange={setRegion}>
+                  <SelectTrigger className="w-[240px] rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <SelectValue placeholder="Region" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REGIONS.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {r}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={indicator} onValueChange={setIndicator}>
+                  <SelectTrigger className="w-[320px] rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <SelectValue placeholder="Indicator" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[340px]">
+                    {INDICATORS.map((x) => (
+                      <SelectItem key={x.code} value={x.code}>
+                        {x.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Button
+                  variant="secondary"
+                  className="rounded-xl border border-slate-200 bg-white shadow-sm"
+                  onClick={() => {
+                    setRegion("World");
+                    setIndicator(DEFAULT_INDICATOR);
+                    setSelectedIso3(null);
+                  }}
+                >
+                  Reset
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {err ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50/90 p-3 text-sm font-semibold text-red-700 backdrop-blur">
+              {err}
+            </div>
+          ) : null}
+
+          <div className="grid grid-cols-12 gap-4">
+            <div className="col-span-12 lg:col-span-8">
+              {loading ? (
+                <div className="h-[560px] rounded-3xl border border-white/70 bg-white/70 shadow-xl backdrop-blur-xl" />
+              ) : (
+                <div className="overflow-hidden rounded-3xl border border-white/70 bg-white/65 shadow-xl backdrop-blur-xl">
+                  <StratifyMap
+                    rows={mapRows}
+                    topoJsonUrl={TOPO_URL}
+                    selectedIso3={selectedIso3}
+                    onSelectIso3={handleSelectIso3}
+                    indicatorLabel={indicatorLabel}
+                    indicatorUnit={indicatorUnit}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="col-span-12 lg:col-span-4">
+              <div className="overflow-hidden rounded-3xl border border-white/70 bg-white/75 shadow-xl backdrop-blur-xl">
+                <VitalStatsList
+                  sections={stats}
+                  region={selectedIso3 ?? region}
+                  subtitle={
+                    selectedIso3
+                      ? "Opening selected country..."
+                      : "Click a country to open profile"
+                  }
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="h-2" />
+        </div>
+      </div>
+    </main>
+  );
+}
+
+
+==================== app\world\page.tsx ====================
+
+import { redirect } from "next/navigation";
+
+export default function WorldPage() {
+  redirect("/");
+}
+
+
+==================== app\world\country\[iso3]\page.tsx ====================
+
+"use client";
+
+import React, { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import * as RTabs from "@radix-ui/react-tabs";
+
+import { faostatApi } from "@/app/lib/rpc/faostat";
+import type {
+  OverviewPayload,
+  TopPayload,
+  TradeInsights,
+} from "@/app/lib/rpc/faostat";
+
+import WdiTab, {
+  type WdiResponse,
+  parseWdiResponse,
+} from "@/app/world/components/WdiTab";
+
+import FaostatTab, {
+  type FaoModule,
+  isTopKind,
+} from "@/app/world/components/FaostatTab";
+
+import type { ProductionInsights } from "@/app/world/components/FaostatTab";
+import WeoTab from "@/app/world/components/WeoTab";
+
+/* ---------------- helper ---------------- */
+
+async function fetchJsonOrThrow(url: string): Promise<unknown> {
+  const res = await fetch(url, { cache: "no-store" });
+  const txt = await res.text().catch(() => "");
+  if (!res.ok) {
+    throw new Error(`Fetch failed: ${res.status} ${txt.slice(0, 200)}`);
+  }
+
+  const ct = res.headers.get("content-type") || "";
+  if (!ct.includes("application/json")) {
+    throw new Error(
+      `Expected JSON got ${ct || "unknown"} — ${txt.slice(0, 200)}`,
+    );
+  }
+
+  return JSON.parse(txt);
+}
+
+function cx(...xs: Array<string | false | null | undefined>) {
+  return xs.filter(Boolean).join(" ");
+}
+
+function LoaderCard({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-[420px] items-center justify-center">
+      <div className="flex min-w-[240px] flex-col items-center rounded-3xl border border-slate-200 bg-white px-8 py-8 shadow-sm">
+        <div className="mb-4 h-12 w-12 animate-spin rounded-full border-[3px] border-slate-200 border-t-slate-900" />
+        <div className="text-base font-semibold text-slate-900">
+          Loading {label}...
+        </div>
+        <div className="mt-1 text-sm text-slate-500">
+          Please wait while data is being fetched
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- quick picks ---------------- */
+
+type QuickPick = {
+  label: string;
+  indicator: string;
+};
+
+const WDI_QUICK_PICKS: QuickPick[] = [
+  { label: "Population, total", indicator: "SP.POP.TOTL" },
+  { label: "GDP current US$", indicator: "NY.GDP.MKTP.CD" },
+  { label: "GDP growth annual %", indicator: "NY.GDP.MKTP.KD.ZG" },
+  { label: "Inflation, consumer prices", indicator: "FP.CPI.TOTL.ZG" },
+  { label: "Unemployment, total %", indicator: "SL.UEM.TOTL.ZS" },
+  { label: "Exports of goods and services % GDP", indicator: "NE.EXP.GNFS.ZS" },
+  { label: "Imports of goods and services % GDP", indicator: "NE.IMP.GNFS.ZS" },
+  { label: "Life expectancy at birth", indicator: "SP.DYN.LE00.IN" },
+];
+
+const WEO_QUICK_PICKS: QuickPick[] = [
+  { label: "GDP, current prices", indicator: "NGDPD" },
+  { label: "GDP growth", indicator: "NGDP_RPCH" },
+  { label: "Inflation, average consumer prices", indicator: "PCPIPCH" },
+  { label: "Unemployment rate", indicator: "LUR" },
+  { label: "Current account balance", indicator: "BCA" },
+  {
+    label: "General government net lending/borrowing",
+    indicator: "GGXONLB_NGDP",
+  },
+  { label: "Gross national savings", indicator: "NGSD_NGDP" },
+  { label: "Investment", indicator: "NID_NGDP" },
+];
+
+const WEO_ALL_INDICATORS: QuickPick[] = [
+  { label: "GDP growth", indicator: "NGDP_RPCH" },
+  { label: "GDP, current prices", indicator: "NGDPD" },
+  { label: "GDP, constant prices", indicator: "NGDP_R" },
+  { label: "GDP per capita, current prices", indicator: "NGDPDPC" },
+  { label: "GDP, PPP", indicator: "PPPGDP" },
+  { label: "GDP per capita, PPP", indicator: "PPPPC" },
+  { label: "Population", indicator: "LP" },
+  { label: "Unemployment rate", indicator: "LUR" },
+  { label: "Employment", indicator: "LE" },
+  { label: "Inflation, average consumer prices", indicator: "PCPIPCH" },
+  { label: "Inflation, end of period consumer prices", indicator: "PCPIEPCH" },
+  {
+    label: "Imports of goods and services, volume growth",
+    indicator: "TM_RPCH",
+  },
+  {
+    label: "Exports of goods and services, volume growth",
+    indicator: "TX_RPCH",
+  },
+  { label: "Imports of goods, volume growth", indicator: "TMG_RPCH" },
+  { label: "Exports of goods, volume growth", indicator: "TXG_RPCH" },
+  { label: "Current account balance", indicator: "BCA" },
+  { label: "Current account balance, percent of GDP", indicator: "BCA_NGDPD" },
+  { label: "General government total expenditure", indicator: "GGX" },
+  { label: "General government revenue", indicator: "GGR" },
+  { label: "Net lending/borrowing", indicator: "GGXCNL" },
+  { label: "Overall net lending/borrowing", indicator: "GGXONLB" },
+  {
+    label: "Overall net lending/borrowing, percent of GDP",
+    indicator: "GGXONLB_NGDP",
+  },
+  { label: "Gross debt", indicator: "GGXWDN" },
+  { label: "Gross debt, percent of GDP", indicator: "GGXWDN_NGDP" },
+  { label: "Net debt", indicator: "GGXWDG" },
+  { label: "Net debt, percent of GDP", indicator: "GGXWDG_NGDP" },
+  { label: "National savings, percent of GDP", indicator: "NGSD_NGDP" },
+  { label: "Investment, percent of GDP", indicator: "NID_NGDP" },
+  { label: "Unemployment rate, percent", indicator: "LUR_PT" },
+  { label: "PPP exchange rate", indicator: "PPPEX" },
+  { label: "Fiscal year GDP", indicator: "NGDP_FY" },
+  {
+    label: "Inflation excl. food and energy",
+    indicator: "PCPIFBT",
+  },
+  { label: "Consumer prices index", indicator: "PCPI" },
+  { label: "Revenue, percent of GDP", indicator: "GGR_NGDP" },
+  { label: "Expenditure, percent of GDP", indicator: "GGX_NGDP" },
+  { label: "Net lending/borrowing, percent of GDP", indicator: "GGXCNL_NGDP" },
+  { label: "Exports of goods, USD", indicator: "TXG_FOB_USD" },
+  { label: "Imports of goods, USD", indicator: "TMG_CIF_USD" },
+  { label: "Exports of goods and services, BOP", indicator: "TXGSBOP" },
+  { label: "Imports of goods and services, BOP", indicator: "TMGSBOP" },
+  { label: "Exports of goods", indicator: "TXG" },
+  { label: "Imports of goods", indicator: "TMG" },
+  { label: "Government cash balance", indicator: "GGCB" },
+  { label: "Government structural balance", indicator: "GGSB" },
+  { label: "Real GDP per capita, PPP", indicator: "NGDPRPPPPC" },
+  { label: "Share of world GDP at PPP", indicator: "PPPSH" },
+  { label: "GDP, current prices, USD", indicator: "NGDPDUS" },
+  { label: "Nominal GDP level", indicator: "LNNGDP" },
+];
+
+const WEO_VALID_CODES = new Set(
+  [...WEO_QUICK_PICKS, ...WEO_ALL_INDICATORS].map((x) =>
+    x.indicator.toUpperCase(),
+  ),
+);
+
+const DEFAULT_WDI_INDICATOR = "SP.POP.TOTL";
+const DEFAULT_WEO_INDICATOR = "NGDPD";
+
+/* ---------------- page ---------------- */
+
+export default function CountryProfilePage() {
+  const router = useRouter();
+  const search = useSearchParams();
+  const { iso3: rawIso3 } = useParams<{ iso3?: string }>();
+
+  const iso3 = String(rawIso3 ?? "").toUpperCase();
+
+  const initialTab = (search.get("dataset") || "wdi").toLowerCase();
+  const safeInitialTab =
+    initialTab === "faostat" || initialTab === "weo" ? initialTab : "wdi";
+
+  const rawIndicator = (search.get("indicator") || "").trim();
+
+  const normalizedIndicator = useMemo(() => {
+    if (safeInitialTab === "weo") {
+      const candidate = rawIndicator.toUpperCase();
+      return WEO_VALID_CODES.has(candidate) ? candidate : DEFAULT_WEO_INDICATOR;
+    }
+
+    return rawIndicator || DEFAULT_WDI_INDICATOR;
+  }, [rawIndicator, safeInitialTab]);
+
+  const [tab, setTab] = useState<"wdi" | "faostat" | "weo">(
+    safeInitialTab as "wdi" | "faostat" | "weo",
+  );
+
+  const [sidebarSearch, setSidebarSearch] = useState("");
+  const [tabSwitchLoading, setTabSwitchLoading] = useState(false);
+
+  /* ---------------- WDI ---------------- */
+
+  const [wdi, setWdi] = useState<WdiResponse | null>(null);
+  const [wdiLoading, setWdiLoading] = useState(false);
+
+  useEffect(() => {
+    if (tab !== "wdi") return;
+
+    let alive = true;
+
+    (async () => {
+      setWdiLoading(true);
+      try {
+        const raw = await fetchJsonOrThrow(
+          `/api/wdi/country?iso3=${encodeURIComponent(
+            iso3,
+          )}&indicator=${encodeURIComponent(normalizedIndicator)}`,
+        );
+
+        if (!alive) return;
+        setWdi(parseWdiResponse(raw, iso3, normalizedIndicator));
+      } catch (e: any) {
+        if (!alive) return;
+        setWdi({
+          iso3,
+          country: iso3,
+          region: null,
+          indicator: {
+            code: normalizedIndicator,
+            label: normalizedIndicator,
+            unit: null,
+          },
+          latest: null,
+          series: [],
+          error: e?.message ?? "Failed to load WDI",
+        });
+      } finally {
+        if (alive) setWdiLoading(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [iso3, normalizedIndicator, tab]);
+
+  /* ---------------- FAOSTAT ---------------- */
+
+  const [faoModule, setFaoModule] = useState<FaoModule>("");
+  const [faoLoading, setFaoLoading] = useState(false);
+
+  const [tradeTopN, setTradeTopN] = useState(10);
+  const [tradeYears, setTradeYears] = useState(10);
+
+  const [faoOverview, setFaoOverview] = useState<OverviewPayload | null>(null);
+  const [faoTop, setFaoTop] = useState<TopPayload | null>(null);
+  const [trade, setTrade] = useState<TradeInsights | null>(null);
+  const [prod, setProd] = useState<ProductionInsights | null>(null);
+
+  async function loadFao(next: FaoModule) {
+    setFaoModule(next);
+    setFaoLoading(true);
+
+    setFaoOverview(null);
+    setFaoTop(null);
+    setTrade(null);
+    setProd(null);
+
+    try {
+      if (next === "overview") {
+        setFaoOverview(await faostatApi.overview(iso3));
+        return;
+      }
+
+      if (next === "trade-import" || next === "trade-export") {
+        const kind = next === "trade-import" ? "import" : "export";
+        setTrade(
+          await faostatApi.tradeInsights(iso3, kind, tradeTopN, tradeYears),
+        );
+        return;
+      }
+
+      if (next === "prod-insights") {
+        return;
+      }
+
+      if (isTopKind(next)) {
+        setFaoTop(await faostatApi.module(iso3, next, 10));
+        return;
+      }
+    } finally {
+      setFaoLoading(false);
+    }
+  }
+
+  /* ---------------- url sync ---------------- */
+
+  useEffect(() => {
+    const params = new URLSearchParams(search.toString());
+
+    let changed = false;
+
+    if (params.get("dataset") !== tab) {
+      params.set("dataset", tab);
+      changed = true;
+    }
+
+    if (tab === "weo") {
+      const current = String(params.get("indicator") || "").toUpperCase();
+      const next = WEO_VALID_CODES.has(current)
+        ? current
+        : DEFAULT_WEO_INDICATOR;
+
+      if (params.get("indicator") !== next) {
+        params.set("indicator", next);
+        changed = true;
+      }
+    }
+
+    if (tab === "wdi") {
+      const current = String(params.get("indicator") || "").trim();
+      const next = current || DEFAULT_WDI_INDICATOR;
+
+      if (params.get("indicator") !== next) {
+        params.set("indicator", next);
+        changed = true;
+      }
+    }
+
+    if (!changed) return;
+
+    router.replace(`/world/country/${iso3}?${params.toString()}`, {
+      scroll: false,
+    });
+  }, [tab, router, search, iso3]);
+
+  function updateIndicator(nextIndicator: string) {
+    const params = new URLSearchParams(search.toString());
+    params.set("indicator", nextIndicator);
+    params.set("dataset", tab);
+    router.replace(`/world/country/${iso3}?${params.toString()}`, {
+      scroll: false,
+    });
+  }
+
+  function handleTabChange(nextTab: string) {
+    const next = nextTab as "wdi" | "faostat" | "weo";
+
+    setTabSwitchLoading(true);
+    setTab(next);
+    setSidebarSearch("");
+
+    const params = new URLSearchParams(search.toString());
+    params.set("dataset", next);
+
+    if (next === "weo") {
+      const current = String(params.get("indicator") || "").toUpperCase();
+      if (!WEO_VALID_CODES.has(current)) {
+        params.set("indicator", DEFAULT_WEO_INDICATOR);
+      }
+    }
+
+    if (next === "wdi") {
+      const current = String(params.get("indicator") || "").trim();
+      if (!current || WEO_VALID_CODES.has(current.toUpperCase())) {
+        params.set("indicator", DEFAULT_WDI_INDICATOR);
+      }
+    }
+
+    router.replace(`/world/country/${iso3}?${params.toString()}`, {
+      scroll: false,
+    });
+
+    window.clearTimeout((handleTabChange as any)._timer);
+    (handleTabChange as any)._timer = window.setTimeout(() => {
+      setTabSwitchLoading(false);
+    }, 350);
+  }
+
+  /* ---------------- sidebar data ---------------- */
+
+  const filteredQuickPicks = useMemo(() => {
+    const q = sidebarSearch.trim().toLowerCase();
+
+    if (tab === "weo") {
+      if (!q) return WEO_QUICK_PICKS;
+      return WEO_QUICK_PICKS.filter(
+        (item) =>
+          item.label.toLowerCase().includes(q) ||
+          item.indicator.toLowerCase().includes(q),
+      );
+    }
+
+    if (tab === "faostat") return [];
+
+    if (!q) return WDI_QUICK_PICKS;
+    return WDI_QUICK_PICKS.filter(
+      (item) =>
+        item.label.toLowerCase().includes(q) ||
+        item.indicator.toLowerCase().includes(q),
+    );
+  }, [sidebarSearch, tab]);
+
+  const filteredWeoAllIndicators = useMemo(() => {
+    if (tab !== "weo") return [];
+
+    const q = sidebarSearch.trim().toLowerCase();
+    if (!q) return WEO_ALL_INDICATORS;
+
+    return WEO_ALL_INDICATORS.filter(
+      (item) =>
+        item.label.toLowerCase().includes(q) ||
+        item.indicator.toLowerCase().includes(q),
+    );
+  }, [sidebarSearch, tab]);
+
+  const activeIndicatorLabel = useMemo(() => {
+    const found =
+      WDI_QUICK_PICKS.find((x) => x.indicator === normalizedIndicator)?.label ||
+      WEO_QUICK_PICKS.find((x) => x.indicator === normalizedIndicator)?.label ||
+      WEO_ALL_INDICATORS.find((x) => x.indicator === normalizedIndicator)
+        ?.label;
+
+    return found || normalizedIndicator;
+  }, [normalizedIndicator]);
+
+  /* ---------------- ui ---------------- */
+
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#f8fafc,_#eef2ff_40%,_#f8fafc_100%)]">
+      <div className="mx-auto max-w-7xl px-4 py-5">
+        {/* subnav */}
+        <div className="mb-5 overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/80 p-2 shadow-[0_10px_35px_rgba(15,23,42,0.08)] backdrop-blur">
+          <RTabs.Root value={tab} onValueChange={handleTabChange}>
+            <RTabs.List className="flex w-full flex-wrap gap-2">
+              <RTabs.Trigger
+                value="wdi"
+                className={cx(
+                  "rounded-2xl px-5 py-3 text-sm font-semibold outline-none transition-all duration-200",
+                  "data-[state=active]:bg-gradient-to-r data-[state=active]:from-slate-950 data-[state=active]:to-slate-800 data-[state=active]:text-white data-[state=active]:shadow-lg",
+                  "data-[state=inactive]:bg-white data-[state=inactive]:text-slate-600",
+                  "border border-slate-200 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900",
+                )}
+              >
+                WDI
+              </RTabs.Trigger>
+
+              <RTabs.Trigger
+                value="faostat"
+                className={cx(
+                  "rounded-2xl px-5 py-3 text-sm font-semibold outline-none transition-all duration-200",
+                  "data-[state=active]:bg-gradient-to-r data-[state=active]:from-emerald-700 data-[state=active]:to-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-lg",
+                  "data-[state=inactive]:bg-white data-[state=inactive]:text-slate-600",
+                  "border border-slate-200 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900",
+                )}
+              >
+                Food &amp; Agriculture Org
+              </RTabs.Trigger>
+
+              <RTabs.Trigger
+                value="weo"
+                className={cx(
+                  "rounded-2xl px-5 py-3 text-sm font-semibold outline-none transition-all duration-200",
+                  "data-[state=active]:bg-gradient-to-r data-[state=active]:from-indigo-700 data-[state=active]:to-indigo-600 data-[state=active]:text-white data-[state=active]:shadow-lg",
+                  "data-[state=inactive]:bg-white data-[state=inactive]:text-slate-600",
+                  "border border-slate-200 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900",
+                )}
+              >
+                IMF (WEO)
+              </RTabs.Trigger>
+            </RTabs.List>
+          </RTabs.Root>
+        </div>
+
+        {/* body */}
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
+          {/* left sidebar */}
+          <aside className="xl:sticky xl:top-6 xl:h-[calc(100vh-48px)]">
+            <div className="flex h-full flex-col overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/90 shadow-[0_10px_35px_rgba(15,23,42,0.08)] backdrop-blur">
+              <div className="border-b border-slate-200 px-5 py-5">
+                <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Control Panel
+                </div>
+                <h2 className="mt-2 text-xl font-bold text-slate-900">
+                  Indicators
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {tab === "weo"
+                    ? "Search, select and jump between IMF WEO quick picks and full indicator list."
+                    : "Search, select and jump between quick picks."}
+                </p>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-5 py-5">
+                {tab === "faostat" ? (
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+                    <div className="text-sm font-semibold text-emerald-900">
+                      Food &amp; Agriculture Org
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-emerald-800/90">
+                      FAO modules are loaded from the main content area. Use the
+                      FAO cards and module selectors on the right to explore
+                      overview, trade, and production insights.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <label className="mb-2 block text-sm font-semibold text-slate-700">
+                      Indicator search
+                    </label>
+
+                    <div className="relative mb-4">
+                      <input
+                        value={sidebarSearch}
+                        onChange={(e) => setSidebarSearch(e.target.value)}
+                        placeholder="Search code / name..."
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:bg-white"
+                      />
+                    </div>
+
+                    <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Active indicator
+                      </div>
+                      <div className="mt-2 text-sm font-semibold text-slate-900">
+                        {activeIndicatorLabel}
+                      </div>
+                      <div className="mt-1 break-all text-xs text-slate-500">
+                        {normalizedIndicator}
+                      </div>
+                    </div>
+
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="text-sm font-semibold text-slate-800">
+                        Quick picks
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {filteredQuickPicks.length} items
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      {filteredQuickPicks.map((item) => {
+                        const active = item.indicator === normalizedIndicator;
+                        return (
+                          <button
+                            key={`${tab}-quick-${item.indicator}`}
+                            onClick={() => updateIndicator(item.indicator)}
+                            className={cx(
+                              "group w-full rounded-2xl border px-4 py-3 text-left transition-all",
+                              active
+                                ? "border-slate-900 bg-slate-900 text-white shadow-lg"
+                                : "border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:shadow-sm",
+                            )}
+                          >
+                            <div className="line-clamp-2 text-sm font-semibold">
+                              {item.label}
+                            </div>
+                            <div
+                              className={cx(
+                                "mt-1 text-xs",
+                                active
+                                  ? "text-slate-300"
+                                  : "text-slate-500 group-hover:text-slate-600",
+                              )}
+                            >
+                              {item.indicator}
+                            </div>
+                          </button>
+                        );
+                      })}
+
+                      {filteredQuickPicks.length === 0 && tab !== "weo" && (
+                        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                          No indicators matched your search.
+                        </div>
+                      )}
+                    </div>
+
+                    {tab === "weo" && (
+                      <>
+                        <div className="mb-3 mt-6 flex items-center justify-between">
+                          <div className="text-sm font-semibold text-slate-800">
+                            All IMF indicators
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            {filteredWeoAllIndicators.length} items
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          {filteredWeoAllIndicators.map((item) => {
+                            const active =
+                              item.indicator === normalizedIndicator;
+                            return (
+                              <button
+                                key={`weo-all-${item.indicator}`}
+                                onClick={() => updateIndicator(item.indicator)}
+                                className={cx(
+                                  "group w-full rounded-2xl border px-4 py-3 text-left transition-all",
+                                  active
+                                    ? "border-indigo-600 bg-indigo-600 text-white shadow-lg"
+                                    : "border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-indigo-50 hover:shadow-sm",
+                                )}
+                              >
+                                <div className="line-clamp-2 text-sm font-semibold">
+                                  {item.label}
+                                </div>
+                                <div
+                                  className={cx(
+                                    "mt-1 text-xs",
+                                    active
+                                      ? "text-indigo-100"
+                                      : "text-slate-500 group-hover:text-slate-600",
+                                  )}
+                                >
+                                  {item.indicator}
+                                </div>
+                              </button>
+                            );
+                          })}
+
+                          {filteredWeoAllIndicators.length === 0 && (
+                            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                              No IMF indicators matched your search.
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </aside>
+
+          {/* right content */}
+          <section className="min-w-0">
+            <div className="rounded-[28px] border border-slate-200/80 bg-white/90 p-4 shadow-[0_10px_35px_rgba(15,23,42,0.08)] backdrop-blur sm:p-5">
+              {tabSwitchLoading && <LoaderCard label="dataset" />}
+
+              {!tabSwitchLoading && tab === "wdi" && (
+                <WdiTab
+                  iso3={iso3}
+                  indicator={normalizedIndicator}
+                  wdi={wdi}
+                  loading={wdiLoading}
+                />
+              )}
+
+              {!tabSwitchLoading && tab === "faostat" && (
+                <>
+                  {faoLoading ? (
+                    <LoaderCard label="Food & Agriculture Org data" />
+                  ) : (
+                    <FaostatTab
+                      iso3={iso3}
+                      faoModule={faoModule}
+                      onPickModule={loadFao}
+                      loading={faoLoading}
+                      overview={faoOverview}
+                      top={faoTop}
+                      trade={trade}
+                      tradeTopN={tradeTopN}
+                      tradeYears={tradeYears}
+                      setTradeTopN={setTradeTopN}
+                      setTradeYears={setTradeYears}
+                      prod={prod}
+                    />
+                  )}
+                </>
+              )}
+
+              {!tabSwitchLoading && tab === "weo" && (
+                <WeoTab iso3={iso3} initialIndicator={normalizedIndicator} />
+              )}
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+==================== app\world\components\CountryHeader.tsx ====================
+
+// app/world/components/CountryHeader.tsx
+"use client";
+
+import React from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Bug } from "lucide-react";
+
+type Props = {
+  countryTitle: string;
+  region: string;
+
+  indicatorLabel: string;
+  indicatorCode: string;
+  indicatorUnit: string; // can be "—" or empty
+
+  wdiError: string | null;
+  faoError: string | null;
+
+  onBack: () => void;
+  onDebug: () => void;
+};
+
+function isRealUnit(u: any) {
+  const s = String(u ?? "").trim();
+  return (
+    !!s && s !== "—" && s.toLowerCase() !== "null" && s.toLowerCase() !== "none"
+  );
+}
+
+export default function CountryHeader({
+  countryTitle,
+  region,
+  indicatorLabel,
+  indicatorCode,
+  indicatorUnit,
+  wdiError,
+  faoError,
+  onBack,
+  onDebug,
+}: Props) {
+  const showUnit = isRealUnit(indicatorUnit);
+
+  return (
+    <div className="border-b bg-white">
+      <div className="mx-auto max-w-5xl px-3 py-3">
+        {/* Top row */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-slate-900 truncate">
+              {countryTitle}
+            </div>
+            <div className="text-xs text-slate-500 truncate">{region}</div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl"
+              onClick={onBack}
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl"
+              onClick={onDebug}
+            >
+              <Bug className="mr-2 h-4 w-4" />
+              Debug
+            </Button>
+          </div>
+        </div>
+
+        {/* Indicator row (label left, unit right, vertically centered) */}
+        <div className="mt-3 rounded-2xl border bg-white px-3 py-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[11px] tracking-widest text-slate-400">
+                INDICATOR • {indicatorCode}
+              </div>
+              <div className="text-sm font-semibold text-slate-900 truncate">
+                {indicatorLabel}
+              </div>
+            </div>
+
+            {showUnit ? (
+              <div className="flex items-center justify-center">
+                <Badge className="rounded-xl bg-slate-900 text-white px-3 py-1">
+                  {String(indicatorUnit).trim()}
+                </Badge>
+              </div>
+            ) : (
+              <div className="w-[1px]" />
+            )}
+          </div>
+
+          {wdiError || faoError ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {wdiError ? (
+                <Badge className="bg-rose-600 text-white">
+                  WDI: {wdiError}
+                </Badge>
+              ) : null}
+              {faoError ? (
+                <Badge className="bg-rose-600 text-white">
+                  FAOSTAT: {faoError}
+                </Badge>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+==================== app\world\components\FaostatTab.tsx ====================
+
+// ✅ DROP-IN (FIXED) — FaostatTab.tsx
+// File: app/world/country/[iso3]/components/FaostatTab.tsx
+//
+// Fixes: "yearly trend not showing" after modification
+// ✅ Normalizes API trend rows to numeric {year,value} (handles Year/Value keys + comma strings)
+// ✅ Uses explicit chart heights to avoid 0-height ResponsiveContainer edge cases
+// ✅ Keeps: no bottom 7 menu, no Area Code column, Main Menu button top-left
+
+"use client";
+
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  LineChart,
+  Line,
+} from "recharts";
+
+import {
+  Download,
+  Table2,
+  PieChart as PieIcon,
+  TrendingUp,
+  Home,
+} from "lucide-react";
+
+/* =======================
+   Types
+======================= */
+
+export type FaoModule =
+  | ""
+  | "overview"
+  | "prod-insights"
+  | "top-production"
+  | "top-import"
+  | "top-export"
+  | "trade-import"
+  | "trade-export";
+
+export function isTopKind(
+  m: FaoModule,
+): m is "top-production" | "top-import" | "top-export" {
+  return m === "top-production" || m === "top-import" || m === "top-export";
+}
+
+type AnyObj = Record<string, any>;
+
+export type ProductionItem = {
+  item: string;
+  value: number;
+  unit: string | null;
+  share_pct: number | null;
+};
+
+export type ProductionTrendPoint = { year: number; value: number };
+
+export type ProductionInsights = {
+  ok: boolean;
+  iso3: string;
+  country: string;
+  element: string;
+  latest_year: number;
+  total_latest: number | null;
+  total_prev_year: number | null;
+  yoy_pct: number | null;
+  top1_share_pct: number | null;
+  top5_share_pct: number | null;
+  items: ProductionItem[];
+  trend: ProductionTrendPoint[];
+  error?: string;
+};
+
+type Props = {
+  iso3: string;
+
+  faoModule: FaoModule;
+  onPickModule: (m: FaoModule) => void | Promise<void>;
+
+  loading: boolean;
+
+  overview: any | null;
+  top: any | null;
+  trade: any | null;
+
+  tradeTopN: number;
+  tradeYears: number;
+  setTradeTopN: (n: number) => void;
+  setTradeYears: (n: number) => void;
+
+  prod?: ProductionInsights | null;
+
+  prodTopN?: number;
+  prodYears?: number;
+  prodElement?: string;
+  setProdTopN?: (n: number) => void;
+  setProdYears?: (n: number) => void;
+  setProdElement?: (s: string) => void;
+};
+
+/* =======================
+   Helpers
+======================= */
+
+const MAIN_MENU_HREF = "/";
+
+// ✅ Safe fetch helper: prevents "Unexpected token '<'" crash and shows actual response preview
+async function fetchTrendJSON(url: string) {
+  const res = await fetch(url, { cache: "no-store" });
+  const txt = await res.text();
+
+  let j: any = null;
+  try {
+    j = JSON.parse(txt);
+  } catch {
+    throw new Error(
+      `Trend API did not return JSON.\nURL: ${url}\nHTTP: ${res.status} ${res.statusText}\nBody: ${txt.slice(
+        0,
+        220,
+      )}`,
+    );
+  }
+
+  if (!res.ok || !j?.ok) {
+    throw new Error(
+      j?.error ||
+        `Trend API failed.\nURL: ${url}\nHTTP: ${res.status} ${res.statusText}\nBody: ${txt.slice(
+          0,
+          220,
+        )}`,
+    );
+  }
+
+  return j;
+}
+
+function safeStr(v: any) {
+  const s = String(v ?? "").trim();
+  return s.length ? s : "—";
+}
+
+function numFromAny(v: any): number | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+
+  const s = String(v).trim();
+  if (!s) return null;
+
+  // remove commas and non-numeric (except . and -)
+  const cleaned = s.replace(/,/g, "").replace(/[^\d.-]/g, "");
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
+function fmt(v: any, digits = 2) {
+  const n = numFromAny(v);
+  if (n === null) return safeStr(v);
+  return n.toLocaleString("en-US", { maximumFractionDigits: digits });
+}
+
+function fmtCompact(v: any) {
+  const n = numFromAny(v);
+  if (n === null) return safeStr(v);
+
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${(n / 1_000).toFixed(2)}K`;
+
+  return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+function toCsv(rows: AnyObj[], columns: string[]) {
+  const esc = (x: any) => {
+    const s = String(x ?? "");
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+  const head = columns.map(esc).join(",");
+  const body = rows
+    .map((r) => columns.map((c) => esc(r?.[c])).join(","))
+    .join("\n");
+  return `${head}\n${body}\n`;
+}
+
+function downloadText(filename: string, text: string, mime = "text/plain") {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function pickRows(payload: any): AnyObj[] {
+  if (!payload) return [];
+  const candidates = [
+    payload.rows,
+    payload.data,
+    payload.items,
+    payload.result,
+    payload.series,
+  ];
+  for (const c of candidates) if (Array.isArray(c)) return c as AnyObj[];
+  for (const k of Object.keys(payload))
+    if (Array.isArray((payload as any)[k]))
+      return (payload as any)[k] as AnyObj[];
+  return [];
+}
+
+function inferColumns(rows: AnyObj[], omit?: string[]) {
+  if (!rows.length) return [];
+  const keys = Object.keys(rows[0] || {});
+  const valueish = new Set([
+    "value",
+    "Value",
+    "amount",
+    "Amount",
+    "qty",
+    "Qty",
+    "quantity",
+    "Quantity",
+    "share_pct",
+    "share",
+  ]);
+
+  const omitSet = new Set((omit || []).map((s) => s.toLowerCase()));
+  const filtered = keys.filter((k) => !omitSet.has(k.toLowerCase()));
+
+  return [
+    ...filtered.filter((k) => !valueish.has(k)),
+    ...filtered.filter((k) => valueish.has(k)),
+  ];
+}
+
+/* ---- Row helpers ---- */
+function getItemCodeFromRow(r: AnyObj): number | null {
+  const candidates = [
+    "Item Code",
+    "item_code",
+    "itemCode",
+    "itemcode",
+    "item_code_fao",
+  ];
+  for (const k of candidates) {
+    const n = numFromAny(r?.[k]);
+    if (n !== null && n > 0) return n;
+  }
+  return null;
+}
+
+function getAreaCodeFromRow(r: AnyObj): number | null {
+  const candidates = ["Area Code", "area_code", "AreaCode", "areacode"];
+  for (const k of candidates) {
+    const n = numFromAny(r?.[k]);
+    if (n !== null && n > 0) return n;
+  }
+  return null;
+}
+
+function getItemNameFromRow(r: AnyObj): string {
+  return safeStr(r?.item ?? r?.Item ?? r?.product ?? r?.Product ?? r?.name);
+}
+
+function getUnitFromRow(r: AnyObj): string {
+  return safeStr(r?.unit ?? r?.Unit ?? "");
+}
+
+/* ✅ Normalize trend rows for Recharts (prevents blank chart) */
+function normalizeTrendRows(rows: AnyObj[]): ProductionTrendPoint[] {
+  const out: ProductionTrendPoint[] = [];
+
+  for (const r of rows || []) {
+    const y =
+      numFromAny(r?.year) ??
+      numFromAny(r?.Year) ??
+      numFromAny(r?.report_year) ??
+      numFromAny(r?.REPORT_YEAR);
+
+    const v =
+      numFromAny(r?.value) ??
+      numFromAny(r?.Value) ??
+      numFromAny(r?.amount) ??
+      numFromAny(r?.Amount);
+
+    if (y === null || v === null) continue;
+    out.push({ year: y, value: v });
+  }
+
+  // sort ascending by year
+  out.sort((a, b) => a.year - b.year);
+  return out;
+}
+
+function inferProdUnit(prod: ProductionInsights | null | undefined) {
+  const units = (prod?.items || [])
+    .map((x) => String(x.unit ?? "").trim())
+    .filter(Boolean);
+
+  if (!units.length) return "—";
+
+  const unique = Array.from(new Set(units));
+  return unique.length === 1 ? unique[0] : "Mixed";
+}
+
+/* ---- Table ---- */
+function SimpleTable({
+  rows,
+  maxRows = 30,
+  onRowClick,
+  activeKey,
+  rowKeyFn,
+  omitColumns,
+}: {
+  rows: AnyObj[];
+  maxRows?: number;
+  onRowClick?: (row: AnyObj) => void;
+  activeKey?: string | number | null;
+  rowKeyFn?: (row: AnyObj, idx: number) => string | number;
+  omitColumns?: string[];
+}) {
+  const cols = useMemo(
+    () => inferColumns(rows, omitColumns),
+    [rows, omitColumns],
+  );
+  const view = rows.slice(0, maxRows);
+
+  if (!rows.length) {
+    return (
+      <div className="rounded-md border bg-white p-4 text-sm text-slate-600">
+        No rows returned for this module.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-md border bg-white">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50">
+            <tr>
+              {cols.map((c) => (
+                <th
+                  key={c}
+                  className="whitespace-nowrap px-3 py-2 text-left font-semibold text-slate-700"
+                >
+                  {c}
+                </th>
+              ))}
+            </tr>
+          </thead>
+
+          <tbody>
+            {view.map((r, idx) => {
+              const key = rowKeyFn ? rowKeyFn(r, idx) : idx;
+              const isActive = activeKey != null && key === activeKey;
+
+              return (
+                <tr
+                  key={String(key)}
+                  onClick={onRowClick ? () => onRowClick(r) : undefined}
+                  className={[
+                    "border-t",
+                    onRowClick ? "cursor-pointer hover:bg-slate-50" : "",
+                    isActive ? "bg-indigo-50" : "",
+                  ].join(" ")}
+                  title={onRowClick ? "Click to view yearly trend" : undefined}
+                >
+                  {cols.map((c) => (
+                    <td
+                      key={c}
+                      className="whitespace-nowrap px-3 py-2 text-slate-800"
+                    >
+                      {typeof r?.[c] === "number"
+                        ? fmt(r?.[c], 2)
+                        : safeStr(r?.[c])}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {rows.length > maxRows ? (
+        <div className="border-t bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          Showing {maxRows} of {rows.length} rows.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* =======================
+   Overview renderer (unchanged)
+======================= */
+
+function OverviewGrid({ data }: { data: AnyObj }) {
+  const d = data || {};
+
+  const unitFor = (k: string) => {
+    const direct = d?.[k.replace(/_qty$/i, "_unit")] ?? null;
+    if (direct != null) return safeStr(direct);
+
+    if (/production_qty/i.test(k)) return safeStr(d?.production_unit);
+    if (/import_qty/i.test(k)) return safeStr(d?.import_unit);
+    if (/export_qty/i.test(k)) return safeStr(d?.export_unit);
+
+    return "";
+  };
+
+  const leftCards: { k: string; v: any; unit?: string }[] = [
+    { k: "COUNTRY", v: d.country ?? d.COUNTRY },
+    {
+      k: "PRODUCTION_QTY",
+      v: d.production_qty ?? d.PRODUCTION_QTY,
+      unit: unitFor("production_qty"),
+    },
+    {
+      k: "IMPORT_QTY",
+      v: d.import_qty ?? d.IMPORT_QTY,
+      unit: unitFor("import_qty"),
+    },
+    {
+      k: "EXPORT_QTY",
+      v: d.export_qty ?? d.EXPORT_QTY,
+      unit: unitFor("export_qty"),
+    },
+    {
+      k: "KCAL_PER_CAPITA_DAY",
+      v: d.kcal_per_capita_day ?? d.KCAL_PER_CAPITA_DAY,
+    },
+    {
+      k: "FAT_G_PER_CAPITA_DAY",
+      v: d.fat_g_per_capita_day ?? d.FAT_G_PER_CAPITA_DAY,
+    },
+  ];
+
+  const rightCards: { k: string; v: any; unit?: string }[] = [
+    { k: "ISO3", v: d.iso3 ?? d.ISO3 },
+    { k: "LATEST_YEAR", v: d.latest_year ?? d.LATEST_YEAR },
+    {
+      k: "PROTEIN_G_PER_CAPITA_DAY",
+      v: d.protein_g_per_capita_day ?? d.PROTEIN_G_PER_CAPITA_DAY,
+    },
+  ];
+
+  const hasAny =
+    leftCards.some((x) => x.v != null && String(x.v).trim() !== "") ||
+    rightCards.some((x) => x.v != null && String(x.v).trim() !== "");
+
+  if (!hasAny) {
+    return (
+      <div className="rounded-md border bg-white p-4 text-sm text-slate-600">
+        Overview returned no fields.
+      </div>
+    );
+  }
+
+  const CardItem = ({
+    label,
+    value,
+    unit,
+  }: {
+    label: string;
+    value: any;
+    unit?: string;
+  }) => (
+    <div className="rounded-2xl border bg-white px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          {label}
+        </div>
+        {unit ? (
+          <div className="inline-flex h-6 min-w-[44px] items-center justify-center rounded-full border bg-slate-50 px-2 text-[11px] font-semibold text-slate-700">
+            {unit}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-1 text-sm font-semibold text-slate-900">
+        {typeof value === "number" ? fmt(value, 2) : safeStr(value)}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <div className="space-y-4">
+        {leftCards.map((x) => (
+          <CardItem key={x.k} label={x.k} value={x.v} unit={x.unit} />
+        ))}
+      </div>
+      <div className="space-y-4">
+        {rightCards.map((x) => (
+          <CardItem key={x.k} label={x.k} value={x.v} unit={x.unit} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* =======================
+   Production Insights renderer (unchanged)
+======================= */
+
+function ProductionInsightsView({ prod }: { prod: ProductionInsights | null }) {
+  if (!prod) {
+    return (
+      <div className="rounded-md border bg-white p-4 text-sm text-slate-600">
+        No production insights loaded.
+      </div>
+    );
+  }
+
+  if (prod.ok === false) {
+    return (
+      <div className="rounded-md border bg-rose-50 p-4 text-sm text-rose-700">
+        {prod.error || "No production insights found."}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-lg border bg-white p-3">
+          <div className="text-xs text-slate-500">Latest Year</div>
+          <div className="text-lg font-semibold">{prod.latest_year}</div>
+        </div>
+
+        <div className="rounded-lg border bg-white p-3">
+          <div className="text-xs text-slate-500">Total Latest</div>
+          <div className="text-lg font-semibold">
+            {prod.total_latest === null ? "—" : fmtCompact(prod.total_latest)}
+          </div>
+        </div>
+
+        <div className="rounded-lg border bg-white p-3">
+          <div className="text-xs text-slate-500">YoY %</div>
+          <div
+            className={[
+              "text-lg font-semibold",
+              (prod.yoy_pct ?? 0) >= 0 ? "text-emerald-600" : "text-rose-600",
+            ].join(" ")}
+          >
+            {prod.yoy_pct === null ? "—" : `${fmt(prod.yoy_pct, 2)}%`}
+          </div>
+        </div>
+
+        <div className="rounded-lg border bg-white p-3">
+          <div className="text-xs text-slate-500">Top-5 Share</div>
+          <div className="text-lg font-semibold">
+            {prod.top5_share_pct === null
+              ? "—"
+              : `${fmt(prod.top5_share_pct, 2)}%`}
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-lg border bg-white p-3">
+        <div className="mb-2 text-sm font-semibold text-slate-800">
+          Trend (yearly total)
+        </div>
+
+        {prod.trend?.length ? (
+          <div className="h-56 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={prod.trend}
+                margin={{ top: 6, right: 10, left: 18, bottom: 2 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="year" tick={{ fontSize: 12 }} />
+                <YAxis
+                  width={74}
+                  tick={{ fontSize: 12 }}
+                  tickFormatter={(v) => fmtCompact(v)}
+                />
+                <Tooltip formatter={(v: any) => fmt(Number(v), 2)} />
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  dot={false}
+                  strokeWidth={2}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="rounded-md border bg-slate-50 p-3 text-sm text-slate-700">
+            No trend rows returned.
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-lg border bg-white p-3">
+        <div className="mb-2 text-sm font-semibold text-slate-800">
+          Top Items (latest year)
+        </div>
+        <SimpleTable rows={prod.items as any[]} maxRows={15} />
+      </div>
+    </div>
+  );
+}
+
+/* =======================
+   Component
+======================= */
+
+export default function FaostatTab(p: Props) {
+  const {
+    iso3,
+    faoModule,
+    onPickModule,
+    loading,
+    overview,
+    top,
+    trade,
+    tradeTopN,
+    tradeYears,
+    setTradeTopN,
+    setTradeYears,
+
+    prod = null,
+    prodTopN = 10,
+    prodYears = 10,
+    prodElement = "Production",
+    setProdTopN,
+    setProdYears,
+    setProdElement,
+  } = p;
+
+  const hasProdWiring = Boolean(setProdTopN && setProdYears && setProdElement);
+
+  const didAuto = useRef(false);
+  useEffect(() => {
+    if (didAuto.current) return;
+    if (faoModule !== "") return;
+    didAuto.current = true;
+    void Promise.resolve(onPickModule("overview"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [faoModule]);
+
+  const moduleLabel: Record<FaoModule, string> = {
+    "": "Choose a module",
+    overview: "Overview",
+    "prod-insights": "Production Insights (Year-wise)",
+    "top-production": "Top Production",
+    "top-import": "Top Import",
+    "top-export": "Top Export",
+    "trade-import": "Trade Insights (Import)",
+    "trade-export": "Trade Insights (Export)",
+  };
+
+  const prodUnit = useMemo(() => inferProdUnit(prod), [prod]);
+
+  const activePayload = useMemo(() => {
+    if (faoModule === "overview") return overview;
+    if (faoModule === "prod-insights") return prod;
+    if (faoModule === "trade-import" || faoModule === "trade-export")
+      return trade;
+    if (isTopKind(faoModule)) return top;
+    return null;
+  }, [faoModule, overview, prod, trade, top]);
+
+  const rows = useMemo(() => pickRows(activePayload), [activePayload]);
+  const cols = useMemo(() => inferColumns(rows), [rows]);
+
+  const canDownload =
+    (faoModule === "overview" && overview && typeof overview === "object") ||
+    (faoModule === "prod-insights" && prod && typeof prod === "object") ||
+    (rows.length > 0 && cols.length > 0);
+
+  // ✅ Trend (Top modules)
+  const [selectedTopRow, setSelectedTopRow] = useState<AnyObj | null>(null);
+  const [selectedTopKey, setSelectedTopKey] = useState<string | number | null>(
+    null,
+  );
+  const [topTrend, setTopTrend] = useState<ProductionTrendPoint[]>([]);
+  const [topTrendLoading, setTopTrendLoading] = useState(false);
+  const [topTrendErr, setTopTrendErr] = useState<string | null>(null);
+
+  const topMetaAreaCode = useMemo(() => {
+    const v = (top as any)?.meta?.area_code;
+    const n = numFromAny(v);
+    return n !== null && n > 0 ? n : null;
+  }, [top]);
+
+  function datasetAndElementForTop(mod: FaoModule) {
+    if (mod === "top-production") {
+      return {
+        dataset: "production" as const,
+        element: prodElement || "Production",
+      };
+    }
+    if (mod === "top-import") {
+      return { dataset: "sua" as const, element: "Import quantity" };
+    }
+    if (mod === "top-export") {
+      return { dataset: "sua" as const, element: "Export quantity" };
+    }
+    return {
+      dataset: "production" as const,
+      element: prodElement || "Production",
+    };
+  }
+
+  async function loadTrendForTopRow(row: AnyObj) {
+    const itemCode = getItemCodeFromRow(row);
+    const areaCode = getAreaCodeFromRow(row) ?? topMetaAreaCode;
+
+    setSelectedTopRow(row);
+    setTopTrend([]);
+    setTopTrendErr(null);
+
+    if (!itemCode) {
+      setTopTrendErr("Item Code not found in this row (required for trend).");
+      return;
+    }
+    if (!areaCode) {
+      setTopTrendErr(
+        "Area Code not found (required for trend). Add 'Area Code' in top rows or return meta.area_code.",
+      );
+      return;
+    }
+
+    const { dataset, element } = datasetAndElementForTop(faoModule);
+
+    setTopTrendLoading(true);
+    try {
+      const years = String(Math.min(Math.max(prodYears || 10, 1), 60));
+      const qs = new URLSearchParams({
+        dataset,
+        element,
+        area_code: String(areaCode),
+        item_code: String(itemCode),
+        years,
+      });
+
+      const url = `/api/faostat/trend?${qs.toString()}`;
+      const j = await fetchTrendJSON(url);
+
+      const rawRows = Array.isArray(j?.rows) ? (j.rows as AnyObj[]) : [];
+      const normalized = normalizeTrendRows(rawRows);
+
+      if (!normalized.length) {
+        setTopTrendErr(
+          "Trend returned rows but could not normalize year/value (check API keys Year/Value or numeric formatting).",
+        );
+        return;
+      }
+
+      setTopTrend(normalized);
+    } catch (e: any) {
+      console.error("Trend fetch error:", e);
+      setTopTrendErr(e?.message || "Trend fetch failed");
+    } finally {
+      setTopTrendLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    setSelectedTopRow(null);
+    setSelectedTopKey(null);
+    setTopTrend([]);
+    setTopTrendErr(null);
+    setTopTrendLoading(false);
+  }, [faoModule]);
+
+  return (
+    <div className="space-y-3">
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <Button asChild variant="outline" size="sm">
+                  <Link href={MAIN_MENU_HREF} aria-label="Main menu">
+                    <Home className="mr-2 h-4 w-4" />
+                    Main Menu
+                  </Link>
+                </Button>
+
+                <div className="space-y-0.5">
+                  <CardTitle className="text-base">
+                    FAOSTAT • {moduleLabel[faoModule || "overview"]}{" "}
+                    <span className="text-slate-500">({iso3})</span>
+                  </CardTitle>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {loading ? (
+                      <Badge className="bg-slate-900 text-white">
+                        Loading…
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary">Ready</Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap justify-start gap-2 sm:justify-end">
+                <Button
+                  variant="default"
+                  size="sm"
+                  disabled={!canDownload}
+                  onClick={() => {
+                    if (faoModule === "overview") {
+                      downloadText(
+                        `faostat-${iso3}-overview.json`,
+                        JSON.stringify(overview ?? {}, null, 2),
+                        "application/json",
+                      );
+                      return;
+                    }
+                    if (faoModule === "prod-insights") {
+                      downloadText(
+                        `faostat-${iso3}-production-insights.json`,
+                        JSON.stringify(prod ?? {}, null, 2),
+                        "application/json",
+                      );
+                      return;
+                    }
+                    const csv = toCsv(rows, cols);
+                    downloadText(
+                      `faostat-${iso3}-${faoModule || "module"}.csv`,
+                      csv,
+                      "text/csv",
+                    );
+                  }}
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPickModule("overview")}
+                disabled={loading}
+              >
+                <PieIcon className="mr-2 h-4 w-4" />
+                Overview
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPickModule("prod-insights")}
+                disabled={loading || !hasProdWiring}
+                title={
+                  !hasProdWiring
+                    ? "Wire prod props in page.tsx to enable"
+                    : undefined
+                }
+              >
+                <TrendingUp className="mr-2 h-4 w-4" />
+                Prod Insights
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPickModule("top-production")}
+                disabled={loading}
+              >
+                <Table2 className="mr-2 h-4 w-4" />
+                Top Prod
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPickModule("top-import")}
+                disabled={loading}
+              >
+                <Table2 className="mr-2 h-4 w-4" />
+                Top Import
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPickModule("top-export")}
+                disabled={loading}
+              >
+                <Table2 className="mr-2 h-4 w-4" />
+                Top Export
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPickModule("trade-import")}
+                disabled={loading}
+              >
+                <Table2 className="mr-2 h-4 w-4" />
+                Trade Import
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPickModule("trade-export")}
+                disabled={loading}
+              >
+                <Table2 className="mr-2 h-4 w-4" />
+                Trade Export
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+
+        {faoModule === "prod-insights" && hasProdWiring ? (
+          <CardContent className="pt-0">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div className="text-sm text-slate-600">
+                Year-wise totals + YoY + concentration + top items.
+                {prodUnit !== "—" ? (
+                  <span className="ml-2 text-xs text-slate-500">
+                    Unit: {prodUnit}
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm">
+                  <span className="text-slate-600">Element</span>
+                  <select
+                    className="bg-transparent text-slate-900 outline-none"
+                    value={prodElement}
+                    onChange={(e) => setProdElement!(e.target.value)}
+                  >
+                    {["Production", "Area harvested", "Yield"].map((x) => (
+                      <option key={x} value={x}>
+                        {x}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm">
+                  <span className="text-slate-600">Top N</span>
+                  <select
+                    className="bg-transparent text-slate-900 outline-none"
+                    value={prodTopN}
+                    onChange={(e) => setProdTopN!(Number(e.target.value))}
+                  >
+                    {[5, 10, 15, 20, 25, 50].map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm">
+                  <span className="text-slate-600">Years</span>
+                  <select
+                    className="bg-transparent text-slate-900 outline-none"
+                    value={prodYears}
+                    onChange={(e) => setProdYears!(Number(e.target.value))}
+                  >
+                    {[5, 10, 15, 20, 25, 30, 40, 50].map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={loading}
+                  onClick={() => onPickModule("prod-insights")}
+                >
+                  Reload
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        ) : null}
+
+        {(faoModule === "trade-import" || faoModule === "trade-export") && (
+          <CardContent className="pt-0">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div className="text-sm text-slate-600">
+                Adjust trade insight parameters (auto-reloads via your page.tsx
+                effect).
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm">
+                  <span className="text-slate-600">Top N</span>
+                  <select
+                    className="bg-transparent text-slate-900 outline-none"
+                    value={tradeTopN}
+                    onChange={(e) => setTradeTopN(Number(e.target.value))}
+                  >
+                    {[5, 10, 15, 20, 25, 50].map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm">
+                  <span className="text-slate-600">Years</span>
+                  <select
+                    className="bg-transparent text-slate-900 outline-none"
+                    value={tradeYears}
+                    onChange={(e) => setTradeYears(Number(e.target.value))}
+                  >
+                    {[5, 10, 15, 20, 25, 30].map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={loading}
+                  onClick={() => onPickModule(faoModule)}
+                >
+                  Reload
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
+      {faoModule === "" || faoModule === "overview" ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-slate-800">Overview</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {overview && typeof overview === "object" ? (
+              <OverviewGrid data={overview as AnyObj} />
+            ) : (
+              <div className="rounded-md border bg-white p-4 text-sm text-slate-600">
+                No overview data returned.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {faoModule === "prod-insights" ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-slate-800">
+              Production Insights{" "}
+              {prodUnit !== "—" ? (
+                <span className="ml-2 text-xs text-slate-500">
+                  Unit: {prodUnit}
+                </span>
+              ) : null}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <ProductionInsightsView prod={prod ?? null} />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {faoModule !== "" &&
+      faoModule !== "overview" &&
+      faoModule !== "prod-insights" ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-slate-800">
+              Data Preview{" "}
+              <span className="text-slate-500">({moduleLabel[faoModule]})</span>
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="space-y-3">
+            {isTopKind(faoModule) ? (
+              <div className="grid gap-3 lg:grid-cols-2">
+                <div className="space-y-2">
+                  <div className="text-xs text-slate-600">
+                    Click a row to view yearly trend.
+                  </div>
+
+                  <SimpleTable
+                    rows={rows}
+                    maxRows={30}
+                    omitColumns={[
+                      "Area Code",
+                      "area_code",
+                      "AreaCode",
+                      "areacode",
+                    ]}
+                    onRowClick={(r) => {
+                      const ic = getItemCodeFromRow(r);
+                      const ac =
+                        getAreaCodeFromRow(r) ?? topMetaAreaCode ?? "na";
+                      const key = `${ic ?? "noitem"}-${ac}`;
+                      setSelectedTopKey(key);
+                      loadTrendForTopRow(r);
+                    }}
+                    rowKeyFn={(r) => {
+                      const ic = getItemCodeFromRow(r);
+                      const ac =
+                        getAreaCodeFromRow(r) ?? topMetaAreaCode ?? "na";
+                      return `${ic ?? "noitem"}-${ac}`;
+                    }}
+                    activeKey={selectedTopKey}
+                  />
+                </div>
+
+                <div className="rounded-lg border bg-white p-3">
+                  <div className="mb-2 text-sm font-semibold text-slate-800">
+                    Trend (yearly)
+                  </div>
+
+                  {!selectedTopRow ? (
+                    <div className="rounded-md border bg-slate-50 p-3 text-sm text-slate-700">
+                      Select a row from the table.
+                    </div>
+                  ) : topTrendLoading ? (
+                    <div className="rounded-md border bg-slate-50 p-3 text-sm text-slate-700">
+                      Loading trend…
+                    </div>
+                  ) : topTrendErr ? (
+                    <div className="rounded-md border bg-rose-50 p-3 text-sm text-rose-700">
+                      {topTrendErr}
+                    </div>
+                  ) : topTrend.length === 0 ? (
+                    <div className="rounded-md border bg-slate-50 p-3 text-sm text-slate-700">
+                      No trend rows returned.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 text-xs text-slate-600">
+                          {getItemNameFromRow(selectedTopRow)}
+                        </div>
+                        <div className="rounded-md border bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-800">
+                          {getUnitFromRow(selectedTopRow)}
+                        </div>
+                      </div>
+
+                      {/* ✅ Explicit heights (avoid blank chart) */}
+                      <div style={{ height: 190, width: "100%" }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart
+                            data={topTrend}
+                            margin={{ top: 6, right: 10, left: 18, bottom: 2 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="year" tick={{ fontSize: 12 }} />
+                            <YAxis
+                              width={74}
+                              tick={{ fontSize: 12 }}
+                              tickFormatter={(v) => fmtCompact(v)}
+                            />
+                            <Tooltip formatter={(v: any) => fmt(v, 2)} />
+                            <Line
+                              type="monotone"
+                              dataKey="value"
+                              dot={false}
+                              strokeWidth={2}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      <div style={{ height: 190, width: "100%" }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={topTrend}
+                            margin={{ top: 6, right: 10, left: 18, bottom: 2 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="year" tick={{ fontSize: 12 }} />
+                            <YAxis
+                              width={74}
+                              tick={{ fontSize: 12 }}
+                              tickFormatter={(v) => fmtCompact(v)}
+                            />
+                            <Tooltip formatter={(v: any) => fmt(v, 2)} />
+                            <Bar dataKey="value" radius={[8, 8, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-md border bg-white p-4 text-sm text-slate-600">
+                This view supports trend only for top modules.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
+
+==================== app\world\components\WdiTab.tsx ====================
+
+"use client";
+
+import React, { useMemo } from "react";
+import { useRouter } from "next/navigation";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from "recharts";
+
+/* =======================
+   Types
+======================= */
+
+export type WdiPoint = { year: number; value: number; unit?: string | null };
+
+export type WdiResponse = {
+  iso3: string;
+  country: string;
+  region: string | null;
+  indicator: { code: string; label: string; unit: string | null };
+  latest: WdiPoint | null;
+  series: WdiPoint[];
+  error?: string;
+};
+
+/* =======================
+   Helpers (export parse)
+======================= */
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function asString(v: unknown, fallback = ""): string {
+  return typeof v === "string" ? v : fallback;
+}
+function asNumber(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+function asNullableString(v: unknown): string | null {
+  return typeof v === "string" ? v : null;
+}
+
+export function parseWdiResponse(
+  raw: unknown,
+  iso3: string,
+  indicator: string,
+): WdiResponse {
+  if (!isRecord(raw)) {
+    return {
+      iso3,
+      country: iso3,
+      region: null,
+      indicator: { code: indicator, label: indicator, unit: null },
+      latest: null,
+      series: [],
+      error: "Invalid WDI API response (not an object).",
+    };
+  }
+
+  const maybeErr = raw.error;
+  if (typeof maybeErr === "string" && maybeErr.trim()) {
+    return {
+      iso3,
+      country: iso3,
+      region: null,
+      indicator: { code: indicator, label: indicator, unit: null },
+      latest: null,
+      series: [],
+      error: maybeErr,
+    };
+  }
+
+  const country = asString(raw.country, iso3);
+  const region = asNullableString(raw.region);
+
+  const ind = isRecord(raw.indicator) ? raw.indicator : {};
+  const code = asString(ind.code, indicator);
+  const label = asString(ind.label, indicator);
+  const unit = (typeof ind.unit === "string" ? ind.unit : null) as
+    | string
+    | null;
+
+  const latestRaw = isRecord(raw.latest) ? raw.latest : null;
+  const latest: WdiPoint | null =
+    latestRaw &&
+    asNumber(latestRaw.year) !== null &&
+    asNumber(latestRaw.value) !== null
+      ? {
+          year: asNumber(latestRaw.year)!,
+          value: asNumber(latestRaw.value)!,
+          unit: typeof latestRaw.unit === "string" ? latestRaw.unit : null,
+        }
+      : null;
+
+  const seriesRaw = Array.isArray(raw.series) ? raw.series : [];
+  const series = seriesRaw
+    .map((r): WdiPoint | null => {
+      if (!isRecord(r)) return null;
+      const y = asNumber(r.year);
+      const v = asNumber(r.value);
+      if (y === null || v === null) return null;
+      return {
+        year: y,
+        value: v,
+        unit: typeof r.unit === "string" ? r.unit : null,
+      };
+    })
+    .filter((x): x is WdiPoint => x !== null);
+
+  return {
+    iso3,
+    country,
+    region,
+    indicator: { code, label, unit },
+    latest,
+    series,
+  };
+}
+
+/* =======================
+   Formatting
+======================= */
+
+function fmt(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "—";
+  return new Intl.NumberFormat("en-US").format(n);
+}
+function fmtCompact(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "—";
+  const v = n as number;
+  if (Math.abs(v) >= 1e12) return `${(v / 1e12).toFixed(2)}T`;
+  if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
+  if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
+  if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(2)}K`;
+  return Number.isInteger(v) ? String(v) : v.toFixed(2);
+}
+function fmtPct(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "—";
+  return `${n.toFixed(1)}%`;
+}
+function toFiniteNumber(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+function tooltipNumber(v: unknown): string {
+  const n = toFiniteNumber(v);
+  if (n === null) return "—";
+  return n.toLocaleString();
+}
+function stableColorFromKey(key: string): string {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  const hue = h % 360;
+  return `hsl(${hue} 72% 45%)`;
+}
+
+function qsSet(
+  routerReplace: (url: string) => void,
+  iso3: string,
+  code: string,
+) {
+  routerReplace(`/world/country/${iso3}?indicator=${encodeURIComponent(code)}`);
+}
+
+export default function WdiTab(props: {
+  iso3: string;
+  indicator: string;
+  wdi: WdiResponse | null;
+  loading: boolean;
+}) {
+  const router = useRouter();
+
+  const quickPicks = useMemo(
+    () => [
+      { label: "Population", code: "SP.POP.TOTL" },
+      { label: "GDP (current US$)", code: "NY.GDP.MKTP.CD" },
+      { label: "Population density", code: "EN.POP.DNST" },
+      { label: "Life expectancy", code: "SP.DYN.LE00.IN" },
+      { label: "Unemployment (%)", code: "SL.UEM.TOTL.ZS" },
+    ],
+    [],
+  );
+
+  const wdiLatest = props.wdi?.latest ?? null;
+
+  const wdiTable = useMemo(() => {
+    const series = (props.wdi?.series ?? [])
+      .slice()
+      .sort((a, b) => a.year - b.year)
+      .map((p) => ({ year: p.year, value: p.value }));
+
+    return series.map((cur, idx) => {
+      const prev = idx > 0 ? series[idx - 1] : null;
+      const yoy =
+        prev && prev.value !== 0 && Number.isFinite(prev.value)
+          ? ((cur.value - prev.value) / Math.abs(prev.value)) * 100
+          : null;
+
+      return { year: cur.year, value: cur.value, yoy };
+    });
+  }, [props.wdi]);
+
+  const wdiBars = useMemo(() => {
+    if (!wdiTable.length) return [];
+    const take = 25;
+    return wdiTable.slice(Math.max(0, wdiTable.length - take));
+  }, [wdiTable]);
+
+  return (
+    <div className="space-y-3">
+      <Card className="shadow-sm">
+        <CardHeader className="py-3">
+          <CardTitle className="text-sm font-semibold text-slate-800">
+            Quick indicator picks
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="flex flex-wrap gap-2">
+            {quickPicks.map((p) => {
+              const active =
+                (props.wdi?.indicator?.code ?? props.indicator) === p.code;
+              return (
+                <button
+                  key={p.code}
+                  onClick={() => qsSet(router.replace, props.iso3, p.code)}
+                  className={[
+                    "rounded-full border px-3 py-1.5 text-xs font-medium transition",
+                    active
+                      ? "bg-slate-900 text-white border-slate-900"
+                      : "bg-white text-slate-700 hover:bg-slate-50",
+                  ].join(" ")}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <Card className="shadow-sm">
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm font-semibold text-slate-800">
+              Latest
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="text-xs text-slate-500">
+              {wdiLatest ? `${wdiLatest.year}` : "—"}
+            </div>
+            <div className="mt-1 text-2xl font-bold text-slate-900">
+              {wdiLatest ? fmt(wdiLatest.value) : "—"}
+            </div>
+            <div className="mt-1 text-xs text-slate-500">
+              {props.wdi?.indicator?.unit ?? ""}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-sm md:col-span-2">
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm font-semibold text-slate-800">
+              Trend (Bar) + YoY%
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {props.loading ? (
+              <div className="rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                Loading WDI…
+              </div>
+            ) : wdiTable.length === 0 ? (
+              <div className="rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                No WDI series for this indicator / country.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                <div className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={wdiBars}
+                      margin={{ left: 8, right: 8, top: 10, bottom: 10 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="year" />
+                      <YAxis tickFormatter={(v) => fmtCompact(Number(v))} />
+                      <Tooltip
+                        labelFormatter={(l) => `Year: ${l}`}
+                        formatter={(v: any) => tooltipNumber(v)}
+                      />
+                      <Bar
+                        dataKey="value"
+                        radius={[8, 8, 0, 0]}
+                        fill={stableColorFromKey(props.indicator)}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="rounded-lg border overflow-auto max-h-[300px]">
+                  <table className="min-w-full text-xs">
+                    <thead className="sticky top-0 bg-slate-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold text-slate-700">
+                          Year
+                        </th>
+                        <th className="px-3 py-2 text-right font-semibold text-slate-700">
+                          Value
+                        </th>
+                        <th className="px-3 py-2 text-right font-semibold text-slate-700">
+                          YoY%
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {wdiTable
+                        .slice()
+                        .sort((a, b) => b.year - a.year)
+                        .map((r) => (
+                          <tr key={r.year} className="border-t">
+                            <td className="px-3 py-2 text-slate-700">
+                              {r.year}
+                            </td>
+                            <td className="px-3 py-2 text-right font-semibold text-slate-900">
+                              {fmt(r.value)}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <span
+                                className={[
+                                  "inline-flex rounded-full border px-2 py-0.5 font-semibold",
+                                  r.yoy === null
+                                    ? "border-slate-200 text-slate-500"
+                                    : r.yoy >= 0
+                                      ? "border-emerald-200 text-emerald-700 bg-emerald-50"
+                                      : "border-rose-200 text-rose-700 bg-rose-50",
+                                ].join(" ")}
+                              >
+                                {r.yoy === null ? "—" : fmtPct(r.yoy)}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+
+==================== app\world\components\WeoTab.tsx ====================
+
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+} from "recharts";
+
+type Point = {
+  year: number;
+  value: number;
+};
+
+type WeoResponse = {
+  ok?: boolean;
+  iso3?: string;
+  country?: string;
+  indicator_code?: string;
+  indicator_label?: string;
+  vintage?: string | null;
+  unit?: string | null;
+  unit_label?: string | null;
+  uom?: string | null;
+  scale?: string | null;
+  points?: Array<{
+    year: number | string;
+    value: number | string;
+  }>;
+  points_returned?: number;
+  error?: string;
+};
+
+type Props = {
+  iso3: string;
+  initialIndicator: string;
+};
+
+type PointWithYoY = Point & {
+  yoy: number | null;
+};
+
+function fmt(value: number) {
+  if (!Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function fmtYoY(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "—";
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${fmt(value)}`;
+}
+
+function getIndicatorUnit(indicator?: string | null): {
+  short: string;
+  long: string;
+} {
+  const code = (indicator || "").toUpperCase().trim();
+
+  // Inflation / prices
+  if (code === "PCPIPCH") {
+    return { short: "%", long: "Annual percent change" };
+  }
+
+  // GDP current prices
+  if (code === "NGDPD") {
+    return { short: "US$ bn", long: "US dollars (billions)" };
+  }
+
+  // GDP per capita, current prices
+  if (code === "NGDPDPC") {
+    return { short: "US$", long: "US dollars per capita" };
+  }
+
+  // GDP constant prices
+  if (code === "NGDP_R" || code === "NGDPR") {
+    return { short: "National currency", long: "Constant prices" };
+  }
+
+  // GDP growth
+  if (code === "NGDP_RPCH") {
+    return { short: "%", long: "Annual percent change" };
+  }
+
+  // GDP PPP
+  if (code === "PPPGDP") {
+    return { short: "PPP$", long: "Purchasing power parity dollars" };
+  }
+
+  // GDP per capita PPP
+  if (code === "NGDPRPPPPC" || code === "PPPPC") {
+    return { short: "PPP$", long: "PPP dollars per capita" };
+  }
+
+  // Current account
+  if (code === "BCA_NGDPD" || code === "BCA_NGDP") {
+    return { short: "% of GDP", long: "Percent of GDP" };
+  }
+  if (code === "BCA") {
+    return { short: "US$ bn", long: "US dollars (billions)" };
+  }
+
+  // Fiscal
+  if (
+    code === "GGXONLB_NGDP" ||
+    code === "GGXCNL_NGDP" ||
+    code === "NGSD_NGDP" ||
+    code === "NID_NGDP"
+  ) {
+    return { short: "% of GDP", long: "Percent of GDP" };
+  }
+
+  if (code === "GGXONLB" || code === "GGXCNL") {
+    return { short: "National currency", long: "National currency" };
+  }
+
+  // Common rule-based fallbacks
+  if (code.endsWith("_NGDP") || code.endsWith("_NGDPD")) {
+    return { short: "% of GDP", long: "Percent of GDP" };
+  }
+
+  if (code.endsWith("DPC")) {
+    return { short: "US$", long: "US dollars per capita" };
+  }
+
+  if (code.endsWith("RPCH") || code.endsWith("PCH")) {
+    return { short: "%", long: "Annual percent change" };
+  }
+
+  if (code.includes("GDP") && !code.includes("NGDP")) {
+    return { short: "US$", long: "US dollars" };
+  }
+
+  return { short: "", long: "" };
+}
+
+export default function WeoTab({ iso3, initialIndicator }: Props) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [payload, setPayload] = useState<WeoResponse | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function load() {
+      try {
+        setLoading(true);
+        setError("");
+        setPayload(null);
+
+        const res = await fetch(
+          `/api/imf/weo/country?iso3=${encodeURIComponent(
+            iso3,
+          )}&indicator=${encodeURIComponent(initialIndicator)}`,
+          { cache: "no-store" },
+        );
+
+        const json: WeoResponse = await res.json();
+
+        if (!alive) return;
+
+        if (!res.ok || json.ok === false) {
+          setPayload(json);
+          setError(json.error || "Failed to load WEO data");
+          return;
+        }
+
+        setPayload(json);
+      } catch (e) {
+        if (!alive) return;
+        setError(e instanceof Error ? e.message : "Failed to load WEO data");
+        setPayload(null);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+
+    if (iso3 && initialIndicator) {
+      load();
+    }
+
+    return () => {
+      alive = false;
+    };
+  }, [iso3, initialIndicator]);
+
+  const points = useMemo<Point[]>(() => {
+    return (payload?.points || [])
+      .map((p) => ({
+        year: Number(p.year),
+        value: Number(p.value),
+      }))
+      .filter((p) => Number.isFinite(p.year) && Number.isFinite(p.value))
+      .sort((a, b) => a.year - b.year);
+  }, [payload]);
+
+  const pointsWithYoY = useMemo<PointWithYoY[]>(() => {
+    return points.map((point, index) => {
+      if (index === 0) return { ...point, yoy: null };
+      const prev = points[index - 1];
+      return {
+        ...point,
+        yoy: point.value - prev.value,
+      };
+    });
+  }, [points]);
+
+  const latest = points.length ? points[points.length - 1].value : NaN;
+  const minVal = points.length ? Math.min(...points.map((p) => p.value)) : NaN;
+  const maxVal = points.length ? Math.max(...points.map((p) => p.value)) : NaN;
+
+  const unitMeta = useMemo(() => {
+    return getIndicatorUnit(payload?.indicator_code || initialIndicator);
+  }, [payload, initialIndicator]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[360px] items-center justify-center">
+        <div className="flex min-w-[240px] flex-col items-center rounded-3xl border border-slate-200 bg-white px-7 py-7 shadow-sm">
+          <div className="mb-4 h-10 w-10 animate-spin rounded-full border-[3px] border-slate-200 border-t-slate-900" />
+          <div className="text-sm font-semibold text-slate-900">
+            Loading IMF WEO...
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            Please wait while data is being fetched
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-[24px] border border-red-200 bg-red-50 p-6">
+        <div className="text-lg font-semibold text-red-700">
+          Failed to load WEO data
+        </div>
+        <div className="mt-2 text-sm text-red-600">{error}</div>
+      </div>
+    );
+  }
+
+  if (!points.length) {
+    return (
+      <div className="rounded-[24px] border border-slate-200 bg-white p-6">
+        <div className="text-base text-slate-700">
+          No WEO data found for this country/indicator.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-[26px] font-bold tracking-tight text-slate-900">
+          IMF — World Economic Outlook (WEO)
+        </h2>
+
+        <div className="mt-1.5 text-base text-slate-500">
+          {payload?.indicator_label ||
+            payload?.indicator_code ||
+            initialIndicator}
+        </div>
+
+        <div className="mt-1.5 text-xs text-slate-500">
+          {payload?.country || iso3} • {payload?.vintage || "Latest vintage"}
+          {unitMeta.long ? ` • Unit: ${unitMeta.long}` : ""}
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-xs text-slate-500">Latest</div>
+          <div className="mt-2 text-[40px] font-bold tracking-tight text-slate-950">
+            {fmt(latest)}
+          </div>
+          {unitMeta.short ? (
+            <div className="mt-2 text-xs font-medium text-slate-500">
+              {unitMeta.short}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-xs text-slate-500">Range (min)</div>
+          <div className="mt-2 text-[40px] font-bold tracking-tight text-slate-950">
+            {fmt(minVal)}
+          </div>
+          {unitMeta.short ? (
+            <div className="mt-2 text-xs font-medium text-slate-500">
+              {unitMeta.short}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-xs text-slate-500">Range (max)</div>
+          <div className="mt-2 text-[40px] font-bold tracking-tight text-slate-950">
+            {fmt(maxVal)}
+          </div>
+          {unitMeta.short ? (
+            <div className="mt-2 text-xs font-medium text-slate-500">
+              {unitMeta.short}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(420px,0.95fr)]">
+        <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3">
+            <h3 className="text-[20px] font-bold text-slate-900">
+              Series trend
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              {points.length} returned points
+            </p>
+          </div>
+
+          <div className="rounded-[24px] border border-slate-100 bg-slate-50/60 p-3">
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={points}
+                  margin={{ top: 10, right: 14, left: 2, bottom: 4 }}
+                >
+                  <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="year"
+                    stroke="#CBD5E1"
+                    tick={{ fill: "#475569", fontSize: 10 }}
+                    minTickGap={18}
+                  />
+                  <YAxis
+                    stroke="#CBD5E1"
+                    tick={{ fill: "#475569", fontSize: 10 }}
+                    width={56}
+                    tickFormatter={(v) => fmt(Number(v))}
+                  />
+                  <Tooltip
+                    formatter={(value: number) => [
+                      unitMeta.short
+                        ? `${fmt(Number(value))} ${unitMeta.short}`
+                        : fmt(Number(value)),
+                      "Value",
+                    ]}
+                    labelFormatter={(label) => `Year: ${label}`}
+                    contentStyle={{
+                      borderRadius: 14,
+                      border: "1px solid #E2E8F0",
+                      background: "#FFFFFF",
+                      boxShadow: "0 10px 30px rgba(15,23,42,0.08)",
+                      fontSize: "12px",
+                    }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="value"
+                    stroke="#4F46E5"
+                    strokeWidth={2.5}
+                    dot={false}
+                    activeDot={{ r: 4, strokeWidth: 0 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3">
+            <h3 className="text-[20px] font-bold text-slate-900">
+              Returned points
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Value and annual absolute change
+            </p>
+          </div>
+
+          <div className="overflow-hidden rounded-[24px] border border-slate-200">
+            <div className="grid grid-cols-[72px_1fr_1fr] bg-slate-50 px-4 py-3 text-xs font-semibold text-slate-600">
+              <div>Year</div>
+              <div className="text-right">Value</div>
+              <div className="text-right">YoY change</div>
+            </div>
+
+            <div className="max-h-[300px] overflow-y-auto">
+              {pointsWithYoY.map((point) => (
+                <div
+                  key={point.year}
+                  className="grid grid-cols-[72px_1fr_1fr] border-t border-slate-100 px-4 py-3 text-[13px] text-slate-800"
+                >
+                  <div className="font-medium">{point.year}</div>
+
+                  <div className="text-right tabular-nums">
+                    {fmt(point.value)}
+                  </div>
+
+                  <div
+                    className={`text-right tabular-nums font-medium ${
+                      point.yoy === null
+                        ? "text-slate-400"
+                        : point.yoy > 0
+                          ? "text-emerald-600"
+                          : point.yoy < 0
+                            ? "text-rose-600"
+                            : "text-slate-600"
+                    }`}
+                  >
+                    {fmtYoY(point.yoy)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+==================== app\world\country\[iso3]\_components\DatasetTabs.tsx ====================
+
+"use client";
+
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+
+const VALID_WEO_CODES = [
+  "NGDP_RPCH",
+  "NGDPD",
+  "PCPIPCH",
+  "LUR",
+  "BCA_NGDPD",
+  "GGXONLB_NGDP",
+  "LP",
+  "NGDPDPC",
+];
+
+export default function DatasetTabs() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const dataset = String(searchParams.get("dataset") || "wdi").toLowerCase();
+
+  function changeDataset(nextDataset: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("dataset", nextDataset);
+
+    const currentIndicator = String(
+      params.get("indicator") || "",
+    ).toUpperCase();
+
+    if (nextDataset === "weo") {
+      if (!VALID_WEO_CODES.includes(currentIndicator)) {
+        params.set("indicator", "NGDPD");
+      }
+    }
+
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
+  return (
+    <div className="flex flex-wrap gap-3 rounded-[28px] border border-slate-200 bg-white p-3 shadow-sm">
+      <button
+        onClick={() => changeDataset("wdi")}
+        className={`rounded-2xl px-6 py-3 font-semibold transition ${
+          dataset === "wdi"
+            ? "bg-slate-900 text-white"
+            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+        }`}
+      >
+        WDI
+      </button>
+
+      <button
+        onClick={() => changeDataset("fao")}
+        className={`rounded-2xl px-6 py-3 font-semibold transition ${
+          dataset === "fao"
+            ? "bg-slate-900 text-white"
+            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+        }`}
+      >
+        Food & Agriculture Org
+      </button>
+
+      <button
+        onClick={() => changeDataset("weo")}
+        className={`rounded-2xl px-6 py-3 font-semibold transition ${
+          dataset === "weo"
+            ? "bg-indigo-600 text-white"
+            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+        }`}
+      >
+        IMF (WEO)
+      </button>
+    </div>
+  );
+}
+
+
+==================== app\world\country\[iso3]\_components\IMFWeoPanel.tsx ====================
+
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+
+type Point = {
+  year: number;
+  value: number;
+};
+
+type ApiResponse = {
+  ok?: boolean;
+  iso3?: string;
+  country?: string;
+  indicator?: string;
+  indicator_code?: string;
+  indicator_label?: string;
+  label?: string;
+  vintage?: string;
+  points?: Point[];
+  series?: Point[];
+  data?: Point[];
+  error?: string;
+};
+
+type Props = {
+  iso3: string;
+  initialIndicator?: string;
+};
+
+type IndicatorItem = {
+  code: string;
+  label: string;
+};
+
+const QUICK_PICKS: IndicatorItem[] = [
+  { code: "NGDP_RPCH", label: "GDP growth" },
+  { code: "NGDPD", label: "GDP, current prices" },
+  { code: "PCPIPCH", label: "Inflation" },
+  { code: "LUR", label: "Unemployment" },
+  { code: "BCA_NGDPD", label: "Current account balance" },
+  { code: "GGXONLB_NGDP", label: "Govt net lending/borrowing" },
+  { code: "LP", label: "Population" },
+  { code: "NGDPDPC", label: "GDP per capita" },
+];
+
+const IMF_INDICATORS: IndicatorItem[] = [
+  { code: "NGDP_RPCH", label: "GDP growth" },
+  { code: "NGDPD", label: "GDP, current prices" },
+  { code: "NGDP_R", label: "GDP, constant prices" },
+  { code: "NGDPDPC", label: "GDP per capita, current prices" },
+  { code: "PPPGDP", label: "GDP, PPP" },
+  { code: "PPPPC", label: "GDP per capita, PPP" },
+  { code: "LP", label: "Population" },
+  { code: "LUR", label: "Unemployment rate" },
+  { code: "LE", label: "Employment" },
+  { code: "PCPIPCH", label: "Inflation, average consumer prices" },
+  { code: "PCPIEPCH", label: "Inflation, end of period consumer prices" },
+  { code: "TM_RPCH", label: "Imports of goods and services, volume growth" },
+  { code: "TX_RPCH", label: "Exports of goods and services, volume growth" },
+  { code: "TMG_RPCH", label: "Imports of goods, volume growth" },
+  { code: "TXG_RPCH", label: "Exports of goods, volume growth" },
+  { code: "BCA", label: "Current account balance" },
+  { code: "BCA_NGDPD", label: "Current account balance, percent of GDP" },
+  { code: "GGX", label: "General government total expenditure" },
+  { code: "GGR", label: "General government revenue" },
+  { code: "GGXCNL", label: "Net lending/borrowing" },
+  { code: "GGXONLB", label: "Overall net lending/borrowing" },
+  {
+    code: "GGXONLB_NGDP",
+    label: "Overall net lending/borrowing, percent of GDP",
+  },
+  { code: "GGXWDN", label: "Gross debt" },
+  { code: "GGXWDN_NGDP", label: "Gross debt, percent of GDP" },
+  { code: "GGXWDG", label: "Net debt" },
+  { code: "GGXWDG_NGDP", label: "Net debt, percent of GDP" },
+  { code: "NGSD_NGDP", label: "National savings, percent of GDP" },
+  { code: "NID_NGDP", label: "Investment, percent of GDP" },
+  { code: "LUR_PT", label: "Unemployment rate, percent" },
+  { code: "PPPEX", label: "PPP exchange rate" },
+  { code: "NGDP_FY", label: "Fiscal year GDP" },
+  {
+    code: "PCPIFBT",
+    label: "Inflation, average consumer prices excl. food and energy",
+  },
+  { code: "PCPI", label: "Consumer prices index" },
+  { code: "GGR_NGDP", label: "Revenue, percent of GDP" },
+  { code: "GGX_NGDP", label: "Expenditure, percent of GDP" },
+  { code: "GGXCNL_NGDP", label: "Net lending/borrowing, percent of GDP" },
+  { code: "TXG_FOB_USD", label: "Exports of goods, USD" },
+  { code: "TMG_CIF_USD", label: "Imports of goods, USD" },
+  { code: "TXGSBOP", label: "Exports of goods and services, BOP" },
+  { code: "TMGSBOP", label: "Imports of goods and services, BOP" },
+  { code: "TXG", label: "Exports of goods" },
+  { code: "TMG", label: "Imports of goods" },
+  { code: "GGCB", label: "Government cash balance" },
+  { code: "GGSB", label: "Government structural balance" },
+  { code: "NGDPRPPPPC", label: "Real GDP per capita, PPP" },
+  { code: "PPPSH", label: "Share of world GDP at PPP" },
+  { code: "NGDPDUS", label: "GDP, current prices, USD" },
+  { code: "LNNGDP", label: "Nominal GDP level" },
+];
+
+function normalizePoints(payload: ApiResponse): Point[] {
+  const raw = payload.points || payload.series || payload.data || [];
+  return raw
+    .map((d: any) => ({
+      year: Number(d.year),
+      value: Number(d.value),
+    }))
+    .filter((d) => Number.isFinite(d.year) && Number.isFinite(d.value))
+    .sort((a, b) => a.year - b.year);
+}
+
+function formatNumber(value: number) {
+  if (!Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function getIndicatorLabel(code: string) {
+  return IMF_INDICATORS.find((x) => x.code === code)?.label || code;
+}
+
+export default function IMFWeoPanel({ iso3, initialIndicator }: Props) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const dataset = searchParams.get("dataset") || "weo";
+  const rawIndicator = searchParams.get("indicator") || initialIndicator || "";
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [payload, setPayload] = useState<ApiResponse | null>(null);
+  const [points, setPoints] = useState<Point[]>([]);
+  const [error, setError] = useState("");
+
+  const selectedIndicator = useMemo(() => {
+    const code = String(rawIndicator || "")
+      .trim()
+      .toUpperCase();
+    return IMF_INDICATORS.some((x) => x.code === code) ? code : "NGDPD";
+  }, [rawIndicator]);
+
+  const filteredIndicators = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return IMF_INDICATORS;
+    return IMF_INDICATORS.filter(
+      (x) =>
+        x.code.toLowerCase().includes(q) || x.label.toLowerCase().includes(q),
+    );
+  }, [query]);
+
+  useEffect(() => {
+    if (dataset !== "weo") return;
+
+    const current = String(rawIndicator || "")
+      .trim()
+      .toUpperCase();
+
+    if (!current || !IMF_INDICATORS.some((x) => x.code === current)) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("dataset", "weo");
+      params.set("indicator", "NGDPD");
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    }
+  }, [dataset, rawIndicator, pathname, router, searchParams]);
+
+  useEffect(() => {
+    if (dataset !== "weo") return;
+    if (!iso3 || !selectedIndicator) return;
+
+    let active = true;
+
+    async function load() {
+      try {
+        setLoading(true);
+        setError("");
+
+        const res = await fetch(
+          `/api/imf/weo/country?iso3=${encodeURIComponent(
+            iso3,
+          )}&indicator=${encodeURIComponent(selectedIndicator)}`,
+          { cache: "no-store" },
+        );
+
+        const json: ApiResponse = await res.json();
+
+        if (!active) return;
+
+        const normalized = normalizePoints(json);
+
+        setPayload(json);
+        setPoints(normalized);
+
+        if (!res.ok) {
+          setError(json.error || "Failed to load WEO series.");
+          return;
+        }
+
+        if (!normalized.length) {
+          setError("No WEO data found for this country/indicator.");
+        }
+      } catch (err) {
+        if (!active) return;
+        setError("Failed to load WEO data.");
+        setPayload(null);
+        setPoints([]);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    load();
+
+    return () => {
+      active = false;
+    };
+  }, [dataset, iso3, selectedIndicator]);
+
+  function updateIndicator(code: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("dataset", "weo");
+    params.set("indicator", code);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
+  const latest = points.length ? points[points.length - 1].value : NaN;
+  const minVal = points.length ? Math.min(...points.map((p) => p.value)) : NaN;
+  const maxVal = points.length ? Math.max(...points.map((p) => p.value)) : NaN;
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+      <aside className="rounded-[32px] border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-6 py-7">
+          <div className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">
+            Control Panel
+          </div>
+          <h2 className="mt-3 text-2xl font-bold text-slate-900">Indicators</h2>
+          <p className="mt-2 text-[15px] text-slate-500">
+            Search, select and jump between IMF WEO indicators.
+          </p>
+        </div>
+
+        <div className="space-y-6 px-6 py-6">
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Indicator search
+            </label>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search code / name..."
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:bg-white"
+            />
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Active indicator
+            </div>
+            <div className="mt-3 text-[15px] font-semibold text-slate-900">
+              {getIndicatorLabel(selectedIndicator)}
+            </div>
+            <div className="mt-1 text-sm text-slate-500">
+              {selectedIndicator}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">
+                Quick picks
+              </h3>
+              <span className="text-sm text-slate-500">
+                {QUICK_PICKS.length} items
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {QUICK_PICKS.map((item) => {
+                const active = item.code === selectedIndicator;
+                return (
+                  <button
+                    key={item.code}
+                    onClick={() => updateIndicator(item.code)}
+                    className={`w-full rounded-3xl border px-4 py-4 text-left transition ${
+                      active
+                        ? "border-slate-950 bg-slate-950 text-white shadow-sm"
+                        : "border-slate-200 bg-white text-slate-900 hover:border-indigo-300 hover:bg-indigo-50"
+                    }`}
+                  >
+                    <div className="font-semibold">{item.label}</div>
+                    <div
+                      className={`mt-1 text-sm ${
+                        active ? "text-slate-300" : "text-slate-500"
+                      }`}
+                    >
+                      {item.code}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">
+                All IMF indicators
+              </h3>
+              <span className="text-sm text-slate-500">
+                {filteredIndicators.length} items
+              </span>
+            </div>
+
+            <div className="max-h-[520px] space-y-2 overflow-y-auto pr-2">
+              {filteredIndicators.map((item) => {
+                const active = item.code === selectedIndicator;
+                return (
+                  <button
+                    key={item.code}
+                    onClick={() => updateIndicator(item.code)}
+                    className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
+                      active
+                        ? "border-indigo-600 bg-indigo-600 text-white"
+                        : "border-slate-200 bg-white text-slate-900 hover:border-indigo-300 hover:bg-indigo-50"
+                    }`}
+                  >
+                    <div className="font-medium">{item.label}</div>
+                    <div
+                      className={`mt-1 text-xs ${
+                        active ? "text-indigo-100" : "text-slate-500"
+                      }`}
+                    >
+                      {item.code}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <section className="space-y-6">
+        <div className="rounded-[32px] border border-slate-200 bg-white p-7 shadow-sm">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            IMF — World Economic Outlook (WEO)
+          </h1>
+          <div className="mt-2 text-lg text-slate-500">{selectedIndicator}</div>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            {QUICK_PICKS.map((item) => {
+              const active = item.code === selectedIndicator;
+              return (
+                <button
+                  key={item.code}
+                  onClick={() => updateIndicator(item.code)}
+                  className={`rounded-full border px-5 py-2.5 text-sm font-semibold transition ${
+                    active
+                      ? "border-slate-950 bg-slate-950 text-white"
+                      : "border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="rounded-[32px] border border-slate-200 bg-white p-10 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
+              <div className="text-lg font-semibold text-slate-700">
+                Loading WEO data...
+              </div>
+            </div>
+          </div>
+        ) : error && !points.length ? (
+          <div className="rounded-[32px] border border-amber-200 bg-amber-50 p-8 shadow-sm">
+            <div className="text-lg font-semibold text-amber-900">{error}</div>
+            <p className="mt-2 text-sm text-amber-700">
+              Try another IMF indicator from Quick picks or the full list.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-5 md:grid-cols-3">
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="text-sm text-slate-500">Latest</div>
+                <div className="mt-3 text-5xl font-bold tracking-tight text-slate-950">
+                  {formatNumber(latest)}
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="text-sm text-slate-500">Range (min)</div>
+                <div className="mt-3 text-5xl font-bold tracking-tight text-slate-950">
+                  {formatNumber(minVal)}
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="text-sm text-slate-500">Range (max)</div>
+                <div className="mt-3 text-5xl font-bold tracking-tight text-slate-950">
+                  {formatNumber(maxVal)}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-950">
+                    {payload?.indicator_label ||
+                      payload?.label ||
+                      getIndicatorLabel(selectedIndicator)}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {payload?.country || iso3} • {selectedIndicator} •{" "}
+                    {payload?.vintage || "Latest WEO vintage"}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 px-4 py-2 text-sm text-slate-600">
+                  {points.length} returned points
+                </div>
+              </div>
+
+              <div className="h-[380px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={points}
+                    margin={{ top: 10, right: 16, left: 6, bottom: 6 }}
+                  >
+                    <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="year"
+                      tick={{ fill: "#475569", fontSize: 12 }}
+                      stroke="#CBD5E1"
+                    />
+                    <YAxis
+                      tick={{ fill: "#475569", fontSize: 12 }}
+                      stroke="#CBD5E1"
+                      tickFormatter={(v) => formatNumber(Number(v))}
+                    />
+                    <Tooltip
+                      formatter={(value: number) => [
+                        formatNumber(Number(value)),
+                        "Value",
+                      ]}
+                      labelFormatter={(label) => `Year: ${label}`}
+                      contentStyle={{
+                        borderRadius: 16,
+                        border: "1px solid #E2E8F0",
+                        background: "#FFFFFF",
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#4F46E5"
+                      strokeWidth={3}
+                      dot={false}
+                      activeDot={{ r: 5 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-2xl font-bold text-slate-950">
+                Diagnostic summary
+              </h3>
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="text-sm text-slate-500">ISO3</div>
+                  <div className="mt-1 font-semibold text-slate-900">
+                    {iso3}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="text-sm text-slate-500">Indicator code</div>
+                  <div className="mt-1 font-semibold text-slate-900">
+                    {selectedIndicator}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="text-sm text-slate-500">Country</div>
+                  <div className="mt-1 font-semibold text-slate-900">
+                    {payload?.country || iso3}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="text-sm text-slate-500">Vintage</div>
+                  <div className="mt-1 font-semibold text-slate-900">
+                    {payload?.vintage || "Latest"}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-2xl font-bold text-slate-950">
+                Returned points
+              </h3>
+              <div className="mt-5 overflow-hidden rounded-3xl border border-slate-200">
+                <div className="grid grid-cols-2 bg-slate-50 px-5 py-4 text-sm font-semibold text-slate-600">
+                  <div>Year</div>
+                  <div>Value</div>
+                </div>
+                <div className="max-h-[420px] overflow-y-auto">
+                  {points.map((p) => (
+                    <div
+                      key={p.year}
+                      className="grid grid-cols-2 border-t border-slate-100 px-5 py-4 text-slate-800"
+                    >
+                      <div>{p.year}</div>
+                      <div>{formatNumber(p.value)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </section>
+    </div>
+  );
+}

@@ -1,9 +1,8 @@
 // app/page.tsx
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 import StratifyMap, { StratifyMapRow } from "@/app/components/StratifyMap";
 import VitalStatsList, { StatSection } from "@/app/components/VitalStatsList";
@@ -62,17 +61,6 @@ const INDICATORS: Array<{ code: string; label: string; unit?: string }> = [
 
 const DEFAULT_INDICATOR = "SP.POP.TOTL";
 
-const NAV_ITEMS = [
-  { label: "Home", href: "/" },
-
-  { label: "Debt", href: "/debt" },
-  { label: "Energy", href: "/energy" },
-  { label: "FAO", href: "/fao" },
-  { label: "Fiscal", href: "/fiscal" },
-  { label: "IMF", href: "/imf" },
-  { label: "WDI", href: "/wdi" },
-];
-
 /* =======================
    Helpers
 ======================= */
@@ -90,96 +78,6 @@ function fmt(v: number): string {
 
 function toRegionParam(r: string): string | null {
   return r === "World" ? null : r;
-}
-
-function isActivePath(pathname: string, href: string) {
-  if (href === "/") return pathname === "/";
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
-
-/* =======================
-   Top Navbar
-======================= */
-
-function TopNav() {
-  const pathname = usePathname();
-
-  return (
-    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur-xl shadow-sm">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-sm font-black text-white shadow-md">
-            S
-          </div>
-
-          <div>
-            <div className="stratify-logo-title">Stratify</div>
-            <div className="stratify-logo-subtitle">Analytics</div>
-          </div>
-        </Link>
-
-        <nav className="hidden items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1 shadow-sm lg:flex">
-          {NAV_ITEMS.map((item) => {
-            const active = isActivePath(pathname, item.href);
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={[
-                  "rounded-full px-4 py-2 text-sm font-extrabold transition",
-                  active
-                    ? "bg-slate-950 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-white hover:text-slate-950",
-                ].join(" ")}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="hidden items-center gap-2 sm:flex">
-          <Link
-            href="/world"
-            className="rounded-full bg-slate-100 px-4 py-2 text-sm font-extrabold text-slate-700 hover:bg-slate-200"
-          >
-            Explore
-          </Link>
-
-          <Link
-            href="/imf"
-            className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-extrabold text-white shadow-sm hover:bg-emerald-700"
-          >
-            IMF Data
-          </Link>
-        </div>
-      </div>
-
-      <div className="border-t border-slate-100 bg-white/95 px-4 py-2 lg:hidden">
-        <div className="mx-auto flex max-w-7xl gap-2 overflow-x-auto">
-          {NAV_ITEMS.map((item) => {
-            const active = isActivePath(pathname, item.href);
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={[
-                  "shrink-0 rounded-full px-3 py-1.5 text-xs font-extrabold",
-                  active
-                    ? "bg-slate-950 text-white"
-                    : "bg-slate-100 text-slate-700",
-                ].join(" ")}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </div>
-      </div>
-    </header>
-  );
 }
 
 /* =======================
@@ -272,7 +170,7 @@ export default function Page() {
     router.push(
       `/world/country/${encodeURIComponent(up)}?indicator=${encodeURIComponent(
         indicator,
-      )}`,
+      )}&dataset=wdi`,
     );
   }
 
@@ -311,9 +209,7 @@ export default function Page() {
   }, [mapRows, selectedIso3, indicatorLabel, indicatorUnit, region]);
 
   return (
-    <main className="min-h-screen bg-slate-100">
-      <TopNav />
-
+    <main className="relative min-h-screen bg-slate-100">
       <div className="pointer-events-none fixed inset-0 z-0">
         <div
           className="absolute inset-0 bg-cover bg-center"
@@ -330,7 +226,7 @@ export default function Page() {
 
       <div className="relative z-10 min-h-screen overflow-hidden">
         <div className="mx-auto max-w-7xl space-y-5 px-4 py-7">
-          <div className="rounded-[28px] border border-white/70 bg-white/75 p-5 shadow-xl backdrop-blur-xl">
+          <section className="rounded-[28px] border border-white/70 bg-white/75 p-5 shadow-xl backdrop-blur-xl">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
               <div>
                 <div className="stratify-eyebrow">Stratify Analytics</div>
@@ -382,6 +278,7 @@ export default function Page() {
                 <Button
                   variant="secondary"
                   className="rounded-xl border border-slate-200 bg-white shadow-sm"
+                  disabled={loading}
                   onClick={() => {
                     setRegion("World");
                     setIndicator(DEFAULT_INDICATOR);
@@ -392,7 +289,7 @@ export default function Page() {
                 </Button>
               </div>
             </div>
-          </div>
+          </section>
 
           {err ? (
             <div className="rounded-2xl border border-red-200 bg-red-50/90 p-3 text-sm font-semibold text-red-700 backdrop-blur">
@@ -400,10 +297,20 @@ export default function Page() {
             </div>
           ) : null}
 
-          <div className="grid grid-cols-12 gap-4">
+          <section className="grid grid-cols-12 gap-4">
             <div className="col-span-12 lg:col-span-8">
               {loading ? (
-                <div className="h-[560px] rounded-3xl border border-white/70 bg-white/70 shadow-xl backdrop-blur-xl" />
+                <div className="flex h-[560px] items-center justify-center rounded-3xl border border-white/70 bg-white/70 shadow-xl backdrop-blur-xl">
+                  <div className="flex min-w-[260px] flex-col items-center rounded-3xl border border-slate-200 bg-slate-950/90 px-8 py-7 text-white shadow-xl">
+                    <div className="mb-4 h-11 w-11 animate-spin rounded-full border-[3px] border-white/20 border-t-white" />
+                    <div className="text-base font-bold">
+                      Loading dashboard...
+                    </div>
+                    <div className="mt-1 text-xs font-medium text-white/60">
+                      Fetching global indicator data
+                    </div>
+                  </div>
+                </div>
               ) : (
                 <div className="overflow-hidden rounded-3xl border border-white/70 bg-white/65 shadow-xl backdrop-blur-xl">
                   <StratifyMap
@@ -431,7 +338,7 @@ export default function Page() {
                 />
               </div>
             </div>
-          </div>
+          </section>
 
           <div className="h-2" />
         </div>

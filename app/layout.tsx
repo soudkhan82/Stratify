@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import TopNav from "./components/TopNav";
 
 export const metadata: Metadata = {
   title: "Stratify Analytics",
@@ -13,7 +14,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <TopNav />
+        <main>{children}</main>
+      </body>
     </html>
   );
 }
