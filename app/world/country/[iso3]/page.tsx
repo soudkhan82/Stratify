@@ -3,6 +3,17 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import * as RTabs from "@radix-ui/react-tabs";
+import {
+  BarChart,
+  Bar,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+} from "recharts";
 
 import { faostatApi } from "@/app/lib/rpc/faostat";
 import type {
@@ -29,6 +40,7 @@ import WeoTab from "@/app/world/components/WeoTab";
 async function fetchJsonOrThrow(url: string): Promise<unknown> {
   const res = await fetch(url, { cache: "no-store" });
   const txt = await res.text().catch(() => "");
+
   if (!res.ok) {
     throw new Error(`Fetch failed: ${res.status} ${txt.slice(0, 200)}`);
   }
@@ -61,6 +73,75 @@ function LoaderCard({ label }: { label: string }) {
       </div>
     </div>
   );
+}
+
+function compactNumber(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "—";
+  }
+
+  const abs = Math.abs(value);
+
+  if (abs >= 1_000_000_000_000) {
+    return `${(value / 1_000_000_000_000).toFixed(2)}T`;
+  }
+
+  if (abs >= 1_000_000_000) {
+    return `${(value / 1_000_000_000).toFixed(2)}B`;
+  }
+
+  if (abs >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(2)}M`;
+  }
+
+  if (abs >= 1_000) {
+    return `${(value / 1_000).toFixed(2)}K`;
+  }
+
+  return value.toLocaleString(undefined, {
+    maximumFractionDigits: 2,
+  });
+}
+
+function fullNumber(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "—";
+  }
+
+  return value.toLocaleString(undefined, {
+    maximumFractionDigits: 3,
+  });
+}
+
+function getNumberFromObject(obj: unknown, keys: string[]) {
+  if (!obj || typeof obj !== "object") return null;
+
+  const record = obj as Record<string, unknown>;
+
+  for (const key of keys) {
+    const value = record[key];
+    const numberValue = Number(value);
+
+    if (Number.isFinite(numberValue)) return numberValue;
+  }
+
+  return null;
+}
+
+function getStringFromObject(obj: unknown, keys: string[]) {
+  if (!obj || typeof obj !== "object") return null;
+
+  const record = obj as Record<string, unknown>;
+
+  for (const key of keys) {
+    const value = record[key];
+
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return null;
 }
 
 /* ---------------- quick picks ---------------- */
@@ -136,10 +217,7 @@ const WEO_ALL_INDICATORS: QuickPick[] = [
   { label: "Unemployment rate, percent", indicator: "LUR_PT" },
   { label: "PPP exchange rate", indicator: "PPPEX" },
   { label: "Fiscal year GDP", indicator: "NGDP_FY" },
-  {
-    label: "Inflation excl. food and energy",
-    indicator: "PCPIFBT",
-  },
+  { label: "Inflation excl. food and energy", indicator: "PCPIFBT" },
   { label: "Consumer prices index", indicator: "PCPI" },
   { label: "Revenue, percent of GDP", indicator: "GGR_NGDP" },
   { label: "Expenditure, percent of GDP", indicator: "GGX_NGDP" },
@@ -166,6 +244,330 @@ const WEO_VALID_CODES = new Set(
 
 const DEFAULT_WDI_INDICATOR = "SP.POP.TOTL";
 const DEFAULT_WEO_INDICATOR = "NGDPD";
+
+/* ---------------- WDI extra analytics ---------------- */
+
+type RegionalRow = {
+  iso3?: string;
+  country?: string;
+  region?: string | null;
+  value?: number;
+};
+
+type RegionalRankingRow = {
+  iso3: string;
+  country: string;
+  region: string | null;
+  value: number;
+};
+
+type RegionalRankingState = {
+  loading: boolean;
+  rows: RegionalRankingRow[];
+  average: number | null;
+  rank: number | null;
+  total: number;
+  region: string | null;
+};
+
+function WdiExtraAnalytics({
+  wdi,
+  indicator,
+  iso3,
+}: {
+  wdi: WdiResponse | null;
+  indicator: string;
+  iso3: string;
+}) {
+  const selectedIso3 = iso3.toUpperCase();
+
+  const [regionalRanking, setRegionalRanking] = useState<RegionalRankingState>({
+    loading: false,
+    rows: [],
+    average: null,
+    rank: null,
+    total: 0,
+    region: null,
+  });
+
+  const countryRegion = useMemo(() => {
+    return (
+      getStringFromObject(wdi, ["region", "Region", "region_name"]) ||
+      getStringFromObject((wdi as any)?.country, ["region", "Region"]) ||
+      null
+    );
+  }, [wdi]);
+
+  const selectedIndicatorLabel = useMemo(() => {
+    return (
+      getStringFromObject((wdi as any)?.indicator, ["label", "name", "code"]) ||
+      WDI_QUICK_PICKS.find((x) => x.indicator === indicator)?.label ||
+      indicator
+    );
+  }, [wdi, indicator]);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadRegionalRanking() {
+      if (!indicator) return;
+
+      setRegionalRanking({
+        loading: true,
+        rows: [],
+        average: null,
+        rank: null,
+        total: 0,
+        region: countryRegion,
+      });
+
+      try {
+        const params = new URLSearchParams();
+        params.set("indicator", indicator);
+
+        if (countryRegion) {
+          params.set("region", countryRegion);
+        }
+
+        const raw = await fetchJsonOrThrow(`/api/map?${params.toString()}`);
+
+        const rows = Array.isArray((raw as any)?.rows)
+          ? ((raw as any).rows as RegionalRow[])
+          : [];
+
+        const cleanRows = rows
+          .map((row) => ({
+            iso3: String(row.iso3 ?? "").toUpperCase(),
+            country: String(row.country ?? row.iso3 ?? "Unknown"),
+            region: row.region ?? null,
+            value: Number(row.value),
+          }))
+          .filter((row) => row.iso3 && Number.isFinite(row.value))
+          .sort((a, b) => Number(b.value) - Number(a.value));
+
+        const values = cleanRows.map((row) => row.value);
+        const average =
+          values.length > 0
+            ? values.reduce((sum, value) => sum + value, 0) / values.length
+            : null;
+
+        const rankIndex = cleanRows.findIndex(
+          (row) => row.iso3 === selectedIso3,
+        );
+
+        if (!alive) return;
+
+        setRegionalRanking({
+          loading: false,
+          rows: cleanRows,
+          average,
+          rank: rankIndex >= 0 ? rankIndex + 1 : null,
+          total: cleanRows.length,
+          region: countryRegion,
+        });
+      } catch {
+        if (!alive) return;
+
+        setRegionalRanking({
+          loading: false,
+          rows: [],
+          average: null,
+          rank: null,
+          total: 0,
+          region: countryRegion,
+        });
+      }
+    }
+
+    loadRegionalRanking();
+
+    return () => {
+      alive = false;
+    };
+  }, [indicator, countryRegion, selectedIso3]);
+
+  const selectedCountryRow = useMemo(() => {
+    return (
+      regionalRanking.rows.find((row) => row.iso3 === selectedIso3) || null
+    );
+  }, [regionalRanking.rows, selectedIso3]);
+
+  const chartRows = useMemo(() => {
+    const selected = regionalRanking.rows.find(
+      (row) => row.iso3 === selectedIso3,
+    );
+
+    const topRows = regionalRanking.rows.slice(0, 10);
+    const selectedAlreadyIncluded = topRows.some(
+      (row) => row.iso3 === selectedIso3,
+    );
+
+    const rowsToShow =
+      selected && !selectedAlreadyIncluded
+        ? [...topRows.slice(0, 9), selected]
+        : topRows;
+
+    return rowsToShow
+      .map((row) => ({
+        ...row,
+        displayName:
+          row.iso3 === selectedIso3
+            ? `${row.country} (${row.iso3})`
+            : row.country,
+        isSelected: row.iso3 === selectedIso3,
+      }))
+      .sort((a, b) => a.value - b.value);
+  }, [regionalRanking.rows, selectedIso3]);
+
+  if (!indicator) return null;
+
+  return (
+    <div className="mt-4 space-y-4">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-sm font-semibold text-slate-700">
+              Regional Benchmark
+            </div>
+            <div className="mt-1 text-xs text-slate-500">
+              {selectedIndicatorLabel} · {regionalRanking.region || "World"}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="rounded-xl bg-slate-50 px-4 py-3">
+              <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                Rank
+              </div>
+              <div className="mt-1 text-sm font-black text-slate-900">
+                {regionalRanking.loading
+                  ? "Loading..."
+                  : regionalRanking.rank
+                    ? `#${regionalRanking.rank} / ${regionalRanking.total}`
+                    : "—"}
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-slate-50 px-4 py-3">
+              <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                Country Value
+              </div>
+              <div className="mt-1 text-sm font-black text-slate-900">
+                {regionalRanking.loading
+                  ? "Loading..."
+                  : fullNumber(selectedCountryRow?.value)}
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-slate-50 px-4 py-3">
+              <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                Regional Average
+              </div>
+              <div className="mt-1 text-sm font-black text-slate-900">
+                {regionalRanking.loading
+                  ? "Loading..."
+                  : fullNumber(regionalRanking.average)}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-slate-700">
+              Regional Ranking
+            </div>
+            <div className="mt-1 text-xs text-slate-500">
+              Compare selected country with other countries in the same region
+            </div>
+          </div>
+
+          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+            {regionalRanking.rank
+              ? `Selected rank #${regionalRanking.rank}`
+              : "Rank unavailable"}
+          </div>
+        </div>
+
+        <div className="mt-4 h-[340px]">
+          {regionalRanking.loading ? (
+            <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">
+              Loading regional ranking...
+            </div>
+          ) : chartRows.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={chartRows}
+                layout="vertical"
+                margin={{ top: 10, right: 32, bottom: 10, left: 110 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis
+                  type="number"
+                  tick={{ fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(value) => compactNumber(Number(value))}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="displayName"
+                  width={130}
+                  tick={{ fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  formatter={(value: any) => [
+                    fullNumber(Number(value)),
+                    selectedIndicatorLabel,
+                  ]}
+                  labelFormatter={(label) => String(label)}
+                  contentStyle={{
+                    borderRadius: 12,
+                    border: "1px solid #e2e8f0",
+                    boxShadow: "0 12px 30px rgba(15,23,42,0.12)",
+                  }}
+                />
+
+                {regionalRanking.average !== null ? (
+                  <ReferenceLine
+                    x={regionalRanking.average}
+                    stroke="#64748b"
+                    strokeDasharray="4 4"
+                    label={{
+                      value: `Regional avg ${compactNumber(
+                        regionalRanking.average,
+                      )}`,
+                      position: "insideTopRight",
+                      fontSize: 11,
+                      fill: "#475569",
+                    }}
+                  />
+                ) : null}
+
+                <Bar dataKey="value" radius={[0, 8, 8, 0]}>
+                  {chartRows.map((row) => (
+                    <Cell
+                      key={row.iso3}
+                      fill={row.isSelected ? "#0f172a" : "#2563eb"}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-sm font-semibold text-slate-500">
+              No regional ranking available for this indicator.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ---------------- page ---------------- */
 
@@ -210,6 +612,7 @@ export default function CountryProfilePage() {
 
     (async () => {
       setWdiLoading(true);
+
       try {
         const raw = await fetchJsonOrThrow(
           `/api/wdi/country?iso3=${encodeURIComponent(
@@ -218,9 +621,11 @@ export default function CountryProfilePage() {
         );
 
         if (!alive) return;
+
         setWdi(parseWdiResponse(raw, iso3, normalizedIndicator));
       } catch (e: any) {
         if (!alive) return;
+
         setWdi({
           iso3,
           country: iso3,
@@ -338,6 +743,7 @@ export default function CountryProfilePage() {
     const params = new URLSearchParams(search.toString());
     params.set("indicator", nextIndicator);
     params.set("dataset", tab);
+
     router.replace(`/world/country/${iso3}?${params.toString()}`, {
       scroll: false,
     });
@@ -384,6 +790,7 @@ export default function CountryProfilePage() {
 
     if (tab === "weo") {
       if (!q) return WEO_QUICK_PICKS;
+
       return WEO_QUICK_PICKS.filter(
         (item) =>
           item.label.toLowerCase().includes(q) ||
@@ -394,6 +801,7 @@ export default function CountryProfilePage() {
     if (tab === "faostat") return [];
 
     if (!q) return WDI_QUICK_PICKS;
+
     return WDI_QUICK_PICKS.filter(
       (item) =>
         item.label.toLowerCase().includes(q) ||
@@ -405,6 +813,7 @@ export default function CountryProfilePage() {
     if (tab !== "weo") return [];
 
     const q = sidebarSearch.trim().toLowerCase();
+
     if (!q) return WEO_ALL_INDICATORS;
 
     return WEO_ALL_INDICATORS.filter(
@@ -429,7 +838,6 @@ export default function CountryProfilePage() {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#f8fafc,_#eef2ff_40%,_#f8fafc_100%)]">
       <div className="mx-auto max-w-7xl px-4 py-5">
-        {/* subnav */}
         <div className="mb-5 overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/80 p-2 shadow-[0_10px_35px_rgba(15,23,42,0.08)] backdrop-blur">
           <RTabs.Root value={tab} onValueChange={handleTabChange}>
             <RTabs.List className="flex w-full flex-wrap gap-2">
@@ -472,18 +880,18 @@ export default function CountryProfilePage() {
           </RTabs.Root>
         </div>
 
-        {/* body */}
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
-          {/* left sidebar */}
           <aside className="xl:sticky xl:top-6 xl:h-[calc(100vh-48px)]">
             <div className="flex h-full flex-col overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/90 shadow-[0_10px_35px_rgba(15,23,42,0.08)] backdrop-blur">
               <div className="border-b border-slate-200 px-5 py-5">
                 <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                   Control Panel
                 </div>
+
                 <h2 className="mt-2 text-xl font-bold text-slate-900">
                   Indicators
                 </h2>
+
                 <p className="mt-1 text-sm text-slate-500">
                   {tab === "weo"
                     ? "Search, select and jump between IMF WEO quick picks and full indicator list."
@@ -497,6 +905,7 @@ export default function CountryProfilePage() {
                     <div className="text-sm font-semibold text-emerald-900">
                       Food &amp; Agriculture Org
                     </div>
+
                     <p className="mt-2 text-sm leading-6 text-emerald-800/90">
                       FAO modules are loaded from the main content area. Use the
                       FAO cards and module selectors on the right to explore
@@ -522,9 +931,11 @@ export default function CountryProfilePage() {
                       <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                         Active indicator
                       </div>
+
                       <div className="mt-2 text-sm font-semibold text-slate-900">
                         {activeIndicatorLabel}
                       </div>
+
                       <div className="mt-1 break-all text-xs text-slate-500">
                         {normalizedIndicator}
                       </div>
@@ -534,6 +945,7 @@ export default function CountryProfilePage() {
                       <div className="text-sm font-semibold text-slate-800">
                         Quick picks
                       </div>
+
                       <div className="text-xs text-slate-500">
                         {filteredQuickPicks.length} items
                       </div>
@@ -542,6 +954,7 @@ export default function CountryProfilePage() {
                     <div className="space-y-2">
                       {filteredQuickPicks.map((item) => {
                         const active = item.indicator === normalizedIndicator;
+
                         return (
                           <button
                             key={`${tab}-quick-${item.indicator}`}
@@ -549,13 +962,16 @@ export default function CountryProfilePage() {
                             className={cx(
                               "group w-full rounded-2xl border px-4 py-3 text-left transition-all",
                               active
-                                ? "border-slate-900 bg-slate-900 text-white shadow-lg"
+                                ? tab === "weo"
+                                  ? "border-indigo-600 bg-indigo-600 text-white shadow-lg"
+                                  : "border-slate-900 bg-slate-900 text-white shadow-lg"
                                 : "border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 hover:shadow-sm",
                             )}
                           >
                             <div className="line-clamp-2 text-sm font-semibold">
                               {item.label}
                             </div>
+
                             <div
                               className={cx(
                                 "mt-1 text-xs",
@@ -583,6 +999,7 @@ export default function CountryProfilePage() {
                           <div className="text-sm font-semibold text-slate-800">
                             All IMF indicators
                           </div>
+
                           <div className="text-xs text-slate-500">
                             {filteredWeoAllIndicators.length} items
                           </div>
@@ -592,6 +1009,7 @@ export default function CountryProfilePage() {
                           {filteredWeoAllIndicators.map((item) => {
                             const active =
                               item.indicator === normalizedIndicator;
+
                             return (
                               <button
                                 key={`weo-all-${item.indicator}`}
@@ -606,6 +1024,7 @@ export default function CountryProfilePage() {
                                 <div className="line-clamp-2 text-sm font-semibold">
                                   {item.label}
                                 </div>
+
                                 <div
                                   className={cx(
                                     "mt-1 text-xs",
@@ -634,18 +1053,27 @@ export default function CountryProfilePage() {
             </div>
           </aside>
 
-          {/* right content */}
           <section className="min-w-0">
             <div className="rounded-[28px] border border-slate-200/80 bg-white/90 p-4 shadow-[0_10px_35px_rgba(15,23,42,0.08)] backdrop-blur sm:p-5">
               {tabSwitchLoading && <LoaderCard label="dataset" />}
 
               {!tabSwitchLoading && tab === "wdi" && (
-                <WdiTab
-                  iso3={iso3}
-                  indicator={normalizedIndicator}
-                  wdi={wdi}
-                  loading={wdiLoading}
-                />
+                <>
+                  <WdiTab
+                    iso3={iso3}
+                    indicator={normalizedIndicator}
+                    wdi={wdi}
+                    loading={wdiLoading}
+                  />
+
+                  {!wdiLoading && (
+                    <WdiExtraAnalytics
+                      wdi={wdi}
+                      indicator={normalizedIndicator}
+                      iso3={iso3}
+                    />
+                  )}
+                </>
               )}
 
               {!tabSwitchLoading && tab === "faostat" && (
