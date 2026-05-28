@@ -217,3 +217,53 @@ a:active {
 .hover\:text-slate-950:hover {
   color: #3730a3 !important;
 }
+
+/* Fix transparent dropdown/readability issue globally */
+select,
+select option,
+select optgroup {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+select {
+  background: #ffffff !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid #dbe3ee !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08) !important;
+}
+
+/* For custom dropdowns / Radix / shadcn select menus */
+[data-radix-popper-content-wrapper] {
+  z-index: 9999 !important;
+}
+
+[role="listbox"],
+[cmdk-list],
+.SelectContent,
+.select-content {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid #dbe3ee !important;
+  box-shadow: 0 14px 35px rgba(15, 23, 42, 0.18) !important;
+}
+
+[role="option"],
+.SelectItem,
+.select-item {
+  background: #ffffff !important;
+  color: #0f172a !important;
+}
+
+[role="option"]:hover,
+[role="option"][data-highlighted],
+.SelectItem[data-highlighted],
+.select-item[data-highlighted] {
+  background: #eef4ff !important;
+  color: #1e293b !important;
+}

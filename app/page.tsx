@@ -1,19 +1,12 @@
 // app/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import StratifyMap, { StratifyMapRow } from "@/app/components/StratifyMap";
 import VitalStatsList, { StatSection } from "@/app/components/VitalStatsList";
 
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 
 /* =======================
@@ -30,6 +23,11 @@ type MapRow = {
 type MapApiResponse = {
   rows: MapRow[];
   error?: string;
+};
+
+type SelectOption = {
+  value: string;
+  label: string;
 };
 
 /* =======================
@@ -81,6 +79,98 @@ function toRegionParam(r: string): string | null {
 }
 
 /* =======================
+   Opaque Dropdown
+======================= */
+
+function OpaqueDropdown({
+  value,
+  options,
+  widthClass,
+  onChange,
+}: {
+  value: string;
+  options: SelectOption[];
+  widthClass: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+  const selected = options.find((x) => x.value === value);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        wrapperRef.current &&
+        !wrapperRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={wrapperRef} className={`relative ${widthClass}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-9 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 text-left text-sm font-medium text-slate-800 shadow-sm outline-none transition hover:bg-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+      >
+        <span className="truncate">{selected?.label ?? "Select"}</span>
+
+        <svg
+          className={`h-4 w-4 shrink-0 text-slate-500 transition ${
+            open ? "rotate-180" : ""
+          }`}
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path
+            fillRule="evenodd"
+            d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+            clipRule="evenodd"
+          />
+        </svg>
+      </button>
+
+      {open ? (
+        <div className="absolute left-0 top-[42px] z-[99999] max-h-[340px] w-full overflow-y-auto rounded-xl border border-slate-200 bg-white text-slate-800 shadow-2xl ring-1 ring-black/5">
+          {options.map((option) => {
+            const active = option.value === value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium transition ${
+                  active
+                    ? "bg-indigo-50 text-indigo-700"
+                    : "bg-white text-slate-800 hover:bg-slate-50"
+                }`}
+              >
+                <span>{option.label}</span>
+
+                {active ? (
+                  <span className="text-xs font-bold text-indigo-600">✓</span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* =======================
    Page
 ======================= */
 
@@ -97,6 +187,16 @@ export default function Page() {
   const [selectedIso3, setSelectedIso3] = useState<string | null>(null);
 
   const regionParam = useMemo(() => toRegionParam(region), [region]);
+
+  const regionOptions: SelectOption[] = useMemo(
+    () => REGIONS.map((r) => ({ value: r, label: r })),
+    [],
+  );
+
+  const indicatorOptions: SelectOption[] = useMemo(
+    () => INDICATORS.map((x) => ({ value: x.code, label: x.label })),
+    [],
+  );
 
   const indicatorMeta = useMemo(() => {
     return (
@@ -224,9 +324,9 @@ export default function Page() {
         <div className="absolute inset-0 bg-gradient-to-b from-white/90 via-white/76 to-white/62" />
       </div>
 
-      <div className="relative z-10 min-h-screen overflow-hidden">
+      <div className="relative z-10 min-h-screen">
         <div className="mx-auto max-w-7xl space-y-5 px-4 py-7">
-          <section className="rounded-[28px] border border-white/70 bg-white/75 p-5 shadow-xl backdrop-blur-xl">
+          <section className="relative z-[100] rounded-[28px] border border-white/70 bg-white/75 p-5 shadow-xl backdrop-blur-xl">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
               <div>
                 <div className="stratify-eyebrow">Stratify Analytics</div>
@@ -248,36 +348,24 @@ export default function Page() {
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <Select value={region} onValueChange={setRegion}>
-                  <SelectTrigger className="w-[240px] rounded-xl border border-slate-200 bg-white shadow-sm">
-                    <SelectValue placeholder="Region" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {REGIONS.map((r) => (
-                      <SelectItem key={r} value={r}>
-                        {r}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="relative z-[9999] flex flex-wrap items-center gap-2">
+                <OpaqueDropdown
+                  value={region}
+                  options={regionOptions}
+                  widthClass="w-[240px]"
+                  onChange={setRegion}
+                />
 
-                <Select value={indicator} onValueChange={setIndicator}>
-                  <SelectTrigger className="w-[320px] rounded-xl border border-slate-200 bg-white shadow-sm">
-                    <SelectValue placeholder="Indicator" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[340px]">
-                    {INDICATORS.map((x) => (
-                      <SelectItem key={x.code} value={x.code}>
-                        {x.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <OpaqueDropdown
+                  value={indicator}
+                  options={indicatorOptions}
+                  widthClass="w-[320px]"
+                  onChange={setIndicator}
+                />
 
                 <Button
                   variant="secondary"
-                  className="rounded-xl border border-slate-200 bg-white shadow-sm"
+                  className="h-9 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
                   disabled={loading}
                   onClick={() => {
                     setRegion("World");
@@ -297,7 +385,7 @@ export default function Page() {
             </div>
           ) : null}
 
-          <section className="grid grid-cols-12 gap-4">
+          <section className="relative z-10 grid grid-cols-12 gap-4">
             <div className="col-span-12 lg:col-span-8">
               {loading ? (
                 <div className="flex h-[560px] items-center justify-center rounded-3xl border border-white/70 bg-white/70 shadow-xl backdrop-blur-xl">
