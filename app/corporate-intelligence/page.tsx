@@ -1137,7 +1137,7 @@ export default function CorporateIntelligencePage() {
         {loading ? (
           <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="rounded-2xl bg-slate-900 px-7 py-6 text-center shadow-xl">
-              <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              <div className="mx-auto mb-3 h-8 w-8 animate-spinA rounded-full border-2 border-white/30 border-t-white" />
               <p className="text-sm font-semibold text-white">
                 Loading directory...
               </p>
