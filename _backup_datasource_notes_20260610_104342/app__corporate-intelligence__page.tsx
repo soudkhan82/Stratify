@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
@@ -201,7 +201,7 @@ const STATE_CENTROIDS: Record<string, [number, number]> = {
 };
 
 function safeText(value: unknown) {
-  if (value === null || value === undefined || value === "") return "â€”";
+  if (value === null || value === undefined || value === "") return "—";
   return String(value);
 }
 
@@ -337,7 +337,7 @@ function normalizeCountry(row: CorporateProfile): string {
   if (rawLower === "canada") return "Canada";
   if (rawLower === "bermuda") return "Bermuda";
   if (rawLower === "cayman islands") return "Cayman Islands";
-  if (rawLower === "curacao") return "CuraÃ§ao";
+  if (rawLower === "curacao") return "Curaçao";
   if (rawLower === "israel") return "Israel";
 
   return raw || "United States";
@@ -695,7 +695,7 @@ function DetailModal({
               {safeText(company.company_name)}
             </h2>
             <p className="text-sm text-slate-500">
-              {safeText(company.sector)} Â· {safeText(company.industry)}
+              {safeText(company.sector)} · {safeText(company.industry)}
             </p>
           </div>
 
@@ -1161,5 +1161,3 @@ export default function CorporateIntelligencePage() {
     </main>
   );
 }
-
-

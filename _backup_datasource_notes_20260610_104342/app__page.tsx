@@ -1,4 +1,4 @@
-﻿// app/page.tsx
+// app/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -68,7 +68,7 @@ function n(v: unknown): number {
 }
 
 function fmt(v: number): string {
-  if (!Number.isFinite(v)) return "â€”";
+  if (!Number.isFinite(v)) return "—";
   if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
   if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
   return v.toLocaleString();
@@ -159,7 +159,7 @@ function OpaqueDropdown({
                 <span>{option.label}</span>
 
                 {active ? (
-                  <span className="text-xs font-bold text-indigo-600">âœ“</span>
+                  <span className="text-xs font-bold text-indigo-600">✓</span>
                 ) : null}
               </button>
             );
@@ -296,7 +296,7 @@ export default function Page() {
         rows: [
           { label: "Country", value: row?.country ?? selectedIso3 },
           { label: "ISO3", value: selectedIso3 },
-          { label: "Region", value: row?.region ?? "â€”" },
+          { label: "Region", value: row?.region ?? "—" },
           {
             label: indicatorLabel,
             value: `${fmt(n(row?.value))}${
@@ -434,5 +434,3 @@ export default function Page() {
     </main>
   );
 }
-
-

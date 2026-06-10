@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Globe, TrendingUp, Download, FilterX, RefreshCw } from "lucide-react";
+import DataSourceNote, { DATA_SOURCE_NOTES } from "@/app/components/DataSourceNote";
 
 /* =========================
    Types
@@ -987,5 +988,4 @@ export default function FaostatProductsPage() {
     </div>
   );
 }
-
 

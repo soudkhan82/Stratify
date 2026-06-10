@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import Link from "next/link";
 import { Home } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -68,7 +68,7 @@ function toNum(v: any) {
 }
 
 function fmt(v: number | null | undefined) {
-  if (v == null || !Number.isFinite(v)) return "â€”";
+  if (v == null || !Number.isFinite(v)) return "—";
   return v.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
@@ -168,13 +168,13 @@ export default function FaostatProductsPage() {
 
   const datasetLabel =
     dataset === "production"
-      ? "FAOSTAT â€¢ Production"
-      : "FAOSTAT â€¢ SUA (Supply Utilization Accounts)";
+      ? "FAOSTAT • Production"
+      : "FAOSTAT • SUA (Supply Utilization Accounts)";
 
   const title = useMemo(() => {
-    const el = element || "â€”";
-    const y = year ? String(year) : "â€”";
-    return `Products â€¢ ${el} â€¢ ${y}`;
+    const el = element || "—";
+    const y = year ? String(year) : "—";
+    return `Products • ${el} • ${y}`;
   }, [element, year]);
 
   useEffect(() => {
@@ -271,7 +271,7 @@ export default function FaostatProductsPage() {
 
         setAreaOptions(rows);
 
-        // âœ… auto-pick first area so page renders immediately
+        // ✅ auto-pick first area so page renders immediately
         if (rows.length && !areaCode) {
           setAreaName(rows[0].area);
           setAreaCode(String(rows[0].area_code));
@@ -551,7 +551,7 @@ export default function FaostatProductsPage() {
                 </Badge>
                 {areaName && areaCode ? (
                   <Badge className="bg-emerald-600 text-white">
-                    {areaName} â€¢ {areaCode}
+                    {areaName} • {areaCode}
                   </Badge>
                 ) : null}
                 {productsError ? (
@@ -626,7 +626,7 @@ export default function FaostatProductsPage() {
                   }}
                   onFocus={() => setAreaOpen(true)}
                   onClick={() => setAreaOpen(true)}
-                  placeholder="Search area (e.g., Pakistan / Eastern Asia)â€¦"
+                  placeholder="Search area (e.g., Pakistan / Eastern Asia)…"
                   className="rounded-xl w-[260px]"
                 />
 
@@ -739,7 +739,7 @@ export default function FaostatProductsPage() {
                   <Input
                     value={productQ}
                     onChange={(e) => setProductQ(e.target.value)}
-                    placeholder="Filter productsâ€¦"
+                    placeholder="Filter products…"
                     className="rounded-xl h-9"
                     disabled={!products.length}
                   />
@@ -841,7 +841,7 @@ export default function FaostatProductsPage() {
                               </td>
 
                               <td className="px-3 py-2 align-top">
-                                {p.unit || "â€”"}
+                                {p.unit || "—"}
                               </td>
                             </tr>
                           );
@@ -887,7 +887,7 @@ export default function FaostatProductsPage() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <TrendingUp className="h-4 w-4" />
-                  Trend (last {TREND_YEARS} yrs): {selected?.item || "â€”"}{" "}
+                  Trend (last {TREND_YEARS} yrs): {selected?.item || "—"}{" "}
                   {selected?.unit ? `(${selected.unit})` : ""}
                 </CardTitle>
 
@@ -987,5 +987,3 @@ export default function FaostatProductsPage() {
     </div>
   );
 }
-
-

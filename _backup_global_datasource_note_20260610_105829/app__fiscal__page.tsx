@@ -1,6 +1,7 @@
 ﻿import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FISCAL_METRICS } from "./_lib/fiscalMeta";
+import DataSourceNote, { DATA_SOURCE_NOTES } from "@/app/components/DataSourceNote";
 
 export default function FiscalHome() {
   return (
@@ -52,5 +53,4 @@ export default function FiscalHome() {
     </div>
   );
 }
-
 

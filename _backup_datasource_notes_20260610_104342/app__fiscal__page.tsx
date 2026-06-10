@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FISCAL_METRICS } from "./_lib/fiscalMeta";
 
@@ -8,7 +8,7 @@ export default function FiscalHome() {
       <div className="mx-auto max-w-7xl px-4 py-6">
         <div className="mb-5">
           <div className="text-xs text-muted-foreground">
-            KPI â€¢ Fiscal Space
+            KPI • Fiscal Space
           </div>
           <h1 className="text-2xl font-semibold tracking-tight">
             Budget Sustainability
@@ -52,5 +52,3 @@ export default function FiscalHome() {
     </div>
   );
 }
-
-

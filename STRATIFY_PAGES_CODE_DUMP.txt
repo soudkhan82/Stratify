@@ -1,0 +1,5432 @@
+﻿STRATIFY APP PAGES CODE DUMP - DATA SOURCE NOTE FIX
+Generated: 06/10/2026 10:39:23
+Root: C:\NextJS\stratify
+
+============================================================
+APP STRUCTURE
+============================================================
+app\api
+app\components
+app\config
+app\corporate-intelligence
+app\debt
+app\energy
+app\faostat
+app\fiscal
+app\lib
+app\world
+app\api\corporate-intelligence
+app\api\debt
+app\api\energy
+app\api\faostat
+app\api\fiscal
+app\api\imf
+app\api\landing
+app\api\map
+app\api\wdi
+app\api\corporate-intelligence\directory
+app\api\corporate-intelligence\profiles
+app\api\corporate-intelligence\sp500
+app\api\corporate-intelligence\summary
+app\api\corporate-intelligence\profiles\refresh
+app\api\corporate-intelligence\sp500\import
+app\api\faostat\areas
+app\api\faostat\country
+app\api\faostat\items
+app\api\faostat\module
+app\api\faostat\overview
+app\api\faostat\production-insights
+app\api\faostat\trade-insights
+app\api\faostat\trend
+app\api\faostat\areas\search
+app\api\faostat\items\elements
+app\api\faostat\items\meta
+app\api\faostat\items\products
+app\api\faostat\items\search
+app\api\faostat\items\top-areas
+app\api\faostat\items\trend
+app\api\fiscal\expenditure
+app\api\fiscal\interest-revenue
+app\api\fiscal\overall-balance
+app\api\fiscal\primary-balance
+app\api\fiscal\revenue
+app\api\imf\weo
+app\api\imf\weo\country
+app\api\imf\weo\meta
+app\api\wdi\country
+app\corporate-intelligence\_components
+app\corporate-intelligence\_lib
+app\faostat\components
+app\fiscal\expenditure
+app\fiscal\overall-balance
+app\fiscal\primary-balance
+app\fiscal\revenue
+app\fiscal\_components
+app\fiscal\_lib
+app\lib\rpc
+app\world\components
+app\world\country
+app\world\country\[iso3]
+app\world\country\[iso3]\_components
+
+============================================================
+PAGE / LAYOUT / COMPONENT FILES
+============================================================
+
+
+============================================================
+FILE: app\corporate-intelligence\page.tsx
+============================================================
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import {
+  Building2,
+  Factory,
+  Globe2,
+  Layers3,
+  MapPinned,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Wallet,
+  X,
+} from "lucide-react";
+
+import CorporateDirectoryTable from "./_components/CorporateDirectoryTable";
+import { fetchCorporateDirectory, fetchCorporateSummary } from "./_lib/api";
+import type {
+  ChartDatum,
+  CorporateDirectorySummary,
+  CorporateProfile,
+} from "./_lib/types";
+
+type CorporateProfileExtended = CorporateProfile & {
+  market_cap?: number | string | null;
+  market_value?: number | string | null;
+  market_value_usd?: number | string | null;
+};
+
+type MapPoint = {
+  key: string;
+  label: string;
+  lat: number;
+  lng: number;
+  count: number;
+};
+
+const US_STATES = new Set([
+  "alabama",
+  "alaska",
+  "arizona",
+  "arkansas",
+  "california",
+  "colorado",
+  "connecticut",
+  "delaware",
+  "florida",
+  "georgia",
+  "hawaii",
+  "idaho",
+  "illinois",
+  "indiana",
+  "iowa",
+  "kansas",
+  "kentucky",
+  "louisiana",
+  "maine",
+  "maryland",
+  "massachusetts",
+  "michigan",
+  "minnesota",
+  "mississippi",
+  "missouri",
+  "montana",
+  "nebraska",
+  "nevada",
+  "new hampshire",
+  "new jersey",
+  "new mexico",
+  "new york",
+  "north carolina",
+  "north dakota",
+  "ohio",
+  "oklahoma",
+  "oregon",
+  "pennsylvania",
+  "rhode island",
+  "south carolina",
+  "south dakota",
+  "tennessee",
+  "texas",
+  "utah",
+  "vermont",
+  "virginia",
+  "washington",
+  "west virginia",
+  "wisconsin",
+  "wyoming",
+  "district of columbia",
+  "dc",
+]);
+
+const STATE_NAME_BY_CODE: Record<string, string> = {
+  AL: "Alabama",
+  AK: "Alaska",
+  AZ: "Arizona",
+  AR: "Arkansas",
+  CA: "California",
+  CO: "Colorado",
+  CT: "Connecticut",
+  DE: "Delaware",
+  FL: "Florida",
+  GA: "Georgia",
+  HI: "Hawaii",
+  ID: "Idaho",
+  IL: "Illinois",
+  IN: "Indiana",
+  IA: "Iowa",
+  KS: "Kansas",
+  KY: "Kentucky",
+  LA: "Louisiana",
+  ME: "Maine",
+  MD: "Maryland",
+  MA: "Massachusetts",
+  MI: "Michigan",
+  MN: "Minnesota",
+  MS: "Mississippi",
+  MO: "Missouri",
+  MT: "Montana",
+  NE: "Nebraska",
+  NV: "Nevada",
+  NH: "New Hampshire",
+  NJ: "New Jersey",
+  NM: "New Mexico",
+  NY: "New York",
+  NC: "North Carolina",
+  ND: "North Dakota",
+  OH: "Ohio",
+  OK: "Oklahoma",
+  OR: "Oregon",
+  PA: "Pennsylvania",
+  RI: "Rhode Island",
+  SC: "South Carolina",
+  SD: "South Dakota",
+  TN: "Tennessee",
+  TX: "Texas",
+  UT: "Utah",
+  VT: "Vermont",
+  VA: "Virginia",
+  WA: "Washington",
+  WV: "West Virginia",
+  WI: "Wisconsin",
+  WY: "Wyoming",
+  DC: "District of Columbia",
+};
+
+const STATE_CENTROIDS: Record<string, [number, number]> = {
+  Alabama: [32.806671, -86.79113],
+  Alaska: [61.370716, -152.404419],
+  Arizona: [33.729759, -111.431221],
+  Arkansas: [34.969704, -92.373123],
+  California: [36.116203, -119.681564],
+  Colorado: [39.059811, -105.311104],
+  Connecticut: [41.597782, -72.755371],
+  Delaware: [39.318523, -75.507141],
+  Florida: [27.766279, -81.686783],
+  Georgia: [33.040619, -83.643074],
+  Hawaii: [21.094318, -157.498337],
+  Idaho: [44.240459, -114.478828],
+  Illinois: [40.349457, -88.986137],
+  Indiana: [39.849426, -86.258278],
+  Iowa: [42.011539, -93.210526],
+  Kansas: [38.5266, -96.726486],
+  Kentucky: [37.66814, -84.670067],
+  Louisiana: [31.169546, -91.867805],
+  Maine: [44.693947, -69.381927],
+  Maryland: [39.063946, -76.802101],
+  Massachusetts: [42.230171, -71.530106],
+  Michigan: [43.326618, -84.536095],
+  Minnesota: [45.694454, -93.900192],
+  Mississippi: [32.741646, -89.678696],
+  Missouri: [38.456085, -92.288368],
+  Montana: [46.921925, -110.454353],
+  Nebraska: [41.12537, -98.268082],
+  Nevada: [38.313515, -117.055374],
+  "New Hampshire": [43.452492, -71.563896],
+  "New Jersey": [40.298904, -74.521011],
+  "New Mexico": [34.840515, -106.248482],
+  "New York": [42.165726, -74.948051],
+  "North Carolina": [35.630066, -79.806419],
+  "North Dakota": [47.528912, -99.784012],
+  Ohio: [40.388783, -82.764915],
+  Oklahoma: [35.565342, -96.928917],
+  Oregon: [44.572021, -122.070938],
+  Pennsylvania: [40.590752, -77.209755],
+  "Rhode Island": [41.680893, -71.51178],
+  "South Carolina": [33.856892, -80.945007],
+  "South Dakota": [44.299782, -99.438828],
+  Tennessee: [35.747845, -86.692345],
+  Texas: [31.054487, -97.563461],
+  Utah: [40.150032, -111.862434],
+  Vermont: [44.045876, -72.710686],
+  Virginia: [37.769337, -78.169968],
+  Washington: [47.400902, -121.490494],
+  "West Virginia": [38.491226, -80.954453],
+  Wisconsin: [44.268543, -89.616508],
+  Wyoming: [42.755966, -107.30249],
+  "District of Columbia": [38.9072, -77.0369],
+};
+
+function safeText(value: unknown) {
+  if (value === null || value === undefined || value === "") return "â€”";
+  return String(value);
+}
+
+function toNumber(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+
+  const parsed = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getMarketValue(row: CorporateProfile): number | string | null {
+  const extended = row as CorporateProfileExtended;
+
+  return (
+    extended.market_cap ??
+    extended.market_value_usd ??
+    extended.market_value ??
+    null
+  );
+}
+
+function formatMarketValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "N/A";
+
+  const num =
+    typeof value === "number"
+      ? value
+      : Number(String(value).replace(/[^0-9.-]/g, ""));
+
+  if (!Number.isFinite(num)) return String(value);
+
+  if (num >= 1_000_000_000_000) {
+    return `$${(num / 1_000_000_000_000).toFixed(2)}T`;
+  }
+
+  if (num >= 1_000_000_000) {
+    return `$${(num / 1_000_000_000).toFixed(2)}B`;
+  }
+
+  if (num >= 1_000_000) {
+    return `$${(num / 1_000_000).toFixed(2)}M`;
+  }
+
+  return `$${num.toLocaleString()}`;
+}
+
+function normalizeState(value: unknown): string | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+
+  const upper = raw.toUpperCase();
+  if (STATE_NAME_BY_CODE[upper]) return STATE_NAME_BY_CODE[upper];
+
+  const title = raw
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+  if (STATE_CENTROIDS[title]) return title;
+
+  return null;
+}
+
+function inferStateFromHeadquarters(headquarters: unknown): string | null {
+  const text = String(headquarters ?? "").trim();
+  if (!text) return null;
+
+  const parts = text
+    .split(/[,\|]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  for (const part of parts) {
+    const state = normalizeState(part);
+    if (state) return state;
+  }
+
+  for (const [code, name] of Object.entries(STATE_NAME_BY_CODE)) {
+    const regex = new RegExp(`\\b${code}\\b|\\b${name}\\b`, "i");
+    if (regex.test(text)) return name;
+  }
+
+  return null;
+}
+
+function getCompanyState(row: CorporateProfile): string | null {
+  return (
+    normalizeState(row.state) ??
+    inferStateFromHeadquarters(row.headquarters) ??
+    null
+  );
+}
+
+function normalizeCountry(row: CorporateProfile): string {
+  const raw = String(row.country ?? "").trim();
+  const rawLower = raw.toLowerCase();
+
+  const state = getCompanyState(row);
+
+  if (state) return "United States";
+  if (rawLower && US_STATES.has(rawLower)) return "United States";
+
+  if (
+    [
+      "us",
+      "u.s.",
+      "usa",
+      "u.s.a.",
+      "united states",
+      "united states of america",
+    ].includes(rawLower)
+  ) {
+    return "United States";
+  }
+
+  if (
+    [
+      "uk",
+      "u.k.",
+      "united kingdom",
+      "great britain",
+      "england",
+      "scotland",
+      "wales",
+      "northern ireland",
+    ].includes(rawLower)
+  ) {
+    return "United Kingdom";
+  }
+
+  if (rawLower === "ireland") return "Ireland";
+  if (rawLower === "switzerland") return "Switzerland";
+  if (rawLower === "netherlands") return "Netherlands";
+  if (rawLower === "canada") return "Canada";
+  if (rawLower === "bermuda") return "Bermuda";
+  if (rawLower === "cayman islands") return "Cayman Islands";
+  if (rawLower === "curacao") return "CuraÃ§ao";
+  if (rawLower === "israel") return "Israel";
+
+  return raw || "United States";
+}
+
+function uniqueCount(
+  rows: CorporateProfile[],
+  getValue: (row: CorporateProfile) => unknown,
+) {
+  return new Set(
+    rows
+      .map(getValue)
+      .filter((value) => value !== null && value !== undefined && value !== ""),
+  ).size;
+}
+
+function countBy(
+  rows: CorporateProfile[],
+  getValue: (row: CorporateProfile) => unknown,
+  limit = 10,
+): ChartDatum[] {
+  const map = new Map<string, number>();
+
+  rows.forEach((row) => {
+    const raw = getValue(row);
+    const name = raw ? String(raw) : "Unknown";
+    map.set(name, (map.get(name) ?? 0) + 1);
+  });
+
+  return Array.from(map.entries())
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, limit);
+}
+
+function fallbackSummary(rows: CorporateProfile[]): CorporateDirectorySummary {
+  return {
+    total_companies: rows.length,
+    sectors: uniqueCount(rows, (row) => row.sector),
+    industries: uniqueCount(rows, (row) => row.industry),
+    countries: uniqueCount(rows, (row) => normalizeCountry(row)),
+    enriched_profiles: rows.filter(
+      (row) =>
+        row.headquarters ||
+        row.city ||
+        row.state ||
+        row.cik ||
+        row.founded ||
+        row.website,
+    ).length,
+  };
+}
+
+function normalizeSummary(
+  apiSummary: CorporateDirectorySummary | null,
+  rows: CorporateProfile[],
+): CorporateDirectorySummary {
+  const fallback = fallbackSummary(rows);
+
+  return {
+    total_companies:
+      toNumber(apiSummary?.total_companies) > 0
+        ? toNumber(apiSummary?.total_companies)
+        : fallback.total_companies,
+    sectors:
+      toNumber(apiSummary?.sectors) > 0
+        ? toNumber(apiSummary?.sectors)
+        : fallback.sectors,
+    industries:
+      toNumber(apiSummary?.industries) > 0
+        ? toNumber(apiSummary?.industries)
+        : fallback.industries,
+    countries: fallback.countries,
+    enriched_profiles:
+      toNumber(apiSummary?.enriched_profiles) > 0
+        ? toNumber(apiSummary?.enriched_profiles)
+        : fallback.enriched_profiles,
+  };
+}
+
+function buildStateMapPoints(rows: CorporateProfile[]): MapPoint[] {
+  const grouped = new Map<string, number>();
+
+  rows.forEach((row) => {
+    const state = getCompanyState(row) ?? "United States";
+    grouped.set(state, (grouped.get(state) ?? 0) + 1);
+  });
+
+  return Array.from(grouped.entries())
+    .map(([state, count]) => {
+      const coords = STATE_CENTROIDS[state] ?? [39.8283, -98.5795];
+
+      return {
+        key: state,
+        label: state,
+        lat: coords[0],
+        lng: coords[1],
+        count,
+      };
+    })
+    .sort((a, b) => b.count - a.count);
+}
+
+function StatCard({
+  title,
+  value,
+  icon,
+  helper,
+}: {
+  title: string;
+  value: number | string;
+  icon: React.ReactNode;
+  helper?: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            {title}
+          </p>
+          <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
+          {helper ? (
+            <p className="mt-1 text-xs text-slate-500">{helper}</p>
+          ) : null}
+        </div>
+        <div className="rounded-xl bg-indigo-50 p-2 text-indigo-700">
+          {icon}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BarListCard({
+  title,
+  subtitle,
+  data,
+}: {
+  title: string;
+  subtitle: string;
+  data: ChartDatum[];
+}) {
+  const maxValue = Math.max(...data.map((item) => item.value), 1);
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-4">
+        <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+        <p className="text-xs text-slate-500">{subtitle}</p>
+      </div>
+
+      <div className="space-y-3">
+        {data.map((item) => {
+          const width = Math.max(8, (item.value / maxValue) * 100);
+
+          return (
+            <div
+              key={item.name}
+              className="grid grid-cols-[180px_1fr_42px] items-center gap-3"
+            >
+              <div className="text-xs font-medium leading-snug text-slate-700">
+                {item.name}
+              </div>
+
+              <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-indigo-600"
+                  style={{ width: `${width}%` }}
+                />
+              </div>
+
+              <div className="text-right text-xs font-semibold text-slate-700">
+                {item.value}
+              </div>
+            </div>
+          );
+        })}
+
+        {data.length === 0 ? (
+          <div className="rounded-xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+            No data available.
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function UsaLeafletMap({ points }: { points: MapPoint[] }) {
+  const mapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let map: any = null;
+    let resizeObserver: ResizeObserver | null = null;
+    let cancelled = false;
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+
+    async function loadMap() {
+      if (!mapRef.current) return;
+
+      const L = await import("leaflet");
+
+      if (cancelled || !mapRef.current) return;
+
+      mapRef.current.innerHTML = "";
+
+      map = L.map(mapRef.current, {
+        center: [39.8283, -98.5795],
+        zoom: 4,
+        minZoom: 3,
+        maxZoom: 8,
+        scrollWheelZoom: false,
+        zoomControl: true,
+      });
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+      }).addTo(map);
+
+      points.forEach((point) => {
+        const radius = Math.max(8, Math.min(28, Math.sqrt(point.count) * 2.4));
+
+        L.circleMarker([point.lat, point.lng], {
+          radius,
+          color: "#312e81",
+          fillColor: "#4f46e5",
+          fillOpacity: 0.72,
+          weight: 1,
+        })
+          .addTo(map)
+          .bindPopup(
+            `<strong>${point.label}</strong><br/>${point.count} companies`,
+          );
+      });
+
+      const fitMap = () => {
+        if (cancelled || !map) return;
+
+        map.invalidateSize();
+
+        if (points.length > 0) {
+          const bounds = L.latLngBounds(
+            points.map((point) => [point.lat, point.lng]),
+          );
+          map.fitBounds(bounds, {
+            padding: [32, 32],
+            maxZoom: 5,
+          });
+        }
+      };
+
+      setTimeout(fitMap, 150);
+      setTimeout(fitMap, 450);
+      setTimeout(fitMap, 900);
+
+      if (mapRef.current && typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(() => {
+          if (resizeTimer) clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(fitMap, 120);
+        });
+
+        resizeObserver.observe(mapRef.current);
+      }
+    }
+
+    loadMap();
+
+    return () => {
+      cancelled = true;
+
+      if (resizeTimer) clearTimeout(resizeTimer);
+
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+        resizeObserver = null;
+      }
+
+      if (map) {
+        map.remove();
+        map = null;
+      }
+    };
+  }, [points]);
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">
+            USA Company Map
+          </h2>
+          <p className="text-xs text-slate-500">
+            State-level distribution based on company headquarters.
+          </p>
+        </div>
+
+        <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+          {points.length} locations
+        </div>
+      </div>
+
+      <div className="relative h-[460px] w-full overflow-hidden bg-slate-100">
+        <div ref={mapRef} className="absolute inset-0 h-full w-full" />
+      </div>
+    </div>
+  );
+}
+const DynamicUsaLeafletMap = dynamic(() => Promise.resolve(UsaLeafletMap), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-[420px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-500">
+      Loading USA map...
+    </div>
+  ),
+});
+
+function Info({ label, value }: { label: string; value: unknown }) {
+  return (
+    <div className="rounded-xl bg-slate-50 px-3 py-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+      <p className="mt-1 text-sm font-medium text-slate-900">
+        {safeText(value)}
+      </p>
+    </div>
+  );
+}
+
+function DetailModal({
+  company,
+  onClose,
+}: {
+  company: CorporateProfile | null;
+  onClose: () => void;
+}) {
+  if (!company) return null;
+
+  const normalizedCountry = normalizeCountry(company);
+  const state = getCompanyState(company);
+  const locationParts = [company.city, state, normalizedCountry].filter(
+    Boolean,
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4">
+      <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+          <div>
+            <div className="mb-2 inline-flex rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+              {safeText(company.symbol)}
+            </div>
+            <h2 className="text-lg font-semibold text-slate-950">
+              {safeText(company.company_name)}
+            </h2>
+            <p className="text-sm text-slate-500">
+              {safeText(company.sector)} Â· {safeText(company.industry)}
+            </p>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+            aria-label="Close company detail"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="grid gap-3 p-5 sm:grid-cols-2">
+          <Info label="Ticker" value={company.symbol} />
+          <Info label="Exchange" value={company.exchange} />
+          <Info label="Sector" value={company.sector} />
+          <Info label="Industry" value={company.industry} />
+          <Info label="Country / Location" value={locationParts.join(", ")} />
+          <Info label="Headquarters" value={company.headquarters} />
+          <Info label="Founded" value={company.founded} />
+          <Info label="CIK" value={company.cik} />
+          <Info
+            label="Market Value"
+            value={formatMarketValue(getMarketValue(company))}
+          />
+          <Info label="Source" value={company.source} />
+        </div>
+
+        {company.website || company.business_summary ? (
+          <div className="border-t border-slate-100 px-5 py-4">
+            {company.website ? (
+              <a
+                href={String(company.website)}
+                target="_blank"
+                rel="noreferrer"
+                className="mb-3 inline-flex text-sm font-medium text-indigo-700 hover:text-indigo-900"
+              >
+                Visit website
+              </a>
+            ) : null}
+
+            {company.business_summary ? (
+              <p className="text-sm leading-6 text-slate-600">
+                {company.business_summary}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+export default function CorporateIntelligencePage() {
+  const [rows, setRows] = useState<CorporateProfile[]>([]);
+  const [summary, setSummary] = useState<CorporateDirectorySummary | null>(
+    null,
+  );
+  const [selectedCompany, setSelectedCompany] =
+    useState<CorporateProfile | null>(null);
+
+  const [search, setSearch] = useState("");
+  const [sector, setSector] = useState("All");
+  const [stateFilter, setStateFilter] = useState("All");
+
+  const [loading, setLoading] = useState(true);
+  const [refreshingProfiles, setRefreshingProfiles] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function loadData() {
+    try {
+      setError(null);
+      setLoading(true);
+
+      const [directoryRows, summaryData] = await Promise.all([
+        fetchCorporateDirectory(),
+        fetchCorporateSummary(),
+      ]);
+
+      setRows(Array.isArray(directoryRows) ? directoryRows : []);
+      setSummary(summaryData);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load corporate intelligence data",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function refreshProfiles() {
+    try {
+      setRefreshingProfiles(true);
+
+      const res = await fetch("/api/corporate-intelligence/profiles/refresh", {
+        method: "POST",
+      });
+
+      if (!res.ok) {
+        throw new Error("Profile refresh failed");
+      }
+
+      await loadData();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to refresh corporate profiles",
+      );
+    } finally {
+      setRefreshingProfiles(false);
+    }
+  }
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const normalizedRows = useMemo(
+    () =>
+      rows.map((row) => ({
+        ...row,
+        country: normalizeCountry(row),
+        state: getCompanyState(row) ?? row.state,
+      })),
+    [rows],
+  );
+
+  const computedSummary = useMemo(
+    () => normalizeSummary(summary, normalizedRows),
+    [summary, normalizedRows],
+  );
+
+  const sectors = useMemo(
+    () =>
+      [
+        "All",
+        ...Array.from(
+          new Set(normalizedRows.map((row) => row.sector).filter(Boolean)),
+        ).sort(),
+      ] as string[],
+    [normalizedRows],
+  );
+
+  const states = useMemo(
+    () =>
+      [
+        "All",
+        ...Array.from(
+          new Set(
+            normalizedRows.map((row) => getCompanyState(row)).filter(Boolean),
+          ),
+        ).sort(),
+      ] as string[],
+    [normalizedRows],
+  );
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    return normalizedRows.filter((row) => {
+      const marketValue = getMarketValue(row);
+      const companyState = getCompanyState(row);
+
+      const matchesSearch =
+        !q ||
+        [
+          row.symbol,
+          row.company_name,
+          row.sector,
+          row.industry,
+          row.country,
+          row.city,
+          companyState,
+          row.headquarters,
+          row.exchange,
+          marketValue,
+        ]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(q));
+
+      const matchesSector = sector === "All" || row.sector === sector;
+      const matchesState =
+        stateFilter === "All" || companyState === stateFilter;
+
+      return matchesSearch && matchesSector && matchesState;
+    });
+  }, [normalizedRows, search, sector, stateFilter]);
+
+  const sectorChart = useMemo(
+    () => countBy(normalizedRows, (row) => row.sector, 10),
+    [normalizedRows],
+  );
+
+  const stateChart = useMemo(
+    () =>
+      countBy(normalizedRows, (row) => getCompanyState(row) ?? "Unknown", 10),
+    [normalizedRows],
+  );
+
+  const industryChart = useMemo(
+    () => countBy(normalizedRows, (row) => row.industry, 10),
+    [normalizedRows],
+  );
+
+  const mapPoints = useMemo(
+    () => buildStateMapPoints(normalizedRows),
+    [normalizedRows],
+  );
+
+  const marketValueCoverage = useMemo(
+    () =>
+      normalizedRows.filter((row) => {
+        const value = getMarketValue(row);
+        return value !== null && value !== undefined && value !== "";
+      }).length,
+    [normalizedRows],
+  );
+
+  const totalMarketValue = useMemo(
+    () =>
+      normalizedRows.reduce((sum, row) => {
+        const value = getMarketValue(row);
+        return sum + toNumber(value);
+      }, 0),
+    [normalizedRows],
+  );
+
+  return (
+    <main className="min-h-screen bg-slate-100 px-4 py-5 text-slate-900 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl space-y-5">
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+            <div>
+              <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                <Sparkles size={14} />
+                Corporate Intelligence
+              </div>
+
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
+                Corporate Directory
+              </h1>
+
+              <p className="mt-1 max-w-4xl text-sm leading-6 text-slate-500">
+                S&amp;P 500 corporate directory with USA headquarters map,
+                sector breakdown, industry concentration and market value
+                support.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={loadData}
+                disabled={loading}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCw
+                  size={16}
+                  className={loading ? "animate-spin" : ""}
+                />
+                Reload
+              </button>
+
+              <button
+                onClick={refreshProfiles}
+                disabled={refreshingProfiles}
+                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCw
+                  size={16}
+                  className={refreshingProfiles ? "animate-spin" : ""}
+                />
+                Refresh Profiles
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {error ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {error}
+          </div>
+        ) : null}
+
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+          <StatCard
+            title="Total Companies"
+            value={computedSummary.total_companies}
+            helper="Imported companies"
+            icon={<Building2 size={20} />}
+          />
+
+          <StatCard
+            title="Sectors"
+            value={computedSummary.sectors}
+            helper="Unique sectors"
+            icon={<Layers3 size={20} />}
+          />
+
+          <StatCard
+            title="Industries"
+            value={computedSummary.industries}
+            helper="Unique industries"
+            icon={<Factory size={20} />}
+          />
+
+          <StatCard
+            title="States"
+            value={states.length > 0 ? states.length - 1 : 0}
+            helper="Detected HQ states"
+            icon={<Globe2 size={20} />}
+          />
+
+          <StatCard
+            title="Enriched Profiles"
+            value={computedSummary.enriched_profiles}
+            helper="Populated profile rows"
+            icon={<Sparkles size={20} />}
+          />
+
+          <StatCard
+            title="Market Cap"
+            value={
+              marketValueCoverage > 0
+                ? formatMarketValue(totalMarketValue)
+                : "N/A"
+            }
+            helper={
+              marketValueCoverage > 0
+                ? `${marketValueCoverage} profiles covered`
+                : "Backend field missing"
+            }
+            icon={<Wallet size={20} />}
+          />
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-2">
+          <BarListCard
+            title="Companies by Sector"
+            subtitle="Top sectors by company count"
+            data={sectorChart}
+          />
+
+          <BarListCard
+            title="Companies by State"
+            subtitle="USA headquarters distribution"
+            data={stateChart}
+          />
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-[2fr_1fr]">
+          <DynamicUsaLeafletMap points={mapPoints} />
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">
+                  Map Summary
+                </h2>
+                <p className="text-xs text-slate-500">
+                  USA headquarters concentration
+                </p>
+              </div>
+              <div className="rounded-xl bg-indigo-50 p-2 text-indigo-700">
+                <MapPinned size={18} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {mapPoints.slice(0, 8).map((point) => (
+                <div
+                  key={point.key}
+                  className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2"
+                >
+                  <span className="text-sm font-medium text-slate-700">
+                    {point.label}
+                  </span>
+                  <span className="text-sm font-semibold text-slate-950">
+                    {point.count}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-1">
+          <BarListCard
+            title="Top Industries"
+            subtitle="Largest industries in directory"
+            data={industryChart}
+          />
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="grid gap-3 md:grid-cols-[1fr_220px_220px]">
+            <div className="relative">
+              <Search
+                size={17}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search ticker, company, sector, industry, state, headquarters..."
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+              />
+            </div>
+
+            <select
+              value={sector}
+              onChange={(event) => setSector(event.target.value)}
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+            >
+              {sectors.map((item) => (
+                <option key={item} value={item}>
+                  {item === "All" ? "All sectors" : item}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={stateFilter}
+              onChange={(event) => setStateFilter(event.target.value)}
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+            >
+              {states.map((item) => (
+                <option key={item} value={item}>
+                  {item === "All" ? "All states" : item}
+                </option>
+              ))}
+            </select>
+          </div>
+        </section>
+
+        {loading ? (
+          <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="rounded-2xl bg-slate-900 px-7 py-6 text-center shadow-xl">
+              <div className="mx-auto mb-3 h-8 w-8 animate-spinA rounded-full border-2 border-white/30 border-t-white" />
+              <p className="text-sm font-semibold text-white">
+                Loading directory...
+              </p>
+              <p className="mt-1 text-xs text-slate-300">
+                Fetching corporate profiles
+              </p>
+            </div>
+          </div>
+        ) : (
+          <CorporateDirectoryTable
+            rows={filteredRows}
+            onSelect={setSelectedCompany}
+          />
+        )}
+      </div>
+
+      <DetailModal
+        company={selectedCompany}
+        onClose={() => setSelectedCompany(null)}
+      />
+    </main>
+  );
+}
+
+
+
+============================================================
+FILE: app\debt\page.tsx
+============================================================
+"use client";
+
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Download, RefreshCw, Search } from "lucide-react";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from "recharts";
+
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+type RiskBand = "Low" | "Moderate" | "High" | "Extreme";
+
+type RankRow = {
+  country_code: string;
+  country_name: string;
+  region: string | null;
+  year: number;
+  debt_gross_pct_gdp: number;
+  risk_band: RiskBand;
+  risk_score: number;
+};
+
+type SeriesResp = {
+  ok: boolean;
+  vintage: string;
+  rank_year: number | null;
+  series: {
+    min_year: number;
+    max_year: number;
+    country: {
+      country_code: string;
+      country_name: string;
+      region: string | null;
+    } | null;
+    points: { year: number; value: number }[];
+  };
+  error?: string;
+};
+
+type RankingResp = {
+  ok: boolean;
+  vintage: string;
+  rank_year: number | null;
+  totals: { countries: number };
+  ranking: RankRow[];
+  error?: string;
+};
+
+function downloadCsv(filename: string, rows: Record<string, any>[]) {
+  if (!rows.length) return;
+  const header = Object.keys(rows[0] ?? {});
+  const esc = (v: any) => {
+    if (v == null) return "";
+    const s = String(v);
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+  const csv = [
+    header.join(","),
+    ...rows.map((r) => header.map((h) => esc(r[h])).join(",")),
+  ].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function pct(n: number, d: number) {
+  if (!d) return "0%";
+  return `${Math.round((n / d) * 100)}%`;
+}
+
+function quantile(sorted: number[], q: number) {
+  if (!sorted.length) return null;
+  const pos = (sorted.length - 1) * q;
+  const base = Math.floor(pos);
+  const rest = pos - base;
+  if (sorted[base + 1] === undefined) return sorted[base];
+  return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
+}
+
+function bandColor(b: RiskBand) {
+  switch (b) {
+    case "Low":
+      return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30";
+    case "Moderate":
+      return "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30";
+    case "High":
+      return "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30";
+    case "Extreme":
+      return "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30";
+  }
+}
+
+function PageLoader({ label = "Loading dashboard..." }: { label?: string }) {
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-4 py-6">
+        <div className="rounded-3xl border border-border bg-card px-10 py-8 shadow-xl">
+          <div className="mx-auto mb-4 h-14 w-14 animate-spin rounded-full border-4 border-muted border-t-foreground" />
+          <div className="text-center">
+            <h2 className="text-xl font-semibold">{label}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Please wait while the latest debt data is being prepared
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function DebtPage() {
+  const [loadingRanking, setLoadingRanking] = useState(true);
+  const [loadingSeries, setLoadingSeries] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+
+  const [err, setErr] = useState<string | null>(null);
+
+  const [rankingData, setRankingData] = useState<RankingResp | null>(null);
+  const [seriesData, setSeriesData] = useState<SeriesResp | null>(null);
+
+  const [region, setRegion] = useState<string>("ALL");
+  const [rankYear, setRankYear] = useState<string>("");
+  const [q, setQ] = useState<string>("");
+
+  const [selectedIso3, setSelectedIso3] = useState<string | null>(null);
+
+  const seriesReqId = useRef(0);
+
+  const buildCommonParams = () => {
+    const params = new URLSearchParams();
+    if (region !== "ALL") params.set("region", region);
+    if (rankYear) params.set("year", rankYear);
+    return params;
+  };
+
+  const fetchRanking = async () => {
+    setLoadingRanking(true);
+    setErr(null);
+
+    try {
+      const params = buildCommonParams();
+      params.set("mode", "ranking");
+
+      const res = await fetch(`/api/debt?${params.toString()}`, {
+        cache: "no-store",
+      });
+
+      const json = (await res.json()) as any;
+      if (!json.ok) throw new Error(json.error ?? "API error");
+
+      const rankResp: RankingResp = {
+        ok: json.ok,
+        vintage: json.vintage,
+        rank_year: json.rank_year ?? null,
+        totals: json.totals ?? { countries: json.ranking?.length ?? 0 },
+        ranking: json.ranking ?? [],
+      };
+
+      setRankingData(rankResp);
+
+      const firstIso3 = rankResp.ranking?.[0]?.country_code ?? null;
+
+      const isoToLoad =
+        selectedIso3 &&
+        rankResp.ranking.some((r) => r.country_code === selectedIso3)
+          ? selectedIso3
+          : firstIso3;
+
+      setSelectedIso3((prev) => {
+        if (prev && rankResp.ranking.some((r) => r.country_code === prev)) {
+          return prev;
+        }
+        return isoToLoad;
+      });
+
+      if (isoToLoad) {
+        await fetchSeries(isoToLoad);
+      } else {
+        setSeriesData(null);
+      }
+    } catch (e: any) {
+      setErr(e?.message ?? "Failed to load");
+      setRankingData(null);
+      setSeriesData(null);
+    } finally {
+      setLoadingRanking(false);
+      setInitialLoading(false);
+    }
+  };
+
+  const fetchSeries = async (iso3: string) => {
+    const req = ++seriesReqId.current;
+    setLoadingSeries(true);
+    setErr(null);
+
+    try {
+      const params = buildCommonParams();
+      params.set("iso3", iso3);
+      params.set("mode", "series");
+
+      const res = await fetch(`/api/debt?${params.toString()}`, {
+        cache: "no-store",
+      });
+
+      const json = (await res.json()) as any;
+      if (!json.ok) throw new Error(json.error ?? "API error");
+      if (req !== seriesReqId.current) return;
+
+      const sResp: SeriesResp = {
+        ok: json.ok,
+        vintage: json.vintage,
+        rank_year: json.rank_year ?? null,
+        series: json.series,
+      };
+
+      setSeriesData(sResp);
+    } catch (e: any) {
+      if (req !== seriesReqId.current) return;
+      setErr(e?.message ?? "Failed to load series");
+      setSeriesData(null);
+    } finally {
+      if (req === seriesReqId.current) setLoadingSeries(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRanking();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const ranking = rankingData?.ranking ?? [];
+
+  const regions = useMemo(() => {
+    const set = new Set<string>();
+    ranking.forEach((r) => r.region && set.add(r.region));
+    return ["ALL", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
+  }, [ranking]);
+
+  const filtered = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    if (!term) return ranking;
+    return ranking.filter(
+      (r) =>
+        r.country_name.toLowerCase().includes(term) ||
+        r.country_code.toLowerCase().includes(term) ||
+        (r.region ?? "").toLowerCase().includes(term),
+    );
+  }, [ranking, q]);
+
+  const valuesSortedAsc = useMemo(() => {
+    const arr = ranking
+      .map((r) => Number(r.debt_gross_pct_gdp))
+      .filter((x) => Number.isFinite(x));
+    arr.sort((a, b) => a - b);
+    return arr;
+  }, [ranking]);
+
+  const stats = useMemo(() => {
+    const n = ranking.length;
+    const med = quantile(valuesSortedAsc, 0.5);
+    const p75 = quantile(valuesSortedAsc, 0.75);
+    const p25 = quantile(valuesSortedAsc, 0.25);
+    const max = valuesSortedAsc.length
+      ? valuesSortedAsc[valuesSortedAsc.length - 1]
+      : null;
+
+    const bandCounts = ranking.reduce(
+      (acc, r) => {
+        acc[r.risk_band] = (acc[r.risk_band] ?? 0) + 1;
+        return acc;
+      },
+      {} as Record<RiskBand, number>,
+    );
+
+    const highExtreme = (bandCounts.High ?? 0) + (bandCounts.Extreme ?? 0);
+
+    return { n, med, p75, p25, max, bandCounts, highExtreme };
+  }, [ranking, valuesSortedAsc]);
+
+  const seriesPoints = useMemo(() => {
+    return (seriesData?.series?.points ?? []).map((p) => ({
+      year: p.year,
+      debt: Number(p.value),
+    }));
+  }, [seriesData]);
+
+  const headerVintage = rankingData?.vintage ?? seriesData?.vintage ?? "â€”";
+  const headerYear = rankingData?.rank_year ?? seriesData?.rank_year ?? "â€”";
+
+  if (initialLoading) {
+    return <PageLoader label="Loading dashboard..." />;
+  }
+
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="mx-auto max-w-7xl px-4 py-6">
+        <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <div className="text-xs text-muted-foreground">
+              WorldStats360 â€¢ Stratify
+            </div>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Debt Sustainability
+            </h1>
+            <div className="mt-1 text-sm text-muted-foreground">
+              Metric:{" "}
+              <span className="text-foreground">
+                Gross Debt % of GDP (GGXWDG_NGDP)
+              </span>{" "}
+              â€¢ Vintage:{" "}
+              <span className="text-foreground">{headerVintage}</span> â€¢ Ranking
+              Year: <span className="text-foreground">{headerYear}</span>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={fetchRanking}
+              disabled={loadingRanking}
+            >
+              <RefreshCw
+                className={`mr-2 h-4 w-4 ${loadingRanking ? "animate-spin" : ""}`}
+              />
+              Refresh
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={() => {
+                const rows = filtered.map((r, i) => ({
+                  rank: i + 1,
+                  year: r.year,
+                  iso3: r.country_code,
+                  country: r.country_name,
+                  region: r.region ?? "",
+                  debt_gross_pct_gdp: r.debt_gross_pct_gdp,
+                  risk_band: r.risk_band,
+                  risk_score: r.risk_score,
+                }));
+                downloadCsv(`debt_ranking_${headerYear}.csv`, rows);
+              }}
+              disabled={!filtered.length}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export CSV
+            </Button>
+          </div>
+        </div>
+
+        {err && (
+          <div className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm">
+            <div className="font-medium">API Error</div>
+            <div className="text-muted-foreground">{err}</div>
+          </div>
+        )}
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Card className="h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-muted-foreground">
+                Countries in ranking
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="text-3xl font-semibold">{stats.n || "â€”"}</div>
+              <div className="text-xs text-muted-foreground">
+                Top list size = {Math.min(50, stats.n) || 0} by default
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-muted-foreground">
+                Global median debt
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="text-3xl font-semibold">
+                {stats.med == null ? "â€”" : stats.med.toFixed(1) + "%"}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                P25 {stats.p25 == null ? "â€”" : stats.p25.toFixed(1) + "%"} â€¢ P75{" "}
+                {stats.p75 == null ? "â€”" : stats.p75.toFixed(1) + "%"}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-muted-foreground">
+                High + Extreme
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="text-3xl font-semibold">
+                {stats.highExtreme || 0}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Share of ranking: {pct(stats.highExtreme || 0, stats.n || 0)}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-muted-foreground">
+                Maximum debt
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="text-3xl font-semibold">
+                {stats.max == null ? "â€”" : stats.max.toFixed(1) + "%"}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Outliers exist; scoring caps above 120%
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="mt-3 grid gap-3 lg:grid-cols-12">
+          <Card className="lg:col-span-7">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Debt ranking table</CardTitle>
+
+              <div className="mt-3 grid gap-2 md:grid-cols-3">
+                <div className="flex items-center gap-2">
+                  <Search className="h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="Search country / ISO3 / region"
+                  />
+                </div>
+
+                <Select value={region} onValueChange={(v) => setRegion(v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Region" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {regions.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {r}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <div className="flex gap-2">
+                  <Input
+                    value={rankYear}
+                    onChange={(e) => setRankYear(e.target.value)}
+                    placeholder="Year (blank = latest)"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={fetchRanking}
+                    disabled={loadingRanking}
+                  >
+                    Apply
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent>
+              <div className="rounded-lg border overflow-hidden">
+                <div
+                  className="relative overflow-y-auto overflow-x-auto"
+                  style={{ maxHeight: "calc(12 * 44px + 41px)" }}
+                >
+                  <table className="w-full text-sm border-separate border-spacing-0">
+                    <thead>
+                      <tr className="text-left">
+                        <th className="sticky top-0 z-20 px-3 py-2 bg-slate-900 text-white border-b border-slate-700">
+                          Rank
+                        </th>
+                        <th className="sticky top-0 z-20 px-3 py-2 bg-slate-900 text-white border-b border-slate-700">
+                          Country
+                        </th>
+                        <th className="sticky top-0 z-20 px-3 py-2 bg-slate-900 text-white border-b border-slate-700">
+                          Debt %
+                        </th>
+                        <th className="sticky top-0 z-20 px-3 py-2 bg-slate-900 text-white border-b border-slate-700">
+                          Band
+                        </th>
+                        <th className="sticky top-0 z-20 px-3 py-2 bg-slate-900 text-white border-b border-slate-700">
+                          Score
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loadingRanking && (
+                        <tr>
+                          <td
+                            className="px-3 py-10 text-muted-foreground"
+                            colSpan={5}
+                          >
+                            Loading rankingâ€¦
+                          </td>
+                        </tr>
+                      )}
+
+                      {!loadingRanking && filtered.length === 0 && (
+                        <tr>
+                          <td
+                            className="px-3 py-10 text-muted-foreground"
+                            colSpan={5}
+                          >
+                            No results.
+                          </td>
+                        </tr>
+                      )}
+
+                      {!loadingRanking &&
+                        filtered.map((r, i) => {
+                          const active = r.country_code === selectedIso3;
+
+                          return (
+                            <tr
+                              key={`${r.country_code}-${r.year}`}
+                              onClick={() => {
+                                if (r.country_code === selectedIso3) return;
+                                setSelectedIso3(r.country_code);
+                                fetchSeries(r.country_code);
+                              }}
+                              className={[
+                                "border-b transition-colors",
+                                "hover:bg-muted/50",
+                                active ? "bg-muted/60" : "",
+                              ].join(" ")}
+                              style={{ cursor: "pointer" }}
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setSelectedIso3(r.country_code);
+                                  fetchSeries(r.country_code);
+                                }
+                              }}
+                              title="Click to update trend (table will not refresh)"
+                            >
+                              <td className="px-3 py-2 text-muted-foreground cursor-pointer">
+                                {i + 1}
+                              </td>
+
+                              <td className="px-3 py-2 cursor-pointer">
+                                <div className="font-medium">
+                                  {r.country_name}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {r.country_code} â€¢ {r.region ?? "â€”"}
+                                </div>
+                              </td>
+
+                              <td className="px-3 py-2 font-medium cursor-pointer">
+                                {r.debt_gross_pct_gdp.toFixed(1)}%
+                              </td>
+
+                              <td className="px-3 py-2 cursor-pointer">
+                                <span
+                                  className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs ${bandColor(
+                                    r.risk_band,
+                                  )}`}
+                                >
+                                  {r.risk_band}
+                                </span>
+                              </td>
+
+                              <td className="px-3 py-2 cursor-pointer">
+                                {r.risk_score.toFixed(1)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="mt-2 text-xs text-muted-foreground">
+                Interpretation: Rank 1 has the highest Debt/GDP in the selected
+                year.
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-5">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">
+                Trend â€¢{" "}
+                {seriesData?.series?.country?.country_name ??
+                  selectedIso3 ??
+                  "â€”"}
+              </CardTitle>
+              <div className="text-xs text-muted-foreground">
+                Gross Debt % GDP â€¢ {seriesData?.series?.min_year ?? 1980}â€“
+                {seriesData?.series?.max_year ?? 2030}
+              </div>
+            </CardHeader>
+
+            <CardContent>
+              <div className="h-[340px] rounded-lg border relative">
+                {loadingSeries && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm z-10">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Loading trendâ€¦
+                    </div>
+                  </div>
+                )}
+
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={seriesPoints}
+                    margin={{ top: 14, right: 14, left: 0, bottom: 8 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                    <XAxis dataKey="year" />
+                    <YAxis />
+                    <Tooltip />
+                    <Line
+                      type="monotone"
+                      dataKey="debt"
+                      strokeWidth={2}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="mt-2 text-xs text-muted-foreground">
+                Tip: click a country row to update only the trend chart.
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="mt-6 text-xs text-muted-foreground">
+          Bands: Low &lt; 35 â€¢ Moderate 35â€“70 â€¢ High 70â€“120 â€¢ Extreme &gt; 120
+          (Debt/GDP). Scoring caps above 120%.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+============================================================
+FILE: app\energy\page.tsx
+============================================================
+"use client";
+
+import React, { useEffect, useMemo, useState } from "react";
+
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from "recharts";
+
+/* =======================
+   Types
+======================= */
+
+type FmtType = "pct" | "num";
+
+type MetricMeta = {
+  key: string;
+  label: string;
+  unit: string | null;
+  fmt: FmtType;
+};
+
+type ApiResp = {
+  ok: boolean;
+  error?: string;
+
+  meta: {
+    countries: string[];
+    metrics: MetricMeta[];
+  };
+
+  country: string;
+  metric: string;
+  metric_meta: MetricMeta;
+
+  coverage: {
+    min_year: number | null;
+    max_year: number | null;
+    points: number;
+  };
+
+  latest: { year: number; value: any } | null;
+  series: { year: any; value: any }[];
+
+  rankYear: number;
+  top10: Array<{
+    rank: number;
+    country: string;
+    iso_code: string | null;
+    year: number;
+    value: any;
+  }>;
+  country_rank: number | null;
+  total_countries: number | null;
+};
+
+/* =======================
+   Helpers
+======================= */
+
+async function fetchJson(url: string) {
+  const res = await fetch(url, { cache: "no-store" });
+  const txt = await res.text().catch(() => "");
+  if (!res.ok) {
+    throw new Error(
+      `HTTP ${res.status} ${res.statusText}${txt ? ` â€” ${txt.slice(0, 220)}` : ""}`,
+    );
+  }
+  const ct = res.headers.get("content-type") || "";
+  if (!ct.includes("application/json")) {
+    throw new Error(
+      `Expected JSON but got "${ct || "unknown"}"${txt ? ` â€” ${txt.slice(0, 220)}` : ""}`,
+    );
+  }
+  return JSON.parse(txt);
+}
+
+const toNum = (v: any): number | null => {
+  if (v === null || v === undefined) return null;
+  const x = Number(String(v).replaceAll(",", "").trim());
+  return Number.isFinite(x) ? x : null;
+};
+
+function fmtCompact(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "â€”";
+  const v = n as number;
+  if (Math.abs(v) >= 1e12) return `${(v / 1e12).toFixed(2)}T`;
+  if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
+  if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
+  if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(2)}K`;
+  return Number.isInteger(v) ? String(v) : v.toFixed(2);
+}
+
+function fmtVal(
+  v: number | null | undefined,
+  unit?: string | null,
+  fmt?: FmtType,
+) {
+  if (v === null || v === undefined || !Number.isFinite(v)) return "â€”";
+  const base =
+    fmt === "pct"
+      ? (v as number).toLocaleString("en-US", { maximumFractionDigits: 2 })
+      : (v as number).toLocaleString("en-US", { maximumFractionDigits: 2 });
+
+  return unit ? `${base} ${unit}` : base;
+}
+
+function stableColorFromKey(key: string): string {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  const hue = h % 360;
+  return `hsl(${hue} 72% 45%)`;
+}
+
+function safeText(s: string, max = 60) {
+  const t = (s || "").trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, max - 1)}â€¦`;
+}
+
+function yPadDomain(values: number[]) {
+  if (!values.length) return [0, 1] as [number, number];
+  const mn0 = Math.min(...values);
+  const mx0 = Math.max(...values);
+  if (mn0 === mx0) {
+    const pad = mn0 === 0 ? 1 : Math.abs(mn0) * 0.1;
+    return [mn0 - pad, mx0 + pad] as [number, number];
+  }
+  const pad = (mx0 - mn0) * 0.08;
+  return [mn0 - pad, mx0 + pad] as [number, number];
+}
+
+function energyYoYTable(series: { year: number; value: number }[]) {
+  const s = (series || [])
+    .filter((p) => Number.isFinite(p.year) && Number.isFinite(p.value))
+    .sort((a, b) => a.year - b.year);
+
+  return s.map((cur, idx) => {
+    const prev = idx > 0 ? s[idx - 1] : null;
+    const delta = prev ? cur.value - prev.value : null;
+    const deltaPct =
+      prev && prev.value !== 0
+        ? ((cur.value - prev.value) / Math.abs(prev.value)) * 100
+        : null;
+    return { year: cur.year, value: cur.value, delta, deltaPct };
+  });
+}
+
+function PageLoader({ label = "Loading dashboard..." }: { label?: string }) {
+  return (
+    <div className="relative min-h-screen overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 -z-30">
+        <div className="absolute inset-0 bg-gradient-to-b from-white via-white/90 to-white/80" />
+        <div className="absolute -top-24 -left-24 h-80 w-80 rounded-full bg-sky-300/30 blur-3xl" />
+        <div className="absolute top-40 -right-24 h-80 w-80 rounded-full bg-emerald-200/30 blur-3xl" />
+        <div className="absolute bottom-0 left-1/3 h-80 w-80 rounded-full bg-violet-200/30 blur-3xl" />
+      </div>
+
+      <div className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-4 py-7">
+        <div className="rounded-3xl border border-white/70 bg-white/80 px-10 py-8 shadow-xl backdrop-blur-md">
+          <div className="mx-auto mb-4 h-14 w-14 animate-spin rounded-full border-4 border-slate-200 border-t-slate-900" />
+          <div className="text-center">
+            <h2 className="text-xl font-semibold text-slate-900">{label}</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Please wait while the latest energy data is being prepared
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LoadingOverlay({ label = "Loadingâ€¦" }: { label?: string }) {
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center">
+      <div className="absolute inset-0 rounded-2xl bg-white/35 backdrop-blur-sm" />
+      <div className="absolute h-28 w-28 rounded-full bg-sky-300/30 blur-2xl" />
+      <div className="absolute h-20 w-20 rounded-full bg-emerald-200/30 blur-2xl" />
+
+      <div className="relative flex items-center gap-3 rounded-full border border-white/70 bg-white/80 px-4 py-2 shadow-lg">
+        <span className="relative h-5 w-5">
+          <span className="absolute inset-0 rounded-full border-2 border-slate-200" />
+          <span className="absolute inset-0 rounded-full border-2 border-slate-900 border-t-transparent animate-spin" />
+        </span>
+        <span className="text-xs font-semibold text-slate-700">{label}</span>
+        <span className="ml-1 h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+      </div>
+    </div>
+  );
+}
+
+/* =======================
+   Page
+======================= */
+
+export default function EnergyPage() {
+  const [country, setCountry] = useState("World");
+  const [metric, setMetric] = useState("renewables_share_energy");
+  const [rankYear, setRankYear] = useState<number | null>(null);
+
+  const [resp, setResp] = useState<ApiResp | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  const debug = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return new URLSearchParams(window.location.search).get("debug") === "1";
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      setLoading(true);
+      setErr(null);
+
+      try {
+        const qp = new URLSearchParams();
+        qp.set("country", country);
+        qp.set("metric", metric);
+        if (rankYear != null) qp.set("rankYear", String(rankYear));
+
+        const j = (await fetchJson(`/api/energy?${qp.toString()}`)) as ApiResp;
+        if (!alive) return;
+
+        setResp(j);
+
+        if (!j?.ok) setErr(j?.error || "Energy API returned ok=false");
+
+        if (j?.ok && j.country && j.country !== country) setCountry(j.country);
+
+        if (rankYear == null && j?.ok && typeof j.rankYear === "number") {
+          setRankYear(j.rankYear);
+        }
+
+        if (debug) {
+          console.log("[energy] fetched:", {
+            country: j.country,
+            metric: j.metric,
+            points: j.coverage?.points,
+            latest: j.latest,
+            series0: j.series?.[0],
+            seriesN: j.series?.[j.series?.length - 1],
+          });
+        }
+      } catch (e: any) {
+        if (!alive) return;
+        setResp(null);
+        setErr(e?.message || "Failed to load energy data");
+      } finally {
+        if (alive) {
+          setLoading(false);
+          setInitialLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [country, metric, rankYear, debug]);
+
+  const countries = resp?.meta?.countries?.length
+    ? resp.meta.countries
+    : ["World"];
+
+  const metrics = resp?.meta?.metrics?.length
+    ? resp.meta.metrics
+    : ([
+        {
+          key: "renewables_share_energy",
+          label: "Renewables share of energy",
+          unit: "%",
+          fmt: "pct",
+        },
+      ] as MetricMeta[]);
+
+  const metricMeta =
+    resp?.metric_meta ?? metrics.find((m) => m.key === metric) ?? metrics[0];
+
+  const cleanSeries = useMemo(() => {
+    const raw = Array.isArray(resp?.series) ? resp!.series : [];
+    const out = raw
+      .map((p) => ({ year: Number(p.year), value: toNum(p.value) }))
+      .filter((p) => Number.isFinite(p.year) && p.value !== null)
+      .map((p) => ({ year: p.year, value: p.value as number }))
+      .sort((a, b) => a.year - b.year);
+
+    if (debug) {
+      console.log("[energy] cleanSeries:", {
+        rawLen: raw.length,
+        cleanLen: out.length,
+        first: out[0],
+        last: out[out.length - 1],
+      });
+    }
+    return out;
+  }, [resp, debug]);
+
+  const table = useMemo(() => energyYoYTable(cleanSeries), [cleanSeries]);
+
+  const lineData = useMemo(() => {
+    if (!table.length) return [];
+    const take = 40;
+    return table.slice(Math.max(0, table.length - take));
+  }, [table]);
+
+  const latest = useMemo(() => {
+    const lv = toNum(resp?.latest?.value);
+    const ly = resp?.latest?.year ? Number(resp!.latest!.year) : null;
+    if (ly && lv !== null) return { year: ly, value: lv };
+    if (!table.length) return null;
+    const last = table[table.length - 1];
+    return { year: last.year, value: last.value };
+  }, [resp, table]);
+
+  const latestDelta = useMemo(() => {
+    if (table.length < 2) return null;
+    return table[table.length - 1].delta ?? null;
+  }, [table]);
+
+  const points = resp?.coverage?.points ?? 0;
+  const minYear = resp?.coverage?.min_year ?? null;
+  const maxYear = resp?.coverage?.max_year ?? null;
+
+  const yDomain = useMemo(() => {
+    const vals = lineData.map((d) => d.value).filter((v) => Number.isFinite(v));
+    return yPadDomain(vals);
+  }, [lineData]);
+
+  const showOverlay = loading && !initialLoading;
+
+  const rankYearOptions = useMemo(() => {
+    if (!minYear || !maxYear) return [];
+    const out: number[] = [];
+    for (let y = maxYear; y >= minYear; y--) out.push(y);
+    return out;
+  }, [minYear, maxYear]);
+
+  const top10 = resp?.top10 ?? [];
+
+  if (initialLoading) {
+    return <PageLoader label="Loading dashboard..." />;
+  }
+
+  return (
+    <div className="relative min-h-screen overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 -z-30">
+        <div className="absolute inset-0 bg-gradient-to-b from-white via-white/90 to-white/80" />
+        <div className="absolute -top-24 -left-24 h-80 w-80 rounded-full bg-sky-300/30 blur-3xl" />
+        <div className="absolute top-40 -right-24 h-80 w-80 rounded-full bg-emerald-200/30 blur-3xl" />
+        <div className="absolute bottom-0 left-1/3 h-80 w-80 rounded-full bg-violet-200/30 blur-3xl" />
+      </div>
+
+      <div className="mx-auto max-w-7xl px-4 py-7 space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="text-xs tracking-widest text-slate-500">
+              WORLDSTATS360
+            </div>
+            <h1 className="mt-1 text-2xl font-semibold text-slate-900">
+              Energy & Power Transition
+            </h1>
+            <div className="mt-1 text-sm text-slate-700">
+              Latest non-null values, complete coverage, and ranking for your
+              selection.
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={country} onValueChange={setCountry}>
+              <SelectTrigger className="w-[220px] rounded-xl bg-white/70 backdrop-blur-md border border-white/60 shadow-sm">
+                <SelectValue placeholder="Country" />
+              </SelectTrigger>
+              <SelectContent className="max-h-[360px]">
+                {countries.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={metric}
+              onValueChange={(v) => {
+                setMetric(v);
+                setRankYear(null);
+              }}
+            >
+              <SelectTrigger className="w-[320px] rounded-xl bg-white/70 backdrop-blur-md border border-white/60 shadow-sm">
+                <SelectValue placeholder="Metric" />
+              </SelectTrigger>
+              <SelectContent className="max-h-[360px]">
+                {metrics.map((m) => (
+                  <SelectItem key={m.key} value={m.key}>
+                    {m.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={String(resp?.rankYear ?? rankYear ?? "")}
+              onValueChange={(v) => setRankYear(Number(v))}
+            >
+              <SelectTrigger className="w-[120px] rounded-xl bg-white/70 backdrop-blur-md border border-white/60 shadow-sm">
+                <SelectValue placeholder="Year" />
+              </SelectTrigger>
+              <SelectContent className="max-h-[360px]">
+                {rankYearOptions.map((y) => (
+                  <SelectItem key={y} value={String(y)}>
+                    {y}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Button
+              variant="secondary"
+              className="rounded-xl bg-white/70 backdrop-blur-md border border-white/60 shadow-sm"
+              onClick={() => {
+                setCountry("World");
+                setMetric("renewables_share_energy");
+                setRankYear(null);
+              }}
+            >
+              Reset
+            </Button>
+          </div>
+        </div>
+
+        {err ? (
+          <div className="rounded-xl border border-rose-200 bg-rose-50/90 backdrop-blur p-3 text-sm text-rose-700">
+            {err}
+          </div>
+        ) : null}
+
+        <Card className="shadow-sm bg-white/70 border border-white/60 rounded-2xl">
+          <CardHeader className="py-3">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="text-sm font-semibold text-slate-800">
+                Energy Snapshot
+              </CardTitle>
+
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <Badge variant="secondary">{country}</Badge>
+                <Badge variant="secondary">
+                  {safeText(metricMeta.label, 44)}
+                </Badge>
+                {metricMeta.unit ? (
+                  <Badge variant="secondary">{metricMeta.unit}</Badge>
+                ) : null}
+                <Badge variant="secondary">
+                  coverage: {minYear && maxYear ? `${minYear}â€“${maxYear}` : "â€”"}
+                </Badge>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className="rounded-xl border bg-white p-3">
+                <div className="text-[11px] text-slate-500">Latest</div>
+                <div className="mt-0.5 text-xs text-slate-500">
+                  {latest ? latest.year : "â€”"}
+                </div>
+                <div className="mt-1 text-xl font-bold text-slate-900">
+                  {latest
+                    ? fmtVal(latest.value, metricMeta.unit, metricMeta.fmt)
+                    : "â€”"}
+                </div>
+                <div className="mt-0.5 text-[11px] text-slate-500">
+                  {metricMeta.unit ?? ""}
+                </div>
+              </div>
+
+              <div className="rounded-xl border bg-white p-3">
+                <div className="text-[11px] text-slate-500">Change (Î”)</div>
+                <div className="mt-1 text-xl font-bold text-slate-900">
+                  {latestDelta === null
+                    ? "â€”"
+                    : fmtVal(latestDelta, metricMeta.unit, metricMeta.fmt)}
+                </div>
+                <div className="mt-1">
+                  {latestDelta === null ? (
+                    <Badge variant="secondary">Not enough data</Badge>
+                  ) : latestDelta >= 0 ? (
+                    <Badge className="bg-emerald-600 text-white">Up</Badge>
+                  ) : (
+                    <Badge className="bg-rose-600 text-white">Down</Badge>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-xl border bg-white p-3">
+                <div className="text-[11px] text-slate-500">Rank</div>
+                <div className="mt-1 text-xl font-bold text-slate-900">
+                  {resp?.country_rank ? `#${resp.country_rank}` : "â€”"}
+                </div>
+                <div className="mt-0.5 text-[11px] text-slate-500">
+                  {resp?.total_countries
+                    ? `out of ${resp.total_countries}`
+                    : "â€”"}{" "}
+                  â€¢ {resp?.rankYear ?? "â€”"}
+                </div>
+              </div>
+
+              <div className="rounded-xl border bg-white p-3">
+                <div className="text-[11px] text-slate-500">Points</div>
+                <div className="mt-1 text-xl font-bold text-slate-900">
+                  {points}
+                </div>
+                <div className="mt-0.5 text-[11px] text-slate-500">
+                  {cleanSeries.length
+                    ? `clean: ${cleanSeries.length}`
+                    : "no data"}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid grid-cols-12 gap-4">
+          <Card className="col-span-12 lg:col-span-8 shadow-sm bg-white/70 border border-white/60 rounded-2xl">
+            <CardHeader className="py-3">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                <div className="min-w-0">
+                  <CardTitle className="text-sm font-semibold text-slate-800">
+                    Trend (Line) + Î”%
+                  </CardTitle>
+                  <div className="mt-0.5 text-[11px] text-slate-500">
+                    {safeText(metricMeta.label, 110)}
+                    {metricMeta.unit ? ` â€¢ ${metricMeta.unit}` : ""} â€¢ {country}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {debug ? (
+                    <Badge className="bg-slate-900 text-white">debug=1</Badge>
+                  ) : null}
+                  {loading && !initialLoading ? (
+                    <Badge className="bg-slate-900 text-white">Loadingâ€¦</Badge>
+                  ) : null}
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent className="pt-0">
+              {err && !table.length && !loading ? (
+                <div className="rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  {err}
+                </div>
+              ) : table.length === 0 && !loading ? (
+                <div className="rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  No series for this selection.
+                </div>
+              ) : (
+                <div className="relative">
+                  {showOverlay ? (
+                    <LoadingOverlay label="Loading energy data..." />
+                  ) : null}
+
+                  <div
+                    className={
+                      showOverlay
+                        ? "pointer-events-none opacity-80 blur-[0.2px]"
+                        : ""
+                    }
+                  >
+                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                      <div className="h-[300px] rounded-lg border bg-white p-2">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart
+                            data={lineData}
+                            margin={{ left: 8, right: 10, top: 10, bottom: 10 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="year" />
+                            <YAxis
+                              domain={yDomain as any}
+                              tickFormatter={(v) => fmtCompact(Number(v))}
+                            />
+                            <Tooltip
+                              labelFormatter={(l) => `Year: ${l}`}
+                              formatter={(v: any) =>
+                                fmtVal(
+                                  typeof v === "number" ? v : toNum(v),
+                                  metricMeta.unit,
+                                  metricMeta.fmt,
+                                )
+                              }
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="value"
+                              stroke={stableColorFromKey(
+                                metricMeta.key || metric,
+                              )}
+                              strokeWidth={2.5}
+                              dot={false}
+                              isAnimationActive={false}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+
+                        {debug ? (
+                          <div className="mt-2 text-[11px] text-slate-500">
+                            raw: {resp?.series?.length ?? 0} â€¢ clean:{" "}
+                            {cleanSeries.length} â€¢ lineData: {lineData.length} â€¢
+                            y: {Number(yDomain[0]).toFixed(3)} â†’{" "}
+                            {Number(yDomain[1]).toFixed(3)}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="rounded-lg border bg-white">
+                        <div className="max-h-[300px] overflow-y-auto overflow-x-hidden">
+                          <table className="min-w-full text-xs">
+                            <thead className="sticky top-0 bg-slate-50">
+                              <tr>
+                                <th className="px-3 py-2 text-left font-semibold text-slate-700">
+                                  Year
+                                </th>
+                                <th className="px-3 py-2 text-right font-semibold text-slate-700">
+                                  Value
+                                </th>
+                                <th className="px-3 py-2 text-right font-semibold text-slate-700">
+                                  Î”
+                                </th>
+                                <th className="px-3 py-2 text-right font-semibold text-slate-700">
+                                  Î”%
+                                </th>
+                              </tr>
+                            </thead>
+
+                            <tbody>
+                              {table
+                                .slice()
+                                .sort((a, b) => b.year - a.year)
+                                .map((r) => (
+                                  <tr key={r.year} className="border-t">
+                                    <td className="px-3 py-2 text-slate-700">
+                                      {r.year}
+                                    </td>
+                                    <td className="px-3 py-2 text-right font-semibold text-slate-900">
+                                      {fmtVal(
+                                        r.value,
+                                        metricMeta.unit,
+                                        metricMeta.fmt,
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2 text-right text-slate-700">
+                                      {r.delta === null
+                                        ? "â€”"
+                                        : fmtVal(
+                                            r.delta,
+                                            metricMeta.unit,
+                                            metricMeta.fmt,
+                                          )}
+                                    </td>
+                                    <td className="px-3 py-2 text-right">
+                                      <span
+                                        className={[
+                                          "inline-flex rounded-full border px-2 py-0.5 font-semibold",
+                                          r.deltaPct === null
+                                            ? "border-slate-200 text-slate-500"
+                                            : r.deltaPct >= 0
+                                              ? "border-emerald-200 text-emerald-700 bg-emerald-50"
+                                              : "border-rose-200 text-rose-700 bg-rose-50",
+                                        ].join(" ")}
+                                      >
+                                        {r.deltaPct === null
+                                          ? "â€”"
+                                          : `${r.deltaPct.toFixed(1)}%`}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="border-t px-3 py-2 text-[11px] text-slate-500">
+                          Scroll for more rows
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 text-[11px] text-slate-500">
+                      Showing last {Math.min(40, lineData.length)} points â€¢{" "}
+                      {country} â€¢ {metricMeta.key}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="col-span-12 lg:col-span-4 shadow-sm bg-white/70 border border-white/60 rounded-2xl overflow-hidden">
+            <CardHeader className="py-3">
+              <CardTitle className="text-sm font-semibold text-slate-800">
+                Top 10 â€¢ {resp?.rankYear ?? "â€”"}
+              </CardTitle>
+              <div className="text-[11px] text-slate-500">
+                {metricMeta.label}
+              </div>
+            </CardHeader>
+
+            <CardContent className="pt-0">
+              {loading && !initialLoading ? (
+                <div className="space-y-2 py-2">
+                  {Array.from({ length: 10 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="h-6 rounded bg-slate-200/70 animate-pulse"
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="overflow-auto rounded-xl border border-slate-200/70 max-h-[340px] bg-white">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 sticky top-0 z-10">
+                      <tr className="text-slate-600">
+                        <th className="text-left p-2 w-10">#</th>
+                        <th className="text-left p-2">Country</th>
+                        <th className="text-right p-2">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {top10.map((r) => {
+                        const active = r.country === country;
+                        return (
+                          <tr
+                            key={`${r.rank}-${r.country}`}
+                            className={[
+                              "border-t cursor-pointer transition",
+                              active
+                                ? "bg-slate-900/5"
+                                : "hover:bg-slate-900/5",
+                            ].join(" ")}
+                            onClick={() => setCountry(r.country)}
+                            title="Click to view this country"
+                          >
+                            <td className="p-2 text-slate-700">{r.rank}</td>
+                            <td className="p-2 text-slate-900 font-medium">
+                              {r.country}
+                            </td>
+                            <td className="p-2 text-right text-slate-800">
+                              {fmtVal(
+                                toNum(r.value),
+                                metricMeta.unit,
+                                metricMeta.fmt,
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {!top10.length ? (
+                        <tr>
+                          <td className="p-3 text-slate-500" colSpan={3}>
+                            No ranking data for this year/metric.
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {debug && !loading ? (
+                <div className="mt-2 rounded-lg border bg-white px-3 py-2 text-[11px] text-slate-600">
+                  <div className="font-semibold text-slate-900">Debug</div>
+                  <div>API ok: {String(resp?.ok)}</div>
+                  <div>rankYear: {resp?.rankYear ?? "â€”"}</div>
+                  <div>top10: {top10.length}</div>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+============================================================
+FILE: app\faostat\page.tsx
+============================================================
+"use client";
+import Link from "next/link";
+import { Home } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from "recharts";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Globe, TrendingUp, Download, FilterX, RefreshCw } from "lucide-react";
+
+/* =========================
+   Types
+========================= */
+
+type Dataset = "production" | "sua";
+
+type ElementsMeta = {
+  dataset: Dataset;
+  min_year: number;
+  max_year: number;
+  elements: string[];
+};
+
+const DEBUG = false;
+const TREND_YEARS = 5;
+
+type ProductRow = {
+  dataset: Dataset;
+  item_code: string;
+  item: string;
+  unit: string | null;
+  value: number | string | null;
+};
+
+type TrendPoint = { year: number; value: number | string };
+
+type AreaOpt = {
+  area: string;
+  area_code: string;
+};
+
+/* =========================
+   Helpers
+========================= */
+
+function toNum(v: any) {
+  const x =
+    typeof v === "number"
+      ? v
+      : Number(
+          String(v ?? "")
+            .replace(/,/g, "")
+            .trim(),
+        );
+  return Number.isFinite(x) ? x : 0;
+}
+
+function fmt(v: number | null | undefined) {
+  if (v == null || !Number.isFinite(v)) return "â€”";
+  return v.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+function toCsv(rows: any[], cols: string[]) {
+  const esc = (x: any) => {
+    const s = String(x ?? "");
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+  return [
+    cols.map(esc).join(","),
+    ...rows.map((r) => cols.map((c) => esc(r?.[c])).join(",")),
+  ].join("\n");
+}
+
+function downloadText(filename: string, text: string, mime = "text/plain") {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function PageLoader({ label = "Loading dashboard..." }: { label?: string }) {
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-4">
+      <div className="flex min-h-[70vh] items-center justify-center">
+        <div className="rounded-3xl border border-slate-200 bg-white px-10 py-8 shadow-xl">
+          <div className="mx-auto mb-4 h-14 w-14 animate-spin rounded-full border-4 border-slate-200 border-t-slate-900" />
+          <div className="text-center">
+            <h2 className="text-xl font-semibold text-slate-900">{label}</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Please wait while FAOSTAT data is being prepared
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionLoader({ label }: { label: string }) {
+  return (
+    <div className="flex h-full min-h-[220px] items-center justify-center rounded-xl border bg-white">
+      <div className="flex items-center gap-2 text-sm text-slate-600">
+        <RefreshCw className="h-4 w-4 animate-spin" />
+        {label}
+      </div>
+    </div>
+  );
+}
+
+/* =========================
+   Page
+========================= */
+
+export default function FaostatProductsPage() {
+  const [dataset, setDataset] = useState<Dataset>("production");
+
+  const [meta, setMeta] = useState<ElementsMeta | null>(null);
+
+  const [element, setElement] = useState<string>("");
+  const [year, setYear] = useState<number>(0);
+
+  const [areaQ, setAreaQ] = useState<string>("");
+  const [areaOptions, setAreaOptions] = useState<AreaOpt[]>([]);
+  const [areaName, setAreaName] = useState<string>("");
+  const [areaCode, setAreaCode] = useState<string>("");
+  const [areaOpen, setAreaOpen] = useState(false);
+
+  const [products, setProducts] = useState<ProductRow[]>([]);
+  const [selected, setSelected] = useState<ProductRow | null>(null);
+  const [productQ, setProductQ] = useState<string>("");
+
+  const [limit, setLimit] = useState<number>(100);
+  const [offset, setOffset] = useState<number>(0);
+
+  const [trend, setTrend] = useState<TrendPoint[]>([]);
+  const [trendLoading, setTrendLoading] = useState(false);
+  const [view, setView] = useState<"line" | "bar">("line");
+
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
+
+  const [productsError, setProductsError] = useState<string>("");
+  const [trendError, setTrendError] = useState<string>("");
+
+  const areaBoxRef = useRef<HTMLDivElement | null>(null);
+
+  const unitLabel = selected?.unit || "Value";
+
+  const selectedKey = useMemo(() => {
+    return selected ? `${selected.dataset}:${selected.item_code}` : "";
+  }, [selected]);
+
+  const datasetLabel =
+    dataset === "production"
+      ? "FAOSTAT â€¢ Production"
+      : "FAOSTAT â€¢ SUA (Supply Utilization Accounts)";
+
+  const title = useMemo(() => {
+    const el = element || "â€”";
+    const y = year ? String(year) : "â€”";
+    return `Products â€¢ ${el} â€¢ ${y}`;
+  }, [element, year]);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (!areaBoxRef.current) return;
+      if (!areaBoxRef.current.contains(e.target as any)) setAreaOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  /* ---- Load Elements meta ---- */
+  useEffect(() => {
+    let dead = false;
+
+    (async () => {
+      setPageLoading(true);
+
+      setMeta(null);
+      setElement("");
+      setYear(0);
+
+      setProducts([]);
+      setSelected(null);
+      setTrend([]);
+      setOffset(0);
+      setProductsError("");
+      setTrendError("");
+      setProductsLoading(false);
+      setTrendLoading(false);
+
+      setAreaQ("");
+      setAreaOptions([]);
+      setAreaName("");
+      setAreaCode("");
+      setAreaOpen(false);
+
+      try {
+        const res = await fetch(
+          `/api/faostat/items/elements?dataset=${dataset}`,
+          {
+            cache: "no-store",
+          },
+        );
+        const j = await res.json().catch(() => null);
+        if (dead) return;
+
+        if (!j?.ok || !j?.meta) {
+          setPageLoading(false);
+          return;
+        }
+
+        const m: ElementsMeta = j.meta;
+        setMeta(m);
+
+        const firstEl = String(m.elements?.[0] ?? "");
+        setElement(firstEl);
+        setYear(Number(m.max_year ?? 0));
+      } finally {
+        if (!dead) setPageLoading(false);
+      }
+    })();
+
+    return () => {
+      dead = true;
+    };
+  }, [dataset]);
+
+  /* ---- Load initial areas list ---- */
+  useEffect(() => {
+    let dead = false;
+    const ctrl = new AbortController();
+
+    (async () => {
+      try {
+        const url = `/api/faostat/areas/search?dataset=${encodeURIComponent(
+          dataset,
+        )}&q=&lim=200`;
+
+        if (DEBUG) console.log("[AREAS:init] url:", url);
+
+        const res = await fetch(url, {
+          cache: "no-store",
+          signal: ctrl.signal,
+        });
+        const j = await res.json().catch(() => null);
+        if (dead) return;
+
+        const rows: AreaOpt[] = Array.isArray(j?.rows)
+          ? j.rows
+          : Array.isArray(j)
+            ? j
+            : [];
+
+        setAreaOptions(rows);
+
+        // âœ… auto-pick first area so page renders immediately
+        if (rows.length && !areaCode) {
+          setAreaName(rows[0].area);
+          setAreaCode(String(rows[0].area_code));
+          setAreaQ(rows[0].area);
+        }
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        if (DEBUG) console.log("[AREAS:init] error:", e);
+      }
+    })();
+
+    return () => {
+      dead = true;
+      ctrl.abort();
+    };
+  }, [dataset]);
+
+  /* ---- Area suggestions ---- */
+  useEffect(() => {
+    const q = areaQ.trim();
+    if (!q) return;
+
+    const t = setTimeout(async () => {
+      const res = await fetch(
+        `/api/faostat/areas/search?q=${encodeURIComponent(q)}&dataset=${dataset}&lim=50`,
+        { cache: "no-store" },
+      );
+      const j = await res.json().catch(() => null);
+
+      const rows: AreaOpt[] = Array.isArray(j?.rows)
+        ? j.rows
+        : Array.isArray(j)
+          ? j
+          : [];
+
+      setAreaOptions(rows);
+      setAreaOpen(true);
+    }, 200);
+
+    return () => clearTimeout(t);
+  }, [areaQ, dataset]);
+
+  const isSliceReady = useMemo(() => {
+    const ac = areaCode.trim();
+    return (
+      !!element &&
+      !!year &&
+      !!ac &&
+      (dataset === "production" || dataset === "sua") &&
+      /^[0-9]+$/.test(ac)
+    );
+  }, [dataset, element, year, areaCode]);
+
+  /* ---- Load Products ---- */
+  useEffect(() => {
+    if (!isSliceReady) {
+      setProducts([]);
+      setSelected(null);
+      setTrend([]);
+      setProductsError("");
+      setProductsLoading(false);
+      return;
+    }
+
+    let dead = false;
+    const ctrl = new AbortController();
+
+    (async () => {
+      setProductsLoading(true);
+      setProductsError("");
+      setProducts([]);
+      setSelected(null);
+      setTrend([]);
+      setTrendError("");
+
+      try {
+        const url =
+          `/api/faostat/items/products?dataset=${dataset}` +
+          `&element=${encodeURIComponent(element)}` +
+          `&year=${year}` +
+          `&area_code=${encodeURIComponent(areaCode.trim())}` +
+          `&limit=${limit}&offset=${offset}`;
+
+        if (DEBUG) console.log("[PRODUCTS] url:", url);
+
+        const res = await fetch(url, {
+          cache: "no-store",
+          signal: ctrl.signal,
+        });
+        const j = await res.json().catch(() => null);
+        if (dead) return;
+
+        const rows: ProductRow[] =
+          j?.ok && Array.isArray(j?.rows) ? j.rows : Array.isArray(j) ? j : [];
+
+        if (!rows.length) {
+          const errMsg =
+            (j && typeof j === "object" && "error" in j && (j as any).error) ||
+            "";
+          setProductsError(errMsg || "No products returned for this slice.");
+          setProducts([]);
+          return;
+        }
+
+        setProducts(rows);
+        setSelected(rows[0]);
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        setProductsError(e?.message || "Products request failed.");
+      } finally {
+        if (!dead) setProductsLoading(false);
+      }
+    })();
+
+    return () => {
+      dead = true;
+      ctrl.abort();
+    };
+  }, [isSliceReady, dataset, element, year, areaCode, limit, offset]);
+
+  /* ---- Load Trend ---- */
+  useEffect(() => {
+    if (!selected || !element || !areaCode.trim() || !year) {
+      setTrend([]);
+      setTrendError("");
+      setTrendLoading(false);
+      return;
+    }
+
+    let dead = false;
+    const ctrl = new AbortController();
+
+    (async () => {
+      setTrendLoading(true);
+      setTrendError("");
+
+      try {
+        const urlEndYear =
+          `/api/faostat/items/trend?dataset=${selected.dataset}` +
+          `&item_code=${encodeURIComponent(selected.item_code)}` +
+          `&element=${encodeURIComponent(element)}` +
+          `&end_year=${year}` +
+          `&area_code=${encodeURIComponent(areaCode.trim())}`;
+
+        if (DEBUG) console.log("[TREND] url:", urlEndYear);
+
+        const res = await fetch(urlEndYear, {
+          cache: "no-store",
+          signal: ctrl.signal,
+        });
+
+        let j: any = await res.json().catch(() => null);
+
+        if (!j?.ok) {
+          const urlFallback =
+            `/api/faostat/items/trend?dataset=${selected.dataset}` +
+            `&item_code=${encodeURIComponent(selected.item_code)}` +
+            `&element=${encodeURIComponent(element)}` +
+            `&years=${TREND_YEARS}` +
+            `&area_code=${encodeURIComponent(areaCode.trim())}`;
+
+          if (DEBUG) console.log("[TREND] fallback url:", urlFallback);
+
+          const res2 = await fetch(urlFallback, {
+            cache: "no-store",
+            signal: ctrl.signal,
+          });
+          j = await res2.json().catch(() => null);
+        }
+
+        if (dead) return;
+
+        const rows: any[] =
+          j?.ok && Array.isArray(j?.rows) ? j.rows : Array.isArray(j) ? j : [];
+
+        if (!rows.length) {
+          const errMsg =
+            (j && typeof j === "object" && "error" in j && (j as any).error) ||
+            "";
+          setTrendError(errMsg || "No trend data returned.");
+          setTrend([]);
+          return;
+        }
+
+        setTrend(rows as TrendPoint[]);
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+        setTrendError(e?.message || "Trend request failed.");
+        setTrend([]);
+      } finally {
+        if (!dead) setTrendLoading(false);
+      }
+    })();
+
+    return () => {
+      dead = true;
+      ctrl.abort();
+    };
+  }, [selectedKey, element, year, areaCode]);
+
+  const filteredProducts = useMemo(() => {
+    const q = productQ.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter((p) => p.item.toLowerCase().includes(q));
+  }, [products, productQ]);
+
+  useEffect(() => {
+    if (!filteredProducts.length) return;
+    if (!selected) {
+      setSelected(filteredProducts[0]);
+      return;
+    }
+    const stillThere = filteredProducts.some(
+      (p) =>
+        p.dataset === selected.dataset && p.item_code === selected.item_code,
+    );
+    if (!stillThere) setSelected(filteredProducts[0]);
+  }, [filteredProducts, selected]);
+
+  const yearOptions = useMemo(() => {
+    if (!meta?.max_year) return [];
+    const maxY = meta.max_year;
+    const minY = meta.min_year ?? 0;
+    return Array.from({ length: 6 }, (_, i) => maxY - i).filter(
+      (y) => y >= minY,
+    );
+  }, [meta]);
+
+  if (pageLoading || !meta || !element || !year) {
+    return <PageLoader label="Loading FAOSTAT products..." />;
+  }
+
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-4 space-y-4">
+      <style jsx global>{`
+        .products-scroll {
+          scrollbar-gutter: stable;
+          overscroll-behavior: contain;
+          scrollbar-width: thin !important;
+        }
+        .products-scroll::-webkit-scrollbar {
+          width: 10px !important;
+        }
+        .products-scroll::-webkit-scrollbar-thumb {
+          background: rgba(100, 116, 139, 0.55) !important;
+          border-radius: 9999px !important;
+          border: 2px solid rgba(255, 255, 255, 0.85) !important;
+        }
+        .products-scroll::-webkit-scrollbar-track {
+          background: rgba(148, 163, 184, 0.15) !important;
+        }
+
+        .row-click,
+        .row-click * {
+          cursor: pointer !important;
+        }
+      `}</style>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="text-xs tracking-widest text-slate-400">
+                STRATIFY
+              </div>
+              <CardTitle className="mt-1 flex items-center gap-2 text-xl">
+                <Globe className="h-5 w-5" />
+                {title}
+              </CardTitle>
+              <div className="mt-1 text-sm text-slate-600">
+                Select Area + Year (latest..latest-5), then explore products &{" "}
+                5-year trend.
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Badge className="bg-indigo-600 text-white">
+                  {datasetLabel}
+                </Badge>
+                {areaName && areaCode ? (
+                  <Badge className="bg-emerald-600 text-white">
+                    {areaName} â€¢ {areaCode}
+                  </Badge>
+                ) : null}
+                {productsError ? (
+                  <Badge className="bg-rose-600 text-white">
+                    Products error
+                  </Badge>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="rounded-xl border bg-white px-3 py-2 text-sm"
+                value={dataset}
+                onChange={(e) => {
+                  setDataset(e.target.value as Dataset);
+                  setAreaQ("");
+                  setAreaOptions([]);
+                  setAreaName("");
+                  setAreaCode("");
+                  setOffset(0);
+                }}
+              >
+                <option value="production">
+                  Production (FAOSTAT Production)
+                </option>
+                <option value="sua">SUA (Supply Utilization Accounts)</option>
+              </select>
+
+              <select
+                className="rounded-xl border bg-white px-3 py-2 text-sm min-w-[220px]"
+                value={element}
+                onChange={(e) => {
+                  setOffset(0);
+                  setElement(e.target.value);
+                }}
+                disabled={!meta?.elements?.length}
+              >
+                {(meta?.elements || []).map((el) => (
+                  <option key={el} value={el}>
+                    {el}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                className="rounded-xl border bg-white px-3 py-2 text-sm"
+                value={year || ""}
+                onChange={(e) => {
+                  setOffset(0);
+                  setYear(Number(e.target.value));
+                }}
+                disabled={!yearOptions.length}
+              >
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+
+              <div className="relative" ref={areaBoxRef}>
+                <Input
+                  value={areaQ}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setAreaQ(v);
+                    setAreaOpen(true);
+                    setAreaName("");
+                    setAreaCode("");
+                    setOffset(0);
+                  }}
+                  onFocus={() => setAreaOpen(true)}
+                  onClick={() => setAreaOpen(true)}
+                  placeholder="Search area (e.g., Pakistan / Eastern Asia)â€¦"
+                  className="rounded-xl w-[260px]"
+                />
+
+                {areaOpen ? (
+                  <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-xl border bg-white shadow">
+                    <div className="max-h-[280px] overflow-auto">
+                      {areaOptions.length ? (
+                        areaOptions.map((a) => (
+                          <button
+                            key={`${a.area_code}-${a.area}`}
+                            className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
+                            onClick={() => {
+                              setAreaName(a.area);
+                              setAreaCode(String(a.area_code));
+                              setAreaQ(a.area);
+                              setAreaOpen(false);
+                              setOffset(0);
+                            }}
+                          >
+                            <div className="font-medium text-slate-900">
+                              {a.area}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              Area Code {a.area_code}
+                            </div>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-3 py-3 text-sm text-slate-600">
+                          No areas found.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <select
+                className="rounded-xl border bg-white px-3 py-2 text-sm"
+                value={limit}
+                onChange={(e) => {
+                  setOffset(0);
+                  setLimit(Number(e.target.value));
+                }}
+              >
+                {[50, 100, 200, 300, 500].map((n) => (
+                  <option key={n} value={n}>
+                    Top {n}
+                  </option>
+                ))}
+              </select>
+
+              <Button
+                variant="outline"
+                className="rounded-xl"
+                disabled={offset === 0 || !isSliceReady}
+                onClick={() => setOffset((o) => Math.max(0, o - limit))}
+              >
+                Prev
+              </Button>
+
+              <Button
+                variant="outline"
+                className="rounded-xl"
+                disabled={!isSliceReady || products.length < limit}
+                onClick={() => setOffset((o) => o + limit)}
+              >
+                Next
+              </Button>
+
+              <Link href="/" prefetch>
+                <Button variant="outline" className="rounded-xl">
+                  <Home className="mr-2 h-4 w-4" />
+                  Home
+                </Button>
+              </Link>
+
+              <Button
+                variant="secondary"
+                className="rounded-xl"
+                onClick={() => {
+                  setAreaQ("");
+                  setAreaOptions([]);
+                  setAreaName("");
+                  setAreaCode("");
+                  setProductQ("");
+                  setOffset(0);
+                  setProducts([]);
+                  setSelected(null);
+                  setTrend([]);
+                  setProductsError("");
+                  setTrendError("");
+                }}
+              >
+                <FilterX className="mr-2 h-4 w-4" />
+                Clear
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-12">
+        <div className="lg:col-span-5">
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-sm">Products</CardTitle>
+                <div className="w-[220px]">
+                  <Input
+                    value={productQ}
+                    onChange={(e) => setProductQ(e.target.value)}
+                    placeholder="Filter productsâ€¦"
+                    className="rounded-xl h-9"
+                    disabled={!products.length}
+                  />
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-0">
+              {!isSliceReady ? (
+                <div className="p-4 text-sm text-slate-600">
+                  Select <b>Element</b>, <b>Year</b>, then <b>pick an Area</b>{" "}
+                  to load products.
+                </div>
+              ) : productsLoading ? (
+                <div className="p-4">
+                  <SectionLoader label="Loading products..." />
+                </div>
+              ) : productsError ? (
+                <div className="p-4 text-sm text-rose-700">
+                  <div className="font-semibold">Products API error</div>
+                  <div className="mt-1">{productsError}</div>
+                  <div className="mt-2 text-xs text-slate-500">
+                    Tip: choose a valid FAOSTAT area from dropdown.
+                  </div>
+                </div>
+              ) : filteredProducts.length === 0 ? (
+                <div className="p-4 text-sm text-slate-600">
+                  No products returned for this slice.
+                </div>
+              ) : (
+                <div className="border-t">
+                  <table className="w-full text-sm">
+                    <thead className="bg-white">
+                      <tr className="border-b">
+                        <th className="px-3 py-2 text-left font-semibold text-slate-700">
+                          Product
+                        </th>
+                        <th className="px-3 py-2 text-right font-semibold text-slate-700">
+                          Value ({year})
+                        </th>
+                        <th className="px-3 py-2 text-left font-semibold text-slate-700">
+                          Unit
+                        </th>
+                      </tr>
+                    </thead>
+                  </table>
+
+                  <div
+                    className="products-scroll overflow-y-auto"
+                    style={{ height: 12 * 64 }}
+                  >
+                    <table className="w-full text-sm">
+                      <tbody>
+                        {filteredProducts.map((p) => {
+                          const active =
+                            selected?.dataset === p.dataset &&
+                            selected?.item_code === p.item_code;
+
+                          return (
+                            <tr
+                              key={`${p.dataset}-${p.item_code}`}
+                              role="button"
+                              tabIndex={0}
+                              className={[
+                                "row-click select-none",
+                                "border-b transition-colors",
+                                "hover:bg-indigo-50/70",
+                                "active:bg-indigo-100",
+                                active
+                                  ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200"
+                                  : "",
+                              ].join(" ")}
+                              style={{ cursor: "pointer" }}
+                              onClick={() => {
+                                setSelected({ ...p });
+                                setTrend([]);
+                                setTrendError("");
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setSelected({ ...p });
+                                  setTrend([]);
+                                  setTrendError("");
+                                }
+                              }}
+                            >
+                              <td className="px-3 py-2 align-top">
+                                <div className="font-medium text-slate-900">
+                                  {p.item}
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  Item Code {p.item_code}
+                                </div>
+                              </td>
+
+                              <td className="px-3 py-2 text-right tabular-nums align-top">
+                                {fmt(toNum(p.value))}
+                              </td>
+
+                              <td className="px-3 py-2 align-top">
+                                {p.unit || "â€”"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <div className="p-3 border-t flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  className="rounded-xl"
+                  size="sm"
+                  disabled={!filteredProducts.length}
+                  onClick={() => {
+                    const csv = toCsv(filteredProducts, [
+                      "dataset",
+                      "item_code",
+                      "item",
+                      "unit",
+                      "value",
+                    ]);
+                    downloadText(
+                      `faostat-${dataset}-${element}-${year}-area_${areaCode}-products.csv`,
+                      csv,
+                      "text/csv",
+                    );
+                  }}
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download table
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="lg:col-span-7">
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4" />
+                  Trend (last {TREND_YEARS} yrs): {selected?.item || "â€”"}{" "}
+                  {selected?.unit ? `(${selected.unit})` : ""}
+                </CardTitle>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    className="rounded-xl"
+                    disabled={!trend.length}
+                    onClick={() =>
+                      setView((v) => (v === "line" ? "bar" : "line"))
+                    }
+                  >
+                    {view === "line" ? "Bar view" : "Line view"}
+                  </Button>
+                  <Badge className="bg-slate-900 text-white">{unitLabel}</Badge>
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-4" style={{ height: 520 }}>
+              {!selected ? (
+                <div className="h-full rounded-xl border bg-white flex items-center justify-center text-sm text-slate-600">
+                  Select a product row to view trend.
+                </div>
+              ) : trendError ? (
+                <div className="h-full rounded-xl border bg-white flex items-center justify-center text-sm text-rose-700">
+                  {trendError}
+                </div>
+              ) : trendLoading ? (
+                <SectionLoader label="Loading trend..." />
+              ) : !trend.length ? (
+                <div className="h-full rounded-xl border bg-white flex items-center justify-center text-sm text-slate-600">
+                  No trend data.
+                </div>
+              ) : (
+                <div className="h-full rounded-xl border bg-gradient-to-br from-indigo-50 via-white to-emerald-50 p-2">
+                  <ResponsiveContainer width="100%" height="100%">
+                    {view === "line" ? (
+                      <LineChart
+                        data={trend.map((d) => ({
+                          year: d.year,
+                          value: toNum(d.value),
+                        }))}
+                        margin={{ top: 10, right: 14, bottom: 6, left: 34 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="year" />
+                        <YAxis
+                          tickFormatter={(v) => fmt(Number(v))}
+                          width={72}
+                        />
+                        <Tooltip
+                          formatter={(v: any) => [fmt(Number(v)), unitLabel]}
+                          labelFormatter={(l) => `Year: ${l}`}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="value"
+                          stroke="#6366f1"
+                          strokeWidth={3}
+                          dot={{ r: 2 }}
+                          activeDot={{ r: 5 }}
+                        />
+                      </LineChart>
+                    ) : (
+                      <BarChart
+                        data={trend.map((d) => ({
+                          year: d.year,
+                          value: toNum(d.value),
+                        }))}
+                        margin={{ top: 10, right: 14, bottom: 6, left: 34 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="year" />
+                        <YAxis
+                          tickFormatter={(v) => fmt(Number(v))}
+                          width={72}
+                        />
+                        <Tooltip
+                          formatter={(v: any) => [fmt(Number(v)), unitLabel]}
+                          labelFormatter={(l) => `Year: ${l}`}
+                        />
+                        <Bar
+                          dataKey="value"
+                          fill="#22c55e"
+                          radius={[10, 10, 0, 0]}
+                        />
+                      </BarChart>
+                    )}
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+============================================================
+FILE: app\fiscal\expenditure\page.tsx
+============================================================
+import FiscalMetricPage from "../_components/FiscalMetricPage";
+
+export default function Page() {
+  return (
+    <FiscalMetricPage
+      endpoint="/api/fiscal/expenditure"
+      defaultCountry="PAK"
+      defaultTop={80}
+      defaultFrom={2000}
+      defaultTo={2030}
+      defaultYear="2024"
+    />
+  );
+}
+
+
+
+============================================================
+FILE: app\fiscal\overall-balance\page.tsx
+============================================================
+import FiscalMetricPage from "../_components/FiscalMetricPage";
+
+export default function Page() {
+  return (
+    <FiscalMetricPage
+      endpoint="/api/fiscal/overall-balance"
+      defaultCountry="PAK"
+      defaultTop={80}
+      defaultFrom={2000}
+      defaultTo={2030}
+      defaultYear="2024"
+    />
+  );
+}
+
+
+
+============================================================
+FILE: app\fiscal\page.tsx
+============================================================
+import Link from "next/link";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FISCAL_METRICS } from "./_lib/fiscalMeta";
+
+export default function FiscalHome() {
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="mx-auto max-w-7xl px-4 py-6">
+        <div className="mb-5">
+          <div className="text-xs text-muted-foreground">
+            KPI â€¢ Fiscal Space
+          </div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Budget Sustainability
+          </h1>
+          <div className="mt-1 text-sm text-muted-foreground">
+            Explore fiscal capacity, budget balance, and sustainability metrics
+            (IMF WEO).
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {FISCAL_METRICS.map((m) => (
+            <Link
+              key={m.slug}
+              href={`/fiscal/${m.slug}`}
+              prefetch={false}
+              className="block"
+            >
+              <Card className="transition-colors hover:bg-muted/30">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">{m.title}</CardTitle>
+                  <div className="text-xs text-muted-foreground">
+                    {m.subtitle}
+                  </div>
+                </CardHeader>
+
+                <CardContent>
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Unit:</span>{" "}
+                    <span className="font-medium">{m.unit}</span>
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {`Code: ${m.indicator_code}`}
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+============================================================
+FILE: app\fiscal\primary-balance\page.tsx
+============================================================
+import FiscalMetricPage from "../_components/FiscalMetricPage";
+
+export default function Page() {
+  return (
+    <FiscalMetricPage
+      endpoint="/api/fiscal/primary-balance"
+      defaultCountry="PAK"
+      defaultTop={80}
+      defaultFrom={2000}
+      defaultTo={2030}
+      defaultYear="2024"
+    />
+  );
+}
+
+
+
+============================================================
+FILE: app\fiscal\revenue\page.tsx
+============================================================
+import FiscalMetricPage from "../_components/FiscalMetricPage";
+
+export default function Page() {
+  return (
+    <FiscalMetricPage
+      endpoint="/api/fiscal/revenue"
+      defaultCountry="PAK"
+      defaultTop={80}
+      defaultFrom={2000}
+      defaultTo={2030}
+      defaultYear="2024"
+    />
+  );
+}
+
+
+
+============================================================
+FILE: app\globals.css
+============================================================
+@import "tailwindcss";
+
+/* STRATIFY TYPOGRAPHY REVAMP - SOFTER WORKSPORA STYLE */
+
+:root {
+  --stratify-indigo: #3730a3;
+  --stratify-indigo-soft: #4338ca;
+  --stratify-text: #1e293b;
+  --stratify-muted: #64748b;
+  --stratify-border: #e2e8f0;
+  --stratify-bg: #f1f5f9;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif !important;
+  color: var(--stratify-text);
+  background: var(--stratify-bg);
+}
+
+body {
+  font-size: 14px;
+  line-height: 1.6;
+  font-weight: 400;
+}
+
+* {
+  box-sizing: border-box;
+  border-color: var(--stratify-border);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+span,
+label,
+button,
+select,
+input,
+textarea,
+a,
+div {
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Arial,
+    sans-serif !important;
+}
+
+h1 {
+  font-size: 34px;
+  line-height: 1.12;
+  font-weight: 760;
+  letter-spacing: -0.035em;
+  color: var(--stratify-indigo);
+}
+
+h2 {
+  font-size: 25px;
+  line-height: 1.18;
+  font-weight: 740;
+  letter-spacing: -0.03em;
+  color: var(--stratify-indigo);
+}
+
+h3 {
+  font-size: 20px;
+  line-height: 1.22;
+  font-weight: 720;
+  letter-spacing: -0.02em;
+  color: var(--stratify-indigo-soft);
+}
+
+p {
+  font-size: 14px;
+  line-height: 1.7;
+  color: #475569;
+}
+
+a,
+a:hover,
+a:focus,
+a:active {
+  color: inherit;
+  text-decoration: none !important;
+}
+
+/* Small section label */
+.stratify-eyebrow {
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #059669;
+}
+
+/* Main hero title - softer, smaller, indigo */
+.stratify-hero-title {
+  font-size: clamp(32px, 4.2vw, 48px);
+  line-height: 1.05;
+  font-weight: 760;
+  letter-spacing: -0.045em;
+  color: var(--stratify-indigo);
+}
+
+/* Hero paragraph */
+.stratify-hero-text {
+  max-width: 720px;
+  font-size: 15px;
+  line-height: 1.75;
+  font-weight: 500;
+  color: #475569;
+}
+
+/* Navbar typography */
+.stratify-nav-link {
+  font-size: 14px;
+  font-weight: 760;
+  color: #334155;
+  text-decoration: none !important;
+}
+
+.stratify-nav-link:hover {
+  color: var(--stratify-indigo);
+}
+
+/* Logo text */
+.stratify-logo-title {
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 780;
+  letter-spacing: -0.03em;
+  color: var(--stratify-indigo);
+}
+
+.stratify-logo-subtitle {
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 760;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+/* Card/table text */
+.stratify-card-title {
+  font-size: 18px;
+  font-weight: 760;
+  letter-spacing: -0.025em;
+  color: var(--stratify-indigo);
+}
+
+.stratify-card-text {
+  font-size: 14px;
+  line-height: 1.65;
+  color: #475569;
+}
+
+.stratify-muted {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--stratify-muted);
+}
+
+/* Override overly black utility text where used on landing */
+.text-slate-950,
+.text-slate-900 {
+  color: #1e293b !important;
+}
+
+.font-black {
+  font-weight: 780 !important;
+}
+
+.font-extrabold {
+  font-weight: 740 !important;
+}
+
+/* Softer active nav, if your page uses bg-slate-950 */
+.bg-slate-950 {
+  background-color: #4f46e5 !important;
+}
+
+.hover\:text-slate-950:hover {
+  color: #3730a3 !important;
+}
+
+/* Fix transparent dropdown/readability issue globally */
+select,
+select option,
+select optgroup {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+select {
+  background: #ffffff !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid #dbe3ee !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08) !important;
+}
+
+/* For custom dropdowns / Radix / shadcn select menus */
+[data-radix-popper-content-wrapper] {
+  z-index: 9999 !important;
+}
+
+[role="listbox"],
+[cmdk-list],
+.SelectContent,
+.select-content {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid #dbe3ee !important;
+  box-shadow: 0 14px 35px rgba(15, 23, 42, 0.18) !important;
+}
+
+[role="option"],
+.SelectItem,
+.select-item {
+  background: #ffffff !important;
+  color: #0f172a !important;
+}
+
+[role="option"]:hover,
+[role="option"][data-highlighted],
+.SelectItem[data-highlighted],
+.select-item[data-highlighted] {
+  background: #eef4ff !important;
+  color: #1e293b !important;
+}
+@import "leaflet/dist/leaflet.css";
+
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+.leaflet-control-container {
+  font-family: inherit;
+}
+
+
+
+============================================================
+FILE: app\layout.tsx
+============================================================
+import "./globals.css";
+import type { Metadata } from "next";
+import type { ReactNode } from "react";
+import TopNav from "./components/TopNav";
+
+export const metadata: Metadata = {
+  title: "Stratify Analytics",
+  description: "Global intelligence analytics portal",
+};
+
+export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <TopNav />
+        <main>{children}</main>
+      </body>
+    </html>
+  );
+}
+
+
+
+============================================================
+FILE: app\page.tsx
+============================================================
+// app/page.tsx
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+
+import StratifyMap, { StratifyMapRow } from "@/app/components/StratifyMap";
+import VitalStatsList, { StatSection } from "@/app/components/VitalStatsList";
+
+import { Button } from "@/components/ui/button";
+
+/* =======================
+   Types
+======================= */
+
+type MapRow = {
+  iso3: string;
+  country: string;
+  region: string | null;
+  value: number;
+};
+
+type MapApiResponse = {
+  rows: MapRow[];
+  error?: string;
+};
+
+type SelectOption = {
+  value: string;
+  label: string;
+};
+
+/* =======================
+   Config
+======================= */
+
+const TOPO_URL =
+  "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+
+const REGIONS = [
+  "World",
+  "Sub-Saharan Africa",
+  "Europe & Central Asia",
+  "Middle East & North Africa",
+  "South Asia",
+  "East Asia & Pacific",
+  "Latin America & Caribbean",
+  "North America",
+] as const;
+
+const INDICATORS: Array<{ code: string; label: string; unit?: string }> = [
+  { code: "SP.POP.TOTL", label: "Population" },
+  { code: "NY.GDP.MKTP.CD", label: "GDP (current US$)", unit: "US$" },
+  { code: "SP.POP.GROW", label: "Population Growth", unit: "%" },
+  { code: "SP.DYN.LE00.IN", label: "Life Expectancy", unit: "years" },
+  { code: "SP.URB.TOTL.IN.ZS", label: "Urban Population", unit: "%" },
+  { code: "EG.ELC.ACCS.ZS", label: "Access to Electricity", unit: "%" },
+];
+
+const DEFAULT_INDICATOR = "SP.POP.TOTL";
+
+/* =======================
+   Helpers
+======================= */
+
+function n(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : Number(v) || 0;
+}
+
+function fmt(v: number): string {
+  if (!Number.isFinite(v)) return "â€”";
+  if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
+  if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
+  return v.toLocaleString();
+}
+
+function toRegionParam(r: string): string | null {
+  return r === "World" ? null : r;
+}
+
+/* =======================
+   Opaque Dropdown
+======================= */
+
+function OpaqueDropdown({
+  value,
+  options,
+  widthClass,
+  onChange,
+}: {
+  value: string;
+  options: SelectOption[];
+  widthClass: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+  const selected = options.find((x) => x.value === value);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        wrapperRef.current &&
+        !wrapperRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={wrapperRef} className={`relative ${widthClass}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-9 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 text-left text-sm font-medium text-slate-800 shadow-sm outline-none transition hover:bg-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+      >
+        <span className="truncate">{selected?.label ?? "Select"}</span>
+
+        <svg
+          className={`h-4 w-4 shrink-0 text-slate-500 transition ${
+            open ? "rotate-180" : ""
+          }`}
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path
+            fillRule="evenodd"
+            d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+            clipRule="evenodd"
+          />
+        </svg>
+      </button>
+
+      {open ? (
+        <div className="absolute left-0 top-[42px] z-[99999] max-h-[340px] w-full overflow-y-auto rounded-xl border border-slate-200 bg-white text-slate-800 shadow-2xl ring-1 ring-black/5">
+          {options.map((option) => {
+            const active = option.value === value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium transition ${
+                  active
+                    ? "bg-indigo-50 text-indigo-700"
+                    : "bg-white text-slate-800 hover:bg-slate-50"
+                }`}
+              >
+                <span>{option.label}</span>
+
+                {active ? (
+                  <span className="text-xs font-bold text-indigo-600">âœ“</span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* =======================
+   Page
+======================= */
+
+export default function Page() {
+  const router = useRouter();
+
+  const [region, setRegion] = useState<string>("World");
+  const [indicator, setIndicator] = useState<string>(DEFAULT_INDICATOR);
+
+  const [rows, setRows] = useState<MapRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const [selectedIso3, setSelectedIso3] = useState<string | null>(null);
+
+  const regionParam = useMemo(() => toRegionParam(region), [region]);
+
+  const regionOptions: SelectOption[] = useMemo(
+    () => REGIONS.map((r) => ({ value: r, label: r })),
+    [],
+  );
+
+  const indicatorOptions: SelectOption[] = useMemo(
+    () => INDICATORS.map((x) => ({ value: x.code, label: x.label })),
+    [],
+  );
+
+  const indicatorMeta = useMemo(() => {
+    return (
+      INDICATORS.find((x) => x.code === indicator) ?? {
+        code: indicator,
+        label: indicator,
+      }
+    );
+  }, [indicator]);
+
+  const indicatorLabel = indicatorMeta.label;
+  const indicatorUnit = indicatorMeta.unit;
+
+  useEffect(() => {
+    let alive = true;
+
+    async function load() {
+      setLoading(true);
+      setErr(null);
+
+      try {
+        const qp = new URLSearchParams();
+        qp.set("indicator", indicator);
+        if (regionParam) qp.set("region", regionParam);
+
+        const res = await fetch(`/api/map?${qp.toString()}`, {
+          cache: "no-store",
+        });
+
+        const json = (await res.json()) as MapApiResponse;
+        if (!res.ok) throw new Error(json?.error ?? "Failed to load map data");
+
+        if (!alive) return;
+
+        const safeRows = Array.isArray(json.rows) ? json.rows : [];
+        setRows(safeRows);
+        setSelectedIso3(null);
+      } catch (e: unknown) {
+        if (!alive) return;
+        setErr(e instanceof Error ? e.message : "Failed to load map");
+        setRows([]);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+
+    load();
+
+    return () => {
+      alive = false;
+    };
+  }, [indicator, regionParam]);
+
+  const mapRows: StratifyMapRow[] = useMemo(
+    () =>
+      (rows ?? []).map((r) => ({
+        iso3: String(r.iso3 ?? "").toUpperCase(),
+        country: String(r.country ?? ""),
+        region: r.region ?? null,
+        value: n(r.value),
+      })),
+    [rows],
+  );
+
+  function handleSelectIso3(iso3: string) {
+    const up = String(iso3 ?? "").toUpperCase();
+    if (!up) return;
+
+    setSelectedIso3(up);
+
+    router.push(
+      `/world/country/${encodeURIComponent(up)}?indicator=${encodeURIComponent(
+        indicator,
+      )}&dataset=wdi`,
+    );
+  }
+
+  const stats: StatSection[] = useMemo(() => {
+    if (!selectedIso3) {
+      return [
+        {
+          title: "World",
+          rows: [
+            { label: "Indicator", value: indicatorLabel },
+            { label: "Region scope", value: region },
+            { label: "Countries", value: String(mapRows.length) },
+          ],
+        },
+      ];
+    }
+
+    const row = mapRows.find((r) => r.iso3 === selectedIso3) ?? null;
+
+    return [
+      {
+        title: "Selection",
+        rows: [
+          { label: "Country", value: row?.country ?? selectedIso3 },
+          { label: "ISO3", value: selectedIso3 },
+          { label: "Region", value: row?.region ?? "â€”" },
+          {
+            label: indicatorLabel,
+            value: `${fmt(n(row?.value))}${
+              indicatorUnit ? ` ${indicatorUnit}` : ""
+            }`,
+          },
+        ],
+      },
+    ];
+  }, [mapRows, selectedIso3, indicatorLabel, indicatorUnit, region]);
+
+  return (
+    <main className="relative min-h-screen bg-slate-100">
+      <div className="pointer-events-none fixed inset-0 z-0">
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{
+            backgroundImage: "url('/people_bg.png')",
+            transform: "scale(1.02)",
+            filter: "saturate(1.15) contrast(1.08) brightness(0.92)",
+            opacity: 0.48,
+          }}
+        />
+        <div className="absolute inset-0 bg-black/25" />
+        <div className="absolute inset-0 bg-gradient-to-b from-white/90 via-white/76 to-white/62" />
+      </div>
+
+      <div className="relative z-10 min-h-screen">
+        <div className="mx-auto max-w-7xl space-y-5 px-4 py-7">
+          <section className="relative z-[100] rounded-[28px] border border-white/70 bg-white/75 p-5 shadow-xl backdrop-blur-xl">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+              <div>
+                <div className="stratify-eyebrow">Stratify Analytics</div>
+
+                <h1 className="stratify-hero-title mt-2">
+                  World Intelligence Dashboard
+                </h1>
+
+                <p className="stratify-hero-text mt-4">
+                  Explore trusted global indicators, country profiles, and
+                  development insights through a clean analytics portal built
+                  for fast comparison and decision-making.
+                </p>
+
+                <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-700">
+                  <span className="font-bold text-slate-950">Stratify</span>{" "}
+                  turns World Bank, FAO, fiscal, debt, energy, and macro
+                  datasets into structured country intelligence.
+                </p>
+              </div>
+
+              <div className="relative z-[9999] flex flex-wrap items-center gap-2">
+                <OpaqueDropdown
+                  value={region}
+                  options={regionOptions}
+                  widthClass="w-[240px]"
+                  onChange={setRegion}
+                />
+
+                <OpaqueDropdown
+                  value={indicator}
+                  options={indicatorOptions}
+                  widthClass="w-[320px]"
+                  onChange={setIndicator}
+                />
+
+                <Button
+                  variant="secondary"
+                  className="h-9 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+                  disabled={loading}
+                  onClick={() => {
+                    setRegion("World");
+                    setIndicator(DEFAULT_INDICATOR);
+                    setSelectedIso3(null);
+                  }}
+                >
+                  Reset
+                </Button>
+              </div>
+            </div>
+          </section>
+
+          {err ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50/90 p-3 text-sm font-semibold text-red-700 backdrop-blur">
+              {err}
+            </div>
+          ) : null}
+
+          <section className="relative z-10 grid grid-cols-12 gap-4">
+            <div className="col-span-12 lg:col-span-8">
+              {loading ? (
+                <div className="flex h-[560px] items-center justify-center rounded-3xl border border-white/70 bg-white/70 shadow-xl backdrop-blur-xl">
+                  <div className="flex min-w-[260px] flex-col items-center rounded-3xl border border-slate-200 bg-slate-950/90 px-8 py-7 text-white shadow-xl">
+                    <div className="mb-4 h-11 w-11 animate-spin rounded-full border-[3px] border-white/20 border-t-white" />
+                    <div className="text-base font-bold">
+                      Loading dashboard...
+                    </div>
+                    <div className="mt-1 text-xs font-medium text-white/60">
+                      Fetching global indicator data
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-3xl border border-white/70 bg-white/65 shadow-xl backdrop-blur-xl">
+                  <StratifyMap
+                    rows={mapRows}
+                    topoJsonUrl={TOPO_URL}
+                    selectedIso3={selectedIso3}
+                    onSelectIso3={handleSelectIso3}
+                    indicatorLabel={indicatorLabel}
+                    indicatorUnit={indicatorUnit}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="col-span-12 lg:col-span-4">
+              <div className="overflow-hidden rounded-3xl border border-white/70 bg-white/75 shadow-xl backdrop-blur-xl">
+                <VitalStatsList
+                  sections={stats}
+                  region={selectedIso3 ?? region}
+                  subtitle={
+                    selectedIso3
+                      ? "Opening selected country..."
+                      : "Click a country to open profile"
+                  }
+                />
+              </div>
+            </div>
+          </section>
+
+          <div className="h-2" />
+        </div>
+      </div>
+    </main>
+  );
+}
+
+
+
+============================================================
+FILE: app\world\country\[iso3]\page.tsx
+============================================================
+
+
+============================================================
+FILE: app\world\page.tsx
+============================================================
+import { redirect } from "next/navigation";
+
+export default function WorldPage() {
+  redirect("/");
+}
+
+
+
+============================================================
+FILE: components\ui\badge.tsx
+============================================================
+import * as React from "react";
+import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
+
+import { cn } from "@/lib/utils";
+
+const badgeVariants = cva(
+  "inline-flex items-center justify-center rounded-full border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1 [&>svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive transition-[color,box-shadow] overflow-hidden",
+  {
+    variants: {
+      variant: {
+        default:
+          "border-transparent bg-primary text-primary-foreground [a&]:hover:bg-primary/90",
+        secondary:
+          "border-transparent bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90",
+        destructive:
+          "border-transparent bg-destructive text-white [a&]:hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
+        outline:
+          "text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+);
+
+function Badge({
+  className,
+  variant,
+  asChild = false,
+  ...props
+}: React.ComponentProps<"span"> &
+  VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot : "span";
+
+  return (
+    <Comp
+      data-slot="badge"
+      className={cn(badgeVariants({ variant }), className)}
+      {...props}
+    />
+  );
+}
+
+export { Badge, badgeVariants };
+
+
+
+============================================================
+FILE: components\ui\button.tsx
+============================================================
+import * as React from "react";
+import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
+
+import { cn } from "@/lib/utils";
+
+const buttonVariants = cva(
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive:
+          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
+        outline:
+          "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        ghost:
+          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default: "h-9 px-4 py-2 has-[>svg]:px-3",
+        sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
+        lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
+        icon: "size-9",
+        "icon-sm": "size-8",
+        "icon-lg": "size-10",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+);
+
+function Button({
+  className,
+  variant,
+  size,
+  asChild = false,
+  ...props
+}: React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean;
+  }) {
+  const Comp = asChild ? Slot : "button";
+
+  return (
+    <Comp
+      data-slot="button"
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
+  );
+}
+
+export { Button, buttonVariants };
+
+
+
+============================================================
+FILE: components\ui\card.tsx
+============================================================
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function Card({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card"
+      className={cn(
+        "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-header"
+      className={cn(
+        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-title"
+      className={cn("leading-none font-semibold", className)}
+      {...props}
+    />
+  );
+}
+
+function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-description"
+      className={cn("text-muted-foreground text-sm", className)}
+      {...props}
+    />
+  );
+}
+
+function CardAction({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-action"
+      className={cn(
+        "col-start-2 row-span-2 row-start-1 self-start justify-self-end",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+function CardContent({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-content"
+      className={cn("px-6", className)}
+      {...props}
+    />
+  );
+}
+
+function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-footer"
+      className={cn("flex items-center px-6 [.border-t]:pt-6", className)}
+      {...props}
+    />
+  );
+}
+
+export {
+  Card,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+  CardAction,
+  CardDescription,
+  CardContent,
+};
+
+
+
+============================================================
+FILE: components\ui\checkbox.tsx
+============================================================
+"use client"
+
+import * as React from "react"
+import { CheckIcon } from "lucide-react"
+import { Checkbox as CheckboxPrimitive } from "radix-ui"
+
+import { cn } from "@/lib/utils"
+
+function Checkbox({
+  className,
+  ...props
+}: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
+  return (
+    <CheckboxPrimitive.Root
+      data-slot="checkbox"
+      className={cn(
+        "peer size-4 shrink-0 rounded-[4px] border border-input shadow-xs transition-shadow outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground dark:bg-input/30 dark:aria-invalid:ring-destructive/40 dark:data-[state=checked]:bg-primary",
+        className
+      )}
+      {...props}
+    >
+      <CheckboxPrimitive.Indicator
+        data-slot="checkbox-indicator"
+        className="grid place-content-center text-current transition-none"
+      >
+        <CheckIcon className="size-3.5" />
+      </CheckboxPrimitive.Indicator>
+    </CheckboxPrimitive.Root>
+  )
+}
+
+export { Checkbox }
+
+
+
+============================================================
+FILE: components\ui\input.tsx
+============================================================
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+  return (
+    <input
+      type={type}
+      data-slot="input"
+      className={cn(
+        "file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+        "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+        "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+export { Input };
+
+
+
+============================================================
+FILE: components\ui\label.tsx
+============================================================
+"use client";
+
+import * as React from "react";
+import * as LabelPrimitive from "@radix-ui/react-label";
+
+import { cn } from "@/lib/utils";
+
+function Label({
+  className,
+  ...props
+}: React.ComponentProps<typeof LabelPrimitive.Root>) {
+  return (
+    <LabelPrimitive.Root
+      data-slot="label"
+      className={cn(
+        "flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+export { Label };
+
+
+
+============================================================
+FILE: components\ui\scroll-area.tsx
+============================================================
+"use client"
+
+import * as React from "react"
+import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area"
+
+import { cn } from "@/lib/utils"
+
+function ScrollArea({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
+  return (
+    <ScrollAreaPrimitive.Root
+      data-slot="scroll-area"
+      className={cn("relative", className)}
+      {...props}
+    >
+      <ScrollAreaPrimitive.Viewport
+        data-slot="scroll-area-viewport"
+        className="focus-visible:ring-ring/50 size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1"
+      >
+        {children}
+      </ScrollAreaPrimitive.Viewport>
+      <ScrollBar />
+      <ScrollAreaPrimitive.Corner />
+    </ScrollAreaPrimitive.Root>
+  )
+}
+
+function ScrollBar({
+  className,
+  orientation = "vertical",
+  ...props
+}: React.ComponentProps<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>) {
+  return (
+    <ScrollAreaPrimitive.ScrollAreaScrollbar
+      data-slot="scroll-area-scrollbar"
+      orientation={orientation}
+      className={cn(
+        "flex touch-none p-px transition-colors select-none",
+        orientation === "vertical" &&
+          "h-full w-2.5 border-l border-l-transparent",
+        orientation === "horizontal" &&
+          "h-2.5 flex-col border-t border-t-transparent",
+        className
+      )}
+      {...props}
+    >
+      <ScrollAreaPrimitive.ScrollAreaThumb
+        data-slot="scroll-area-thumb"
+        className="bg-border relative flex-1 rounded-full"
+      />
+    </ScrollAreaPrimitive.ScrollAreaScrollbar>
+  )
+}
+
+export { ScrollArea, ScrollBar }
+
+
+
+============================================================
+FILE: components\ui\select.tsx
+============================================================
+"use client";
+
+import * as React from "react";
+import * as SelectPrimitive from "@radix-ui/react-select";
+import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+
+import { cn } from "@/lib/utils";
+
+function Select({
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Root>) {
+  return <SelectPrimitive.Root data-slot="select" {...props} />;
+}
+
+function SelectGroup({
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Group>) {
+  return <SelectPrimitive.Group data-slot="select-group" {...props} />;
+}
+
+function SelectValue({
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Value>) {
+  return <SelectPrimitive.Value data-slot="select-value" {...props} />;
+}
+
+function SelectTrigger({
+  className,
+  size = "default",
+  children,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Trigger> & {
+  size?: "sm" | "default";
+}) {
+  return (
+    <SelectPrimitive.Trigger
+      data-slot="select-trigger"
+      data-size={size}
+      className={cn(
+        "border-input data-[placeholder]:text-muted-foreground [&_svg:not([class*='text-'])]:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:bg-input/30 dark:hover:bg-input/50 flex w-fit items-center justify-between gap-2 rounded-md border bg-transparent px-3 py-2 text-sm whitespace-nowrap shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className
+      )}
+      {...props}
+    >
+      {children}
+      <SelectPrimitive.Icon asChild>
+        <ChevronDownIcon className="size-4 opacity-50" />
+      </SelectPrimitive.Icon>
+    </SelectPrimitive.Trigger>
+  );
+}
+
+function SelectContent({
+  className,
+  children,
+  position = "popper",
+  align = "center",
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Content>) {
+  return (
+    <SelectPrimitive.Portal>
+      <SelectPrimitive.Content
+        data-slot="select-content"
+        className={cn(
+          "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 relative z-50 max-h-(--radix-select-content-available-height) min-w-[8rem] origin-(--radix-select-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border shadow-md",
+          position === "popper" &&
+            "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
+          className
+        )}
+        position={position}
+        align={align}
+        {...props}
+      >
+        <SelectScrollUpButton />
+        <SelectPrimitive.Viewport
+          className={cn(
+            "p-1",
+            position === "popper" &&
+              "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)] scroll-my-1"
+          )}
+        >
+          {children}
+        </SelectPrimitive.Viewport>
+        <SelectScrollDownButton />
+      </SelectPrimitive.Content>
+    </SelectPrimitive.Portal>
+  );
+}
+
+function SelectLabel({
+  className,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Label>) {
+  return (
+    <SelectPrimitive.Label
+      data-slot="select-label"
+      className={cn("text-muted-foreground px-2 py-1.5 text-xs", className)}
+      {...props}
+    />
+  );
+}
+
+function SelectItem({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Item>) {
+  return (
+    <SelectPrimitive.Item
+      data-slot="select-item"
+      className={cn(
+        "focus:bg-accent focus:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+        className
+      )}
+      {...props}
+    >
+      <span className="absolute right-2 flex size-3.5 items-center justify-center">
+        <SelectPrimitive.ItemIndicator>
+          <CheckIcon className="size-4" />
+        </SelectPrimitive.ItemIndicator>
+      </span>
+      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+    </SelectPrimitive.Item>
+  );
+}
+
+function SelectSeparator({
+  className,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Separator>) {
+  return (
+    <SelectPrimitive.Separator
+      data-slot="select-separator"
+      className={cn("bg-border pointer-events-none -mx-1 my-1 h-px", className)}
+      {...props}
+    />
+  );
+}
+
+function SelectScrollUpButton({
+  className,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.ScrollUpButton>) {
+  return (
+    <SelectPrimitive.ScrollUpButton
+      data-slot="select-scroll-up-button"
+      className={cn(
+        "flex cursor-default items-center justify-center py-1",
+        className
+      )}
+      {...props}
+    >
+      <ChevronUpIcon className="size-4" />
+    </SelectPrimitive.ScrollUpButton>
+  );
+}
+
+function SelectScrollDownButton({
+  className,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.ScrollDownButton>) {
+  return (
+    <SelectPrimitive.ScrollDownButton
+      data-slot="select-scroll-down-button"
+      className={cn(
+        "flex cursor-default items-center justify-center py-1",
+        className
+      )}
+      {...props}
+    >
+      <ChevronDownIcon className="size-4" />
+    </SelectPrimitive.ScrollDownButton>
+  );
+}
+
+export {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectScrollDownButton,
+  SelectScrollUpButton,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+};
+
+
+
+============================================================
+FILE: components\ui\separator.tsx
+============================================================
+"use client"
+
+import * as React from "react"
+import * as SeparatorPrimitive from "@radix-ui/react-separator"
+
+import { cn } from "@/lib/utils"
+
+function Separator({
+  className,
+  orientation = "horizontal",
+  decorative = true,
+  ...props
+}: React.ComponentProps<typeof SeparatorPrimitive.Root>) {
+  return (
+    <SeparatorPrimitive.Root
+      data-slot="separator"
+      decorative={decorative}
+      orientation={orientation}
+      className={cn(
+        "bg-border shrink-0 data-[orientation=horizontal]:h-px data-[orientation=horizontal]:w-full data-[orientation=vertical]:h-full data-[orientation=vertical]:w-px",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export { Separator }
+
+
+
+============================================================
+FILE: components\ui\table.tsx
+============================================================
+"use client"
+
+import * as React from "react"
+
+import { cn } from "@/lib/utils"
+
+function Table({ className, ...props }: React.ComponentProps<"table">) {
+  return (
+    <div
+      data-slot="table-container"
+      className="relative w-full overflow-x-auto"
+    >
+      <table
+        data-slot="table"
+        className={cn("w-full caption-bottom text-sm", className)}
+        {...props}
+      />
+    </div>
+  )
+}
+
+function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
+  return (
+    <thead
+      data-slot="table-header"
+      className={cn("[&_tr]:border-b", className)}
+      {...props}
+    />
+  )
+}
+
+function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
+  return (
+    <tbody
+      data-slot="table-body"
+      className={cn("[&_tr:last-child]:border-0", className)}
+      {...props}
+    />
+  )
+}
+
+function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
+  return (
+    <tfoot
+      data-slot="table-footer"
+      className={cn(
+        "bg-muted/50 border-t font-medium [&>tr]:last:border-b-0",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
+  return (
+    <tr
+      data-slot="table-row"
+      className={cn(
+        "hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function TableHead({ className, ...props }: React.ComponentProps<"th">) {
+  return (
+    <th
+      data-slot="table-head"
+      className={cn(
+        "text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function TableCell({ className, ...props }: React.ComponentProps<"td">) {
+  return (
+    <td
+      data-slot="table-cell"
+      className={cn(
+        "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function TableCaption({
+  className,
+  ...props
+}: React.ComponentProps<"caption">) {
+  return (
+    <caption
+      data-slot="table-caption"
+      className={cn("text-muted-foreground mt-4 text-sm", className)}
+      {...props}
+    />
+  )
+}
+
+export {
+  Table,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableCaption,
+}
+
+
+
+============================================================
+FILE: components\ui\tabs.tsx
+============================================================
+"use client"
+
+import * as React from "react"
+import * as TabsPrimitive from "@radix-ui/react-tabs"
+
+import { cn } from "@/lib/utils"
+
+function Tabs({
+  className,
+  ...props
+}: React.ComponentProps<typeof TabsPrimitive.Root>) {
+  return (
+    <TabsPrimitive.Root
+      data-slot="tabs"
+      className={cn("flex flex-col gap-2", className)}
+      {...props}
+    />
+  )
+}
+
+function TabsList({
+  className,
+  ...props
+}: React.ComponentProps<typeof TabsPrimitive.List>) {
+  return (
+    <TabsPrimitive.List
+      data-slot="tabs-list"
+      className={cn(
+        "bg-muted text-muted-foreground inline-flex h-9 w-fit items-center justify-center rounded-lg p-[3px]",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function TabsTrigger({
+  className,
+  ...props
+}: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+  return (
+    <TabsPrimitive.Trigger
+      data-slot="tabs-trigger"
+      className={cn(
+        "data-[state=active]:bg-background dark:data-[state=active]:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 text-foreground dark:text-muted-foreground inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:shadow-sm [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function TabsContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof TabsPrimitive.Content>) {
+  return (
+    <TabsPrimitive.Content
+      data-slot="tabs-content"
+      className={cn("flex-1 outline-none", className)}
+      {...props}
+    />
+  )
+}
+
+export { Tabs, TabsList, TabsTrigger, TabsContent }
+

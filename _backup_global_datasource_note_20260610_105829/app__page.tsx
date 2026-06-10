@@ -8,6 +8,7 @@ import StratifyMap, { StratifyMapRow } from "@/app/components/StratifyMap";
 import VitalStatsList, { StatSection } from "@/app/components/VitalStatsList";
 
 import { Button } from "@/components/ui/button";
+import DataSourceNote, { DATA_SOURCE_NOTES } from "@/app/components/DataSourceNote";
 
 /* =======================
    Types
@@ -434,5 +435,4 @@ export default function Page() {
     </main>
   );
 }
-
 

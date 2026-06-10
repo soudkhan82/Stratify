@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Download, RefreshCw, Search } from "lucide-react";
+import DataSourceNote, { DATA_SOURCE_NOTES } from "@/app/components/DataSourceNote";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -670,5 +671,4 @@ export default function DebtPage() {
     </div>
   );
 }
-
 

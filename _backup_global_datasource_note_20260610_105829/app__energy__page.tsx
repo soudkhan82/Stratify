@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import DataSourceNote, { DATA_SOURCE_NOTES } from "@/app/components/DataSourceNote";
 
 import {
   Select,
@@ -802,5 +803,4 @@ export default function EnergyPage() {
     </div>
   );
 }
-
 

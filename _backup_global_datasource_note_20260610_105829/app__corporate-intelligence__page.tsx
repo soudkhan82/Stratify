@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import CorporateDirectoryTable from "./_components/CorporateDirectoryTable";
+import DataSourceNote, { DATA_SOURCE_NOTES } from "@/app/components/DataSourceNote";
 import { fetchCorporateDirectory, fetchCorporateSummary } from "./_lib/api";
 import type {
   ChartDatum,
@@ -1161,5 +1162,4 @@ export default function CorporateIntelligencePage() {
     </main>
   );
 }
-
 

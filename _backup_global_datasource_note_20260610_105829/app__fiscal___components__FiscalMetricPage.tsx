@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import DataSourceNote, { DATA_SOURCE_NOTES } from "@/app/components/DataSourceNote";
 import {
   Download,
   RefreshCw,
@@ -331,6 +332,7 @@ export default function FiscalMetricPage({
             <h1 className="text-2xl font-semibold tracking-tight">
               {metaTitle}
             </h1>
+            <DataSourceNote>{DATA_SOURCE_NOTES.fiscal}</DataSourceNote>
             <div className="mt-1 text-sm text-muted-foreground">
               {metaSubtitle} â€¢ Vintage:{" "}
               <span className="text-foreground">{vintageStable ?? "â€”"}</span> â€¢
@@ -660,5 +662,4 @@ export default function FiscalMetricPage({
     </div>
   );
 }
-
 

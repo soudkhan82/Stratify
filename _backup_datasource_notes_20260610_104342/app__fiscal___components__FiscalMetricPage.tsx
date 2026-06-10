@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -89,7 +89,7 @@ function quantile(sorted: number[], q: number) {
 }
 
 function fmtValue(v: number, fmt: "pct" | "num") {
-  if (!Number.isFinite(v)) return "â€”";
+  if (!Number.isFinite(v)) return "—";
   if (fmt === "pct") return `${v.toFixed(1)}`;
   const abs = Math.abs(v);
   if (abs >= 1e12) return (v / 1e12).toFixed(2) + "T";
@@ -332,10 +332,10 @@ export default function FiscalMetricPage({
               {metaTitle}
             </h1>
             <div className="mt-1 text-sm text-muted-foreground">
-              {metaSubtitle} â€¢ Vintage:{" "}
-              <span className="text-foreground">{vintageStable ?? "â€”"}</span> â€¢
+              {metaSubtitle} • Vintage:{" "}
+              <span className="text-foreground">{vintageStable ?? "—"}</span> •
               Year:{" "}
-              <span className="text-foreground">{rankYearStable ?? "â€”"}</span>
+              <span className="text-foreground">{rankYearStable ?? "—"}</span>
             </div>
           </div>
 
@@ -391,7 +391,7 @@ export default function FiscalMetricPage({
             </CardHeader>
             <CardContent className="pt-0">
               <div className="text-2xl font-semibold leading-none">
-                {stats.n || "â€”"}
+                {stats.n || "—"}
               </div>
               <div className="mt-1 text-[11px] text-muted-foreground">
                 Ranking list size
@@ -407,7 +407,7 @@ export default function FiscalMetricPage({
             </CardHeader>
             <CardContent className="pt-0">
               <div className="text-2xl font-semibold leading-none">
-                {stats.med == null ? "â€”" : fmtValue(stats.med, fmt)}
+                {stats.med == null ? "—" : fmtValue(stats.med, fmt)}
               </div>
               <div className="mt-1 text-[11px] text-muted-foreground">
                 {metaUnit}
@@ -423,7 +423,7 @@ export default function FiscalMetricPage({
             </CardHeader>
             <CardContent className="pt-0">
               <div className="text-2xl font-semibold leading-none">
-                {stats.p75 == null ? "â€”" : fmtValue(stats.p75, fmt)}
+                {stats.p75 == null ? "—" : fmtValue(stats.p75, fmt)}
               </div>
               <div className="mt-1 text-[11px] text-muted-foreground">
                 {metaUnit}
@@ -439,7 +439,7 @@ export default function FiscalMetricPage({
             </CardHeader>
             <CardContent className="pt-0">
               <div className="text-2xl font-semibold leading-none">
-                {stats.max == null ? "â€”" : fmtValue(stats.max, fmt)}
+                {stats.max == null ? "—" : fmtValue(stats.max, fmt)}
               </div>
               <div className="mt-1 text-[11px] text-muted-foreground">
                 {metaUnit}
@@ -562,7 +562,7 @@ export default function FiscalMetricPage({
                                 {r.country_name}
                               </div>
                               <div className="text-xs text-muted-foreground">
-                                {r.country_code} â€¢ {r.region ?? "â€”"}
+                                {r.country_code} • {r.region ?? "—"}
                               </div>
                             </td>
 
@@ -588,7 +588,7 @@ export default function FiscalMetricPage({
                     <span className="font-medium text-foreground">
                       {selected.row.country_name}
                     </span>{" "}
-                    ({selected.row.country_code}) â€¢ Rank #{selected.rank}/
+                    ({selected.row.country_code}) • Rank #{selected.rank}/
                     {selected.total}
                   </div>
                   <div className="flex items-center gap-2">
@@ -605,10 +605,10 @@ export default function FiscalMetricPage({
           <Card className="lg:col-span-5">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">
-                Trend â€¢ {selectedIso3}
+                Trend • {selectedIso3}
               </CardTitle>
               <div className="text-xs text-muted-foreground">
-                {defaultFrom}â€“{defaultTo} â€¢ {metaUnit}
+                {defaultFrom}–{defaultTo} • {metaUnit}
               </div>
             </CardHeader>
 
@@ -618,7 +618,7 @@ export default function FiscalMetricPage({
                   <div className="absolute inset-0 grid place-items-center bg-background/60">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <RefreshCw className="h-4 w-4 animate-spin" />
-                      Loading trendâ€¦
+                      Loading trend…
                     </div>
                   </div>
                 )}
@@ -644,7 +644,7 @@ export default function FiscalMetricPage({
               </div>
 
               <div className="mt-2 text-xs text-muted-foreground">
-                Click a country row â€” only the trend updates (table stays
+                Click a country row — only the trend updates (table stays
                 stable).
               </div>
             </CardContent>
@@ -652,13 +652,11 @@ export default function FiscalMetricPage({
         </div>
 
         <div className="mt-6 text-xs text-muted-foreground">
-          API: <span className="font-mono">{endpoint}</span> â€¢ Series:{" "}
-          <span className="text-foreground">{seriesPoints.length}</span> â€¢ Rows:{" "}
+          API: <span className="font-mono">{endpoint}</span> • Series:{" "}
+          <span className="text-foreground">{seriesPoints.length}</span> • Rows:{" "}
           <span className="text-foreground">{rankingStable.length}</span>
         </div>
       </div>
     </div>
   );
 }
-
-

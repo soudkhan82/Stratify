@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 
@@ -79,13 +79,13 @@ async function fetchJson(url: string) {
   const txt = await res.text().catch(() => "");
   if (!res.ok) {
     throw new Error(
-      `HTTP ${res.status} ${res.statusText}${txt ? ` â€” ${txt.slice(0, 220)}` : ""}`,
+      `HTTP ${res.status} ${res.statusText}${txt ? ` — ${txt.slice(0, 220)}` : ""}`,
     );
   }
   const ct = res.headers.get("content-type") || "";
   if (!ct.includes("application/json")) {
     throw new Error(
-      `Expected JSON but got "${ct || "unknown"}"${txt ? ` â€” ${txt.slice(0, 220)}` : ""}`,
+      `Expected JSON but got "${ct || "unknown"}"${txt ? ` — ${txt.slice(0, 220)}` : ""}`,
     );
   }
   return JSON.parse(txt);
@@ -98,7 +98,7 @@ const toNum = (v: any): number | null => {
 };
 
 function fmtCompact(n: number | null | undefined): string {
-  if (n === null || n === undefined || !Number.isFinite(n)) return "â€”";
+  if (n === null || n === undefined || !Number.isFinite(n)) return "—";
   const v = n as number;
   if (Math.abs(v) >= 1e12) return `${(v / 1e12).toFixed(2)}T`;
   if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
@@ -112,7 +112,7 @@ function fmtVal(
   unit?: string | null,
   fmt?: FmtType,
 ) {
-  if (v === null || v === undefined || !Number.isFinite(v)) return "â€”";
+  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
   const base =
     fmt === "pct"
       ? (v as number).toLocaleString("en-US", { maximumFractionDigits: 2 })
@@ -131,7 +131,7 @@ function stableColorFromKey(key: string): string {
 function safeText(s: string, max = 60) {
   const t = (s || "").trim();
   if (t.length <= max) return t;
-  return `${t.slice(0, max - 1)}â€¦`;
+  return `${t.slice(0, max - 1)}…`;
 }
 
 function yPadDomain(values: number[]) {
@@ -187,7 +187,7 @@ function PageLoader({ label = "Loading dashboard..." }: { label?: string }) {
   );
 }
 
-function LoadingOverlay({ label = "Loadingâ€¦" }: { label?: string }) {
+function LoadingOverlay({ label = "Loading…" }: { label?: string }) {
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center">
       <div className="absolute inset-0 rounded-2xl bg-white/35 backdrop-blur-sm" />
@@ -471,7 +471,7 @@ export default function EnergyPage() {
                   <Badge variant="secondary">{metricMeta.unit}</Badge>
                 ) : null}
                 <Badge variant="secondary">
-                  coverage: {minYear && maxYear ? `${minYear}â€“${maxYear}` : "â€”"}
+                  coverage: {minYear && maxYear ? `${minYear}–${maxYear}` : "—"}
                 </Badge>
               </div>
             </div>
@@ -482,12 +482,12 @@ export default function EnergyPage() {
               <div className="rounded-xl border bg-white p-3">
                 <div className="text-[11px] text-slate-500">Latest</div>
                 <div className="mt-0.5 text-xs text-slate-500">
-                  {latest ? latest.year : "â€”"}
+                  {latest ? latest.year : "—"}
                 </div>
                 <div className="mt-1 text-xl font-bold text-slate-900">
                   {latest
                     ? fmtVal(latest.value, metricMeta.unit, metricMeta.fmt)
-                    : "â€”"}
+                    : "—"}
                 </div>
                 <div className="mt-0.5 text-[11px] text-slate-500">
                   {metricMeta.unit ?? ""}
@@ -495,10 +495,10 @@ export default function EnergyPage() {
               </div>
 
               <div className="rounded-xl border bg-white p-3">
-                <div className="text-[11px] text-slate-500">Change (Î”)</div>
+                <div className="text-[11px] text-slate-500">Change (Δ)</div>
                 <div className="mt-1 text-xl font-bold text-slate-900">
                   {latestDelta === null
-                    ? "â€”"
+                    ? "—"
                     : fmtVal(latestDelta, metricMeta.unit, metricMeta.fmt)}
                 </div>
                 <div className="mt-1">
@@ -515,13 +515,13 @@ export default function EnergyPage() {
               <div className="rounded-xl border bg-white p-3">
                 <div className="text-[11px] text-slate-500">Rank</div>
                 <div className="mt-1 text-xl font-bold text-slate-900">
-                  {resp?.country_rank ? `#${resp.country_rank}` : "â€”"}
+                  {resp?.country_rank ? `#${resp.country_rank}` : "—"}
                 </div>
                 <div className="mt-0.5 text-[11px] text-slate-500">
                   {resp?.total_countries
                     ? `out of ${resp.total_countries}`
-                    : "â€”"}{" "}
-                  â€¢ {resp?.rankYear ?? "â€”"}
+                    : "—"}{" "}
+                  • {resp?.rankYear ?? "—"}
                 </div>
               </div>
 
@@ -546,11 +546,11 @@ export default function EnergyPage() {
               <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                 <div className="min-w-0">
                   <CardTitle className="text-sm font-semibold text-slate-800">
-                    Trend (Line) + Î”%
+                    Trend (Line) + Δ%
                   </CardTitle>
                   <div className="mt-0.5 text-[11px] text-slate-500">
                     {safeText(metricMeta.label, 110)}
-                    {metricMeta.unit ? ` â€¢ ${metricMeta.unit}` : ""} â€¢ {country}
+                    {metricMeta.unit ? ` • ${metricMeta.unit}` : ""} • {country}
                   </div>
                 </div>
 
@@ -559,7 +559,7 @@ export default function EnergyPage() {
                     <Badge className="bg-slate-900 text-white">debug=1</Badge>
                   ) : null}
                   {loading && !initialLoading ? (
-                    <Badge className="bg-slate-900 text-white">Loadingâ€¦</Badge>
+                    <Badge className="bg-slate-900 text-white">Loading…</Badge>
                   ) : null}
                 </div>
               </div>
@@ -625,9 +625,9 @@ export default function EnergyPage() {
 
                         {debug ? (
                           <div className="mt-2 text-[11px] text-slate-500">
-                            raw: {resp?.series?.length ?? 0} â€¢ clean:{" "}
-                            {cleanSeries.length} â€¢ lineData: {lineData.length} â€¢
-                            y: {Number(yDomain[0]).toFixed(3)} â†’{" "}
+                            raw: {resp?.series?.length ?? 0} • clean:{" "}
+                            {cleanSeries.length} • lineData: {lineData.length} •
+                            y: {Number(yDomain[0]).toFixed(3)} →{" "}
                             {Number(yDomain[1]).toFixed(3)}
                           </div>
                         ) : null}
@@ -645,10 +645,10 @@ export default function EnergyPage() {
                                   Value
                                 </th>
                                 <th className="px-3 py-2 text-right font-semibold text-slate-700">
-                                  Î”
+                                  Δ
                                 </th>
                                 <th className="px-3 py-2 text-right font-semibold text-slate-700">
-                                  Î”%
+                                  Δ%
                                 </th>
                               </tr>
                             </thead>
@@ -671,7 +671,7 @@ export default function EnergyPage() {
                                     </td>
                                     <td className="px-3 py-2 text-right text-slate-700">
                                       {r.delta === null
-                                        ? "â€”"
+                                        ? "—"
                                         : fmtVal(
                                             r.delta,
                                             metricMeta.unit,
@@ -690,7 +690,7 @@ export default function EnergyPage() {
                                         ].join(" ")}
                                       >
                                         {r.deltaPct === null
-                                          ? "â€”"
+                                          ? "—"
                                           : `${r.deltaPct.toFixed(1)}%`}
                                       </span>
                                     </td>
@@ -707,8 +707,8 @@ export default function EnergyPage() {
                     </div>
 
                     <div className="mt-2 text-[11px] text-slate-500">
-                      Showing last {Math.min(40, lineData.length)} points â€¢{" "}
-                      {country} â€¢ {metricMeta.key}
+                      Showing last {Math.min(40, lineData.length)} points •{" "}
+                      {country} • {metricMeta.key}
                     </div>
                   </div>
                 </div>
@@ -719,7 +719,7 @@ export default function EnergyPage() {
           <Card className="col-span-12 lg:col-span-4 shadow-sm bg-white/70 border border-white/60 rounded-2xl overflow-hidden">
             <CardHeader className="py-3">
               <CardTitle className="text-sm font-semibold text-slate-800">
-                Top 10 â€¢ {resp?.rankYear ?? "â€”"}
+                Top 10 • {resp?.rankYear ?? "—"}
               </CardTitle>
               <div className="text-[11px] text-slate-500">
                 {metricMeta.label}
@@ -791,7 +791,7 @@ export default function EnergyPage() {
                 <div className="mt-2 rounded-lg border bg-white px-3 py-2 text-[11px] text-slate-600">
                   <div className="font-semibold text-slate-900">Debug</div>
                   <div>API ok: {String(resp?.ok)}</div>
-                  <div>rankYear: {resp?.rankYear ?? "â€”"}</div>
+                  <div>rankYear: {resp?.rankYear ?? "—"}</div>
                   <div>top10: {top10.length}</div>
                 </div>
               ) : null}
@@ -802,5 +802,3 @@ export default function EnergyPage() {
     </div>
   );
 }
-
-
