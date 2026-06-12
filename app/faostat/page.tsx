@@ -55,6 +55,31 @@ type AreaOpt = {
    Helpers
 ========================= */
 
+function cleanText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+
+  return String(value)
+    .replace(/â€¢/g, "-")
+    .replace(/•/g, "-")
+    .replace(/â€¦/g, "...")
+    .replace(/…/g, "...")
+    .replace(/â€“/g, "-")
+    .replace(/–/g, "-")
+    .replace(/â€”/g, "-")
+    .replace(/—/g, "-")
+    .replace(/â€˜/g, "'")
+    .replace(/â€™/g, "'")
+    .replace(/‘|’/g, "'")
+    .replace(/â€œ|â€/g, '"')
+    .replace(/“|”/g, '"')
+    .replace(/Â/g, "")
+    .replace(/�/g, "")
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
+    .replace(/\s*-\s*/g, " - ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function toNum(v: any) {
   const x =
     typeof v === "number"
@@ -68,7 +93,7 @@ function toNum(v: any) {
 }
 
 function fmt(v: number | null | undefined) {
-  if (v == null || !Number.isFinite(v)) return "â€”";
+  if (v == null || !Number.isFinite(v)) return "-";
   return v.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
@@ -160,7 +185,7 @@ export default function FaostatProductsPage() {
 
   const areaBoxRef = useRef<HTMLDivElement | null>(null);
 
-  const unitLabel = selected?.unit || "Value";
+  const unitLabel = cleanText(selected?.unit || "Value");
 
   const selectedKey = useMemo(() => {
     return selected ? `${selected.dataset}:${selected.item_code}` : "";
@@ -168,13 +193,13 @@ export default function FaostatProductsPage() {
 
   const datasetLabel =
     dataset === "production"
-      ? "FAOSTAT â€¢ Production"
-      : "FAOSTAT â€¢ SUA (Supply Utilization Accounts)";
+      ? "FAOSTAT - Production"
+      : "FAOSTAT - SUA (Supply Utilization Accounts)";
 
   const title = useMemo(() => {
-    const el = element || "â€”";
-    const y = year ? String(year) : "â€”";
-    return `Products â€¢ ${el} â€¢ ${y}`;
+    const el = element || "-";
+    const y = year ? String(year) : "-";
+    return cleanText(`Products - ${el} - ${y}`);
   }, [element, year]);
 
   useEffect(() => {
@@ -271,7 +296,7 @@ export default function FaostatProductsPage() {
 
         setAreaOptions(rows);
 
-        // âœ… auto-pick first area so page renders immediately
+        // Auto-pick first area so page renders immediately
         if (rows.length && !areaCode) {
           setAreaName(rows[0].area);
           setAreaCode(String(rows[0].area_code));
@@ -475,7 +500,7 @@ export default function FaostatProductsPage() {
   const filteredProducts = useMemo(() => {
     const q = productQ.trim().toLowerCase();
     if (!q) return products;
-    return products.filter((p) => p.item.toLowerCase().includes(q));
+    return products.filter((p) => cleanText(p.item).toLowerCase().includes(q));
   }, [products, productQ]);
 
   useEffect(() => {
@@ -551,7 +576,7 @@ export default function FaostatProductsPage() {
                 </Badge>
                 {areaName && areaCode ? (
                   <Badge className="bg-emerald-600 text-white">
-                    {areaName} â€¢ {areaCode}
+                    {cleanText(areaName)} - {cleanText(areaCode)}
                   </Badge>
                 ) : null}
                 {productsError ? (
@@ -592,7 +617,7 @@ export default function FaostatProductsPage() {
               >
                 {(meta?.elements || []).map((el) => (
                   <option key={el} value={el}>
-                    {el}
+                    {cleanText(el)}
                   </option>
                 ))}
               </select>
@@ -626,7 +651,7 @@ export default function FaostatProductsPage() {
                   }}
                   onFocus={() => setAreaOpen(true)}
                   onClick={() => setAreaOpen(true)}
-                  placeholder="Search area (e.g., Pakistan / Eastern Asia)â€¦"
+                  placeholder="Search area (e.g., Pakistan / Eastern Asia)..."
                   className="rounded-xl w-[260px]"
                 />
 
@@ -639,15 +664,15 @@ export default function FaostatProductsPage() {
                             key={`${a.area_code}-${a.area}`}
                             className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
                             onClick={() => {
-                              setAreaName(a.area);
+                              setAreaName(cleanText(a.area));
                               setAreaCode(String(a.area_code));
-                              setAreaQ(a.area);
+                              setAreaQ(cleanText(a.area));
                               setAreaOpen(false);
                               setOffset(0);
                             }}
                           >
                             <div className="font-medium text-slate-900">
-                              {a.area}
+                              {cleanText(a.area)}
                             </div>
                             <div className="text-xs text-slate-500">
                               Area Code {a.area_code}
@@ -739,7 +764,7 @@ export default function FaostatProductsPage() {
                   <Input
                     value={productQ}
                     onChange={(e) => setProductQ(e.target.value)}
-                    placeholder="Filter productsâ€¦"
+                    placeholder="Filter products..."
                     className="rounded-xl h-9"
                     disabled={!products.length}
                   />
@@ -760,7 +785,7 @@ export default function FaostatProductsPage() {
               ) : productsError ? (
                 <div className="p-4 text-sm text-rose-700">
                   <div className="font-semibold">Products API error</div>
-                  <div className="mt-1">{productsError}</div>
+                  <div className="mt-1">{cleanText(productsError)}</div>
                   <div className="mt-2 text-xs text-slate-500">
                     Tip: choose a valid FAOSTAT area from dropdown.
                   </div>
@@ -829,7 +854,7 @@ export default function FaostatProductsPage() {
                             >
                               <td className="px-3 py-2 align-top">
                                 <div className="font-medium text-slate-900">
-                                  {p.item}
+                                  {cleanText(p.item)}
                                 </div>
                                 <div className="text-xs text-slate-500">
                                   Item Code {p.item_code}
@@ -841,7 +866,7 @@ export default function FaostatProductsPage() {
                               </td>
 
                               <td className="px-3 py-2 align-top">
-                                {p.unit || "â€”"}
+                                {cleanText(p.unit || "-")}
                               </td>
                             </tr>
                           );
@@ -887,8 +912,9 @@ export default function FaostatProductsPage() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <TrendingUp className="h-4 w-4" />
-                  Trend (last {TREND_YEARS} yrs): {selected?.item || "â€”"}{" "}
-                  {selected?.unit ? `(${selected.unit})` : ""}
+                  Trend (last {TREND_YEARS} yrs):{" "}
+                  {cleanText(selected?.item || "-")}{" "}
+                  {selected?.unit ? `(${cleanText(selected.unit)})` : ""}
                 </CardTitle>
 
                 <div className="flex items-center gap-2">
@@ -914,7 +940,7 @@ export default function FaostatProductsPage() {
                 </div>
               ) : trendError ? (
                 <div className="h-full rounded-xl border bg-white flex items-center justify-center text-sm text-rose-700">
-                  {trendError}
+                  {cleanText(trendError)}
                 </div>
               ) : trendLoading ? (
                 <SectionLoader label="Loading trend..." />
@@ -987,6 +1013,3 @@ export default function FaostatProductsPage() {
     </div>
   );
 }
-
-
-
