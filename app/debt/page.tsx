@@ -24,7 +24,7 @@ import {
   CartesianGrid,
 } from "recharts";
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* Types */
 type RiskBand = "Low" | "Moderate" | "High" | "Extreme";
 
 type RankRow = {
@@ -97,6 +97,31 @@ function quantile(sorted: number[], q: number) {
   const rest = pos - base;
   if (sorted[base + 1] === undefined) return sorted[base];
   return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
+}
+
+function cleanText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+
+  return String(value)
+    .replace(/â€¢/g, "-")
+    .replace(/•/g, "-")
+    .replace(/â€¦/g, "...")
+    .replace(/…/g, "...")
+    .replace(/â€“/g, "-")
+    .replace(/–/g, "-")
+    .replace(/â€”/g, "-")
+    .replace(/—/g, "-")
+    .replace(/â€˜/g, "'")
+    .replace(/â€™/g, "'")
+    .replace(/[‘’]/g, "'")
+    .replace(/â€œ/g, '"')
+    .replace(/â€/g, '"')
+    .replace(/[“”]/g, '"')
+    .replace(/Â/g, "")
+    .replace(/�/g, "")
+    .replace(/\s*-\s*/g, " - ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function bandColor(b: RiskBand) {
@@ -306,8 +331,12 @@ export default function DebtPage() {
     }));
   }, [seriesData]);
 
-  const headerVintage = rankingData?.vintage ?? seriesData?.vintage ?? "â€”";
-  const headerYear = rankingData?.rank_year ?? seriesData?.rank_year ?? "â€”";
+  const headerVintage = cleanText(
+    rankingData?.vintage ?? seriesData?.vintage ?? "-",
+  );
+  const headerYear = cleanText(
+    rankingData?.rank_year ?? seriesData?.rank_year ?? "-",
+  );
 
   if (initialLoading) {
     return <PageLoader label="Loading dashboard..." />;
@@ -319,7 +348,7 @@ export default function DebtPage() {
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <div className="text-xs text-muted-foreground">
-              WorldStats360 â€¢ Stratify
+              WorldStats360 - Stratify
             </div>
             <h1 className="text-2xl font-semibold tracking-tight">
               Debt Sustainability
@@ -329,8 +358,8 @@ export default function DebtPage() {
               <span className="text-foreground">
                 Gross Debt % of GDP (GGXWDG_NGDP)
               </span>{" "}
-              â€¢ Vintage:{" "}
-              <span className="text-foreground">{headerVintage}</span> â€¢ Ranking
+              - Vintage:{" "}
+              <span className="text-foreground">{headerVintage}</span> - Ranking
               Year: <span className="text-foreground">{headerYear}</span>
             </div>
           </div>
@@ -354,8 +383,8 @@ export default function DebtPage() {
                   rank: i + 1,
                   year: r.year,
                   iso3: r.country_code,
-                  country: r.country_name,
-                  region: r.region ?? "",
+                  country: cleanText(r.country_name),
+                  region: cleanText(r.region ?? ""),
                   debt_gross_pct_gdp: r.debt_gross_pct_gdp,
                   risk_band: r.risk_band,
                   risk_score: r.risk_score,
@@ -373,7 +402,7 @@ export default function DebtPage() {
         {err && (
           <div className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm">
             <div className="font-medium">API Error</div>
-            <div className="text-muted-foreground">{err}</div>
+            <div className="text-muted-foreground">{cleanText(err)}</div>
           </div>
         )}
 
@@ -385,7 +414,7 @@ export default function DebtPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
-              <div className="text-3xl font-semibold">{stats.n || "â€”"}</div>
+              <div className="text-3xl font-semibold">{stats.n || "-"}</div>
               <div className="text-xs text-muted-foreground">
                 Top list size = {Math.min(50, stats.n) || 0} by default
               </div>
@@ -400,11 +429,11 @@ export default function DebtPage() {
             </CardHeader>
             <CardContent className="pt-0">
               <div className="text-3xl font-semibold">
-                {stats.med == null ? "â€”" : stats.med.toFixed(1) + "%"}
+                {stats.med == null ? "-" : stats.med.toFixed(1) + "%"}
               </div>
               <div className="text-xs text-muted-foreground">
-                P25 {stats.p25 == null ? "â€”" : stats.p25.toFixed(1) + "%"} â€¢ P75{" "}
-                {stats.p75 == null ? "â€”" : stats.p75.toFixed(1) + "%"}
+                P25 {stats.p25 == null ? "-" : stats.p25.toFixed(1) + "%"} - P75{" "}
+                {stats.p75 == null ? "-" : stats.p75.toFixed(1) + "%"}
               </div>
             </CardContent>
           </Card>
@@ -433,7 +462,7 @@ export default function DebtPage() {
             </CardHeader>
             <CardContent className="pt-0">
               <div className="text-3xl font-semibold">
-                {stats.max == null ? "â€”" : stats.max.toFixed(1) + "%"}
+                {stats.max == null ? "-" : stats.max.toFixed(1) + "%"}
               </div>
               <div className="text-xs text-muted-foreground">
                 Outliers exist; scoring caps above 120%
@@ -520,7 +549,7 @@ export default function DebtPage() {
                             className="px-3 py-10 text-muted-foreground"
                             colSpan={5}
                           >
-                            Loading rankingâ€¦
+                            Loading ranking...
                           </td>
                         </tr>
                       )}
@@ -571,10 +600,12 @@ export default function DebtPage() {
 
                               <td className="px-3 py-2 cursor-pointer">
                                 <div className="font-medium">
-                                  {r.country_name}
+                                  {cleanText(r.country_name)}
                                 </div>
                                 <div className="text-xs text-muted-foreground">
-                                  {r.country_code} â€¢ {r.region ?? "â€”"}
+                                  {cleanText(
+                                    `${r.country_code} - ${r.region ?? "-"}`,
+                                  )}
                                 </div>
                               </td>
 
@@ -613,13 +644,15 @@ export default function DebtPage() {
           <Card className="lg:col-span-5">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">
-                Trend â€¢{" "}
-                {seriesData?.series?.country?.country_name ??
-                  selectedIso3 ??
-                  "â€”"}
+                Trend -{" "}
+                {cleanText(
+                  seriesData?.series?.country?.country_name ??
+                    selectedIso3 ??
+                    "-",
+                )}
               </CardTitle>
               <div className="text-xs text-muted-foreground">
-                Gross Debt % GDP â€¢ {seriesData?.series?.min_year ?? 1980}â€“
+                Gross Debt % GDP - {seriesData?.series?.min_year ?? 1980} -{" "}
                 {seriesData?.series?.max_year ?? 2030}
               </div>
             </CardHeader>
@@ -630,7 +663,7 @@ export default function DebtPage() {
                   <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm z-10">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <RefreshCw className="h-4 w-4 animate-spin" />
-                      Loading trendâ€¦
+                      Loading trend...
                     </div>
                   </div>
                 )}
@@ -663,13 +696,10 @@ export default function DebtPage() {
         </div>
 
         <div className="mt-6 text-xs text-muted-foreground">
-          Bands: Low &lt; 35 â€¢ Moderate 35â€“70 â€¢ High 70â€“120 â€¢ Extreme &gt; 120
+          Bands: Low &lt; 35 - Moderate 35-70 - High 70-120 - Extreme &gt; 120
           (Debt/GDP). Scoring caps above 120%.
         </div>
       </div>
     </div>
   );
 }
-
-
-
