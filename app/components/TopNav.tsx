@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { label: "FAO", href: "/faostat" },
   { label: "Fiscal", href: "/fiscal" },
   { label: "Corporate 500", href: "/corporate-intelligence" },
+  { label: "Credits", href: "/credits" },
 ];
 
 function isActivePath(pathname: string, href: string) {
