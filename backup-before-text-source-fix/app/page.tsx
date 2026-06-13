@@ -342,8 +342,9 @@ export default function Page() {
                 </p>
 
                 <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-700">
-                  Stratify  turns World Bank, FAO, fiscal, debt, energy, and
-                  macro datasets into structured country intelligence.
+                  <span className="font-bold text-slate-950">Stratify</span>{" "}
+                  turns World Bank, FAO, fiscal, debt, energy, and macro
+                  datasets into structured country intelligence.
                 </p>
               </div>
 
@@ -433,3 +434,6 @@ export default function Page() {
     </main>
   );
 }
+
+
+

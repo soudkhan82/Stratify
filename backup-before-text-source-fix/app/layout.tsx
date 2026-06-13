@@ -2,8 +2,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import TopNav from "./components/TopNav";
-import DataSourceNote from "./components/DataSourceNote";
-import TextSanitizer from "./components/TextSanitizer";
+import DataSourceBanner from "./components/DataSourceBanner";
 
 export const metadata: Metadata = {
   title: "Stratify Analytics",
@@ -14,9 +13,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <TextSanitizer />
         <TopNav />
-        <DataSourceNote />
+        <DataSourceBanner />
         <main>{children}</main>
       </body>
     </html>
