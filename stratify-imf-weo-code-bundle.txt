@@ -1,0 +1,1661 @@
+﻿STRATIFY IMF WEO CODE BUNDLE
+Generated: 06/15/2026 00:40:21
+
+
+
+==============================
+FILE: app/components/TopNav.tsx
+==============================
+
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+const NAV_ITEMS = [
+  { label: "Home", href: "/" },
+  { label: "Debt", href: "/debt" },
+  { label: "Energy", href: "/energy" },
+  { label: "FAO", href: "/faostat" },
+  { label: "Fiscal", href: "/fiscal" },
+  { label: "Corporate 500", href: "/corporate-intelligence" },
+  { label: "Credits", href: "/credits" },
+];
+
+function isActivePath(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
+
+  if (href === "/faostat") {
+    return (
+      pathname === "/faostat" ||
+      pathname.includes("dataset=faostat") ||
+      pathname.includes("dataset=fao")
+    );
+  }
+
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+export default function TopNav() {
+  const pathname = usePathname();
+
+  return (
+    <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 shadow-sm backdrop-blur-xl">
+      <div className="mx-auto flex h-[72px] w-full max-w-[1480px] items-center gap-5 px-4 sm:px-6 lg:px-8">
+        <Link href="/" className="flex shrink-0 items-center gap-2">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-blue-600 text-lg font-black text-white shadow-lg shadow-violet-200">
+            S
+          </div>
+
+          <div className="leading-tight">
+            <div className="text-lg font-black tracking-tight text-slate-950">
+              Stratify
+            </div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+              Analytics
+            </div>
+          </div>
+        </Link>
+
+        <nav className="ml-auto hidden items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1.5 shadow-sm md:flex">
+          {NAV_ITEMS.map((item) => {
+            const active = isActivePath(pathname, item.href);
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={[
+                  "rounded-full px-4 py-2 text-sm font-bold transition-all",
+                  active
+                    ? "bg-gradient-to-r from-violet-600 to-blue-600 text-white shadow-md shadow-violet-200"
+                    : "text-slate-600 hover:bg-white hover:text-slate-950 hover:shadow-sm",
+                ].join(" ")}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="ml-auto flex items-center gap-2 md:hidden">
+          <Link
+            href="/"
+            className="rounded-full bg-violet-600 px-3 py-2 text-xs font-black text-white shadow-md shadow-violet-200"
+          >
+            Home
+          </Link>
+
+          <Link
+            href="/faostat"
+            className="rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700"
+          >
+            FAO
+          </Link>
+
+          <Link
+            href="/fiscal"
+            className="rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700"
+          >
+            Fiscal
+          </Link>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+
+
+==============================
+FILE: app/layout.tsx
+==============================
+
+import "./globals.css";
+import type { Metadata } from "next";
+import type { ReactNode } from "react";
+import TopNav from "./components/TopNav";
+import DataSourceNote from "./components/DataSourceNote";
+import TextSanitizer from "./components/TextSanitizer";
+
+export const metadata: Metadata = {
+  title: "Stratify Analytics",
+  description: "Global intelligence analytics portal",
+};
+
+export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <TextSanitizer />
+        <TopNav />
+        <DataSourceNote />
+        <main>{children}</main>
+      </body>
+    </html>
+  );
+}
+
+
+
+==============================
+FILE: app/globals.css
+==============================
+
+@import "tailwindcss";
+
+/* STRATIFY TYPOGRAPHY REVAMP - SOFTER WORKSPORA STYLE */
+
+:root {
+  --stratify-indigo: #3730a3;
+  --stratify-indigo-soft: #4338ca;
+  --stratify-text: #1e293b;
+  --stratify-muted: #64748b;
+  --stratify-border: #e2e8f0;
+  --stratify-bg: #f1f5f9;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif !important;
+  color: var(--stratify-text);
+  background: var(--stratify-bg);
+}
+
+body {
+  font-size: 14px;
+  line-height: 1.6;
+  font-weight: 400;
+}
+
+* {
+  box-sizing: border-box;
+  border-color: var(--stratify-border);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+span,
+label,
+button,
+select,
+input,
+textarea,
+a,
+div {
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Arial,
+    sans-serif !important;
+}
+
+h1 {
+  font-size: 34px;
+  line-height: 1.12;
+  font-weight: 760;
+  letter-spacing: -0.035em;
+  color: var(--stratify-indigo);
+}
+
+h2 {
+  font-size: 25px;
+  line-height: 1.18;
+  font-weight: 740;
+  letter-spacing: -0.03em;
+  color: var(--stratify-indigo);
+}
+
+h3 {
+  font-size: 20px;
+  line-height: 1.22;
+  font-weight: 720;
+  letter-spacing: -0.02em;
+  color: var(--stratify-indigo-soft);
+}
+
+p {
+  font-size: 14px;
+  line-height: 1.7;
+  color: #475569;
+}
+
+a,
+a:hover,
+a:focus,
+a:active {
+  color: inherit;
+  text-decoration: none !important;
+}
+
+/* Small section label */
+.stratify-eyebrow {
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #059669;
+}
+
+/* Main hero title - softer, smaller, indigo */
+.stratify-hero-title {
+  font-size: clamp(32px, 4.2vw, 48px);
+  line-height: 1.05;
+  font-weight: 760;
+  letter-spacing: -0.045em;
+  color: var(--stratify-indigo);
+}
+
+/* Hero paragraph */
+.stratify-hero-text {
+  max-width: 720px;
+  font-size: 15px;
+  line-height: 1.75;
+  font-weight: 500;
+  color: #475569;
+}
+
+/* Navbar typography */
+.stratify-nav-link {
+  font-size: 14px;
+  font-weight: 760;
+  color: #334155;
+  text-decoration: none !important;
+}
+
+.stratify-nav-link:hover {
+  color: var(--stratify-indigo);
+}
+
+/* Logo text */
+.stratify-logo-title {
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 780;
+  letter-spacing: -0.03em;
+  color: var(--stratify-indigo);
+}
+
+.stratify-logo-subtitle {
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 760;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+/* Card/table text */
+.stratify-card-title {
+  font-size: 18px;
+  font-weight: 760;
+  letter-spacing: -0.025em;
+  color: var(--stratify-indigo);
+}
+
+.stratify-card-text {
+  font-size: 14px;
+  line-height: 1.65;
+  color: #475569;
+}
+
+.stratify-muted {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--stratify-muted);
+}
+
+/* Override overly black utility text where used on landing */
+.text-slate-950,
+.text-slate-900 {
+  color: #1e293b !important;
+}
+
+.font-black {
+  font-weight: 780 !important;
+}
+
+.font-extrabold {
+  font-weight: 740 !important;
+}
+
+/* Softer active nav, if your page uses bg-slate-950 */
+.bg-slate-950 {
+  background-color: #4f46e5 !important;
+}
+
+.hover\:text-slate-950:hover {
+  color: #3730a3 !important;
+}
+
+/* Fix transparent dropdown/readability issue globally */
+select,
+select option,
+select optgroup {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+select {
+  background: #ffffff !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid #dbe3ee !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08) !important;
+}
+
+/* For custom dropdowns / Radix / shadcn select menus */
+[data-radix-popper-content-wrapper] {
+  z-index: 9999 !important;
+}
+
+[role="listbox"],
+[cmdk-list],
+.SelectContent,
+.select-content {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid #dbe3ee !important;
+  box-shadow: 0 14px 35px rgba(15, 23, 42, 0.18) !important;
+}
+
+[role="option"],
+.SelectItem,
+.select-item {
+  background: #ffffff !important;
+  color: #0f172a !important;
+}
+
+[role="option"]:hover,
+[role="option"][data-highlighted],
+.SelectItem[data-highlighted],
+.select-item[data-highlighted] {
+  background: #eef4ff !important;
+  color: #1e293b !important;
+}
+@import "leaflet/dist/leaflet.css";
+
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+.leaflet-control-container {
+  font-family: inherit;
+}
+
+
+
+==============================
+FILE: app/api/imf/weo/country/route.ts
+==============================
+
+import { NextResponse } from "next/server";
+import supabase from "@/app/config/supabase-config";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type WeoRpcRow = {
+  year: number | string | null;
+  value: number | string | null;
+  vintage?: string | null;
+  country?: string | null;
+  iso3?: string | null;
+  indicator_code?: string | null;
+  indicator_label?: string | null;
+};
+
+function normalizePoints(rows: WeoRpcRow[] | null | undefined) {
+  return (rows || [])
+    .map((row) => ({
+      year: Number(row.year),
+      value: Number(row.value),
+    }))
+    .filter((row) => Number.isFinite(row.year) && Number.isFinite(row.value))
+    .sort((a, b) => a.year - b.year);
+}
+
+async function getLatestVintage(): Promise<string | null> {
+  const { data, error } = await supabase.rpc("weo_latest_vintage");
+
+  if (error) {
+    console.error("weo_latest_vintage failed:", error.message);
+    return null;
+  }
+
+  if (typeof data === "string") return data;
+
+  if (Array.isArray(data) && data.length > 0) {
+    const first = data[0] as {
+      weo_latest_vintage?: string;
+      vintage?: string;
+    };
+    return first.weo_latest_vintage || first.vintage || null;
+  }
+
+  if (data && typeof data === "object") {
+    const row = data as {
+      weo_latest_vintage?: string;
+      vintage?: string;
+    };
+    return row.weo_latest_vintage || row.vintage || null;
+  }
+
+  return null;
+}
+
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+
+    const iso3 = String(searchParams.get("iso3") || "")
+      .trim()
+      .toUpperCase();
+
+    const indicator = String(searchParams.get("indicator") || "")
+      .trim()
+      .toUpperCase();
+
+    let vintage = String(searchParams.get("vintage") || "").trim();
+
+    if (!iso3 || !indicator) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Missing iso3 or indicator",
+          points: [],
+        },
+        { status: 400 },
+      );
+    }
+
+    if (!vintage) {
+      const latestVintage = await getLatestVintage();
+      if (latestVintage) {
+        vintage = latestVintage;
+      }
+    }
+
+    if (!vintage) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Could not resolve WEO vintage",
+          points: [],
+        },
+        { status: 500 },
+      );
+    }
+
+    const { data, error } = await supabase.rpc("weo_country_series", {
+      p_iso3: iso3,
+      p_indicator: indicator,
+      p_vintage: vintage,
+    });
+
+    if (error) {
+      console.error("weo_country_series failed:", error.message);
+
+      return NextResponse.json(
+        {
+          ok: false,
+          error: error.message,
+          points: [],
+        },
+        { status: 500 },
+      );
+    }
+
+    const rows = (data || []) as WeoRpcRow[];
+    const points = normalizePoints(rows);
+
+    return NextResponse.json({
+      ok: true,
+      iso3,
+      country: rows[0]?.country || iso3,
+      indicator_code: rows[0]?.indicator_code || indicator,
+      indicator_label: rows[0]?.indicator_label || indicator,
+      vintage: rows[0]?.vintage || vintage,
+      points,
+      points_returned: points.length,
+    });
+  } catch (error) {
+    console.error("IMF WEO route failed:", error);
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+        points: [],
+      },
+      { status: 500 },
+    );
+  }
+}
+
+
+
+==============================
+FILE: app/api/imf/weo/meta/route.ts
+==============================
+
+import { NextResponse } from "next/server";
+import supabase from "@/app/config/supabase-config";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET() {
+  try {
+    const { data: indicators, error: indErr } = await supabase.rpc(
+      "weo_available_indicators",
+    );
+
+    if (indErr) return NextResponse.json({ ok: false, error: indErr.message });
+
+    const { data: vintages, error: vinErr } = await supabase.rpc(
+      "weo_available_vintages",
+    );
+
+    if (vinErr) return NextResponse.json({ ok: false, error: vinErr.message });
+
+    return NextResponse.json({
+      ok: true,
+      indicators: indicators ?? [],
+      vintages: vintages ?? [],
+    });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: e.message });
+  }
+}
+
+
+
+==============================
+FILE: app/world/country/[iso3]/_components/IMFWeoPanel.tsx
+==============================
+
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+
+type Point = {
+  year: number;
+  value: number;
+};
+
+type ApiResponse = {
+  ok?: boolean;
+  iso3?: string;
+  country?: string;
+  indicator?: string;
+  indicator_code?: string;
+  indicator_label?: string;
+  label?: string;
+  vintage?: string;
+  points?: Point[];
+  series?: Point[];
+  data?: Point[];
+  error?: string;
+};
+
+type Props = {
+  iso3: string;
+  initialIndicator?: string;
+};
+
+type IndicatorItem = {
+  code: string;
+  label: string;
+};
+
+const QUICK_PICKS: IndicatorItem[] = [
+  { code: "NGDP_RPCH", label: "GDP growth" },
+  { code: "NGDPD", label: "GDP, current prices" },
+  { code: "PCPIPCH", label: "Inflation" },
+  { code: "LUR", label: "Unemployment" },
+  { code: "BCA_NGDPD", label: "Current account balance" },
+  { code: "GGXONLB_NGDP", label: "Govt net lending/borrowing" },
+  { code: "LP", label: "Population" },
+  { code: "NGDPDPC", label: "GDP per capita" },
+];
+
+const IMF_INDICATORS: IndicatorItem[] = [
+  { code: "NGDP_RPCH", label: "GDP growth" },
+  { code: "NGDPD", label: "GDP, current prices" },
+  { code: "NGDP_R", label: "GDP, constant prices" },
+  { code: "NGDPDPC", label: "GDP per capita, current prices" },
+  { code: "PPPGDP", label: "GDP, PPP" },
+  { code: "PPPPC", label: "GDP per capita, PPP" },
+  { code: "LP", label: "Population" },
+  { code: "LUR", label: "Unemployment rate" },
+  { code: "LE", label: "Employment" },
+  { code: "PCPIPCH", label: "Inflation, average consumer prices" },
+  { code: "PCPIEPCH", label: "Inflation, end of period consumer prices" },
+  { code: "TM_RPCH", label: "Imports of goods and services, volume growth" },
+  { code: "TX_RPCH", label: "Exports of goods and services, volume growth" },
+  { code: "TMG_RPCH", label: "Imports of goods, volume growth" },
+  { code: "TXG_RPCH", label: "Exports of goods, volume growth" },
+  { code: "BCA", label: "Current account balance" },
+  { code: "BCA_NGDPD", label: "Current account balance, percent of GDP" },
+  { code: "GGX", label: "General government total expenditure" },
+  { code: "GGR", label: "General government revenue" },
+  { code: "GGXCNL", label: "Net lending/borrowing" },
+  { code: "GGXONLB", label: "Overall net lending/borrowing" },
+  {
+    code: "GGXONLB_NGDP",
+    label: "Overall net lending/borrowing, percent of GDP",
+  },
+  { code: "GGXWDN", label: "Gross debt" },
+  { code: "GGXWDN_NGDP", label: "Gross debt, percent of GDP" },
+  { code: "GGXWDG", label: "Net debt" },
+  { code: "GGXWDG_NGDP", label: "Net debt, percent of GDP" },
+  { code: "NGSD_NGDP", label: "National savings, percent of GDP" },
+  { code: "NID_NGDP", label: "Investment, percent of GDP" },
+  { code: "LUR_PT", label: "Unemployment rate, percent" },
+  { code: "PPPEX", label: "PPP exchange rate" },
+  { code: "NGDP_FY", label: "Fiscal year GDP" },
+  {
+    code: "PCPIFBT",
+    label: "Inflation, average consumer prices excl. food and energy",
+  },
+  { code: "PCPI", label: "Consumer prices index" },
+  { code: "GGR_NGDP", label: "Revenue, percent of GDP" },
+  { code: "GGX_NGDP", label: "Expenditure, percent of GDP" },
+  { code: "GGXCNL_NGDP", label: "Net lending/borrowing, percent of GDP" },
+  { code: "TXG_FOB_USD", label: "Exports of goods, USD" },
+  { code: "TMG_CIF_USD", label: "Imports of goods, USD" },
+  { code: "TXGSBOP", label: "Exports of goods and services, BOP" },
+  { code: "TMGSBOP", label: "Imports of goods and services, BOP" },
+  { code: "TXG", label: "Exports of goods" },
+  { code: "TMG", label: "Imports of goods" },
+  { code: "GGCB", label: "Government cash balance" },
+  { code: "GGSB", label: "Government structural balance" },
+  { code: "NGDPRPPPPC", label: "Real GDP per capita, PPP" },
+  { code: "PPPSH", label: "Share of world GDP at PPP" },
+  { code: "NGDPDUS", label: "GDP, current prices, USD" },
+  { code: "LNNGDP", label: "Nominal GDP level" },
+];
+
+function normalizePoints(payload: ApiResponse): Point[] {
+  const raw = payload.points || payload.series || payload.data || [];
+  return raw
+    .map((d: any) => ({
+      year: Number(d.year),
+      value: Number(d.value),
+    }))
+    .filter((d) => Number.isFinite(d.year) && Number.isFinite(d.value))
+    .sort((a, b) => a.year - b.year);
+}
+
+function formatNumber(value: number) {
+  if (!Number.isFinite(value)) return "â€”";
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function getIndicatorLabel(code: string) {
+  return IMF_INDICATORS.find((x) => x.code === code)?.label || code;
+}
+
+export default function IMFWeoPanel({ iso3, initialIndicator }: Props) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const dataset = searchParams.get("dataset") || "weo";
+  const rawIndicator = searchParams.get("indicator") || initialIndicator || "";
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [payload, setPayload] = useState<ApiResponse | null>(null);
+  const [points, setPoints] = useState<Point[]>([]);
+  const [error, setError] = useState("");
+
+  const selectedIndicator = useMemo(() => {
+    const code = String(rawIndicator || "")
+      .trim()
+      .toUpperCase();
+    return IMF_INDICATORS.some((x) => x.code === code) ? code : "NGDPD";
+  }, [rawIndicator]);
+
+  const filteredIndicators = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return IMF_INDICATORS;
+    return IMF_INDICATORS.filter(
+      (x) =>
+        x.code.toLowerCase().includes(q) || x.label.toLowerCase().includes(q),
+    );
+  }, [query]);
+
+  useEffect(() => {
+    if (dataset !== "weo") return;
+
+    const current = String(rawIndicator || "")
+      .trim()
+      .toUpperCase();
+
+    if (!current || !IMF_INDICATORS.some((x) => x.code === current)) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("dataset", "weo");
+      params.set("indicator", "NGDPD");
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    }
+  }, [dataset, rawIndicator, pathname, router, searchParams]);
+
+  useEffect(() => {
+    if (dataset !== "weo") return;
+    if (!iso3 || !selectedIndicator) return;
+
+    let active = true;
+
+    async function load() {
+      try {
+        setLoading(true);
+        setError("");
+
+        const res = await fetch(
+          `/api/imf/weo/country?iso3=${encodeURIComponent(
+            iso3,
+          )}&indicator=${encodeURIComponent(selectedIndicator)}`,
+          { cache: "no-store" },
+        );
+
+        const json: ApiResponse = await res.json();
+
+        if (!active) return;
+
+        const normalized = normalizePoints(json);
+
+        setPayload(json);
+        setPoints(normalized);
+
+        if (!res.ok) {
+          setError(json.error || "Failed to load WEO series.");
+          return;
+        }
+
+        if (!normalized.length) {
+          setError("No WEO data found for this country/indicator.");
+        }
+      } catch (err) {
+        if (!active) return;
+        setError("Failed to load WEO data.");
+        setPayload(null);
+        setPoints([]);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    load();
+
+    return () => {
+      active = false;
+    };
+  }, [dataset, iso3, selectedIndicator]);
+
+  function updateIndicator(code: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("dataset", "weo");
+    params.set("indicator", code);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
+  const latest = points.length ? points[points.length - 1].value : NaN;
+  const minVal = points.length ? Math.min(...points.map((p) => p.value)) : NaN;
+  const maxVal = points.length ? Math.max(...points.map((p) => p.value)) : NaN;
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+      <aside className="rounded-[32px] border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-6 py-7">
+          <div className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">
+            Control Panel
+          </div>
+          <h2 className="mt-3 text-2xl font-bold text-slate-900">Indicators</h2>
+          <p className="mt-2 text-[15px] text-slate-500">
+            Search, select and jump between IMF WEO indicators.
+          </p>
+        </div>
+
+        <div className="space-y-6 px-6 py-6">
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Indicator search
+            </label>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search code / name..."
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:bg-white"
+            />
+          </div>
+
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Active indicator
+            </div>
+            <div className="mt-3 text-[15px] font-semibold text-slate-900">
+              {getIndicatorLabel(selectedIndicator)}
+            </div>
+            <div className="mt-1 text-sm text-slate-500">
+              {selectedIndicator}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">
+                Quick picks
+              </h3>
+              <span className="text-sm text-slate-500">
+                {QUICK_PICKS.length} items
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {QUICK_PICKS.map((item) => {
+                const active = item.code === selectedIndicator;
+                return (
+                  <button
+                    key={item.code}
+                    onClick={() => updateIndicator(item.code)}
+                    className={`w-full rounded-3xl border px-4 py-4 text-left transition ${
+                      active
+                        ? "border-slate-950 bg-slate-950 text-white shadow-sm"
+                        : "border-slate-200 bg-white text-slate-900 hover:border-indigo-300 hover:bg-indigo-50"
+                    }`}
+                  >
+                    <div className="font-semibold">{item.label}</div>
+                    <div
+                      className={`mt-1 text-sm ${
+                        active ? "text-slate-300" : "text-slate-500"
+                      }`}
+                    >
+                      {item.code}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">
+                All IMF indicators
+              </h3>
+              <span className="text-sm text-slate-500">
+                {filteredIndicators.length} items
+              </span>
+            </div>
+
+            <div className="max-h-[520px] space-y-2 overflow-y-auto pr-2">
+              {filteredIndicators.map((item) => {
+                const active = item.code === selectedIndicator;
+                return (
+                  <button
+                    key={item.code}
+                    onClick={() => updateIndicator(item.code)}
+                    className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
+                      active
+                        ? "border-indigo-600 bg-indigo-600 text-white"
+                        : "border-slate-200 bg-white text-slate-900 hover:border-indigo-300 hover:bg-indigo-50"
+                    }`}
+                  >
+                    <div className="font-medium">{item.label}</div>
+                    <div
+                      className={`mt-1 text-xs ${
+                        active ? "text-indigo-100" : "text-slate-500"
+                      }`}
+                    >
+                      {item.code}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <section className="space-y-6">
+        <div className="rounded-[32px] border border-slate-200 bg-white p-7 shadow-sm">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            IMF â€” World Economic Outlook (WEO)
+          </h1>
+          <div className="mt-2 text-lg text-slate-500">{selectedIndicator}</div>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            {QUICK_PICKS.map((item) => {
+              const active = item.code === selectedIndicator;
+              return (
+                <button
+                  key={item.code}
+                  onClick={() => updateIndicator(item.code)}
+                  className={`rounded-full border px-5 py-2.5 text-sm font-semibold transition ${
+                    active
+                      ? "border-slate-950 bg-slate-950 text-white"
+                      : "border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="rounded-[32px] border border-slate-200 bg-white p-10 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
+              <div className="text-lg font-semibold text-slate-700">
+                Loading WEO data...
+              </div>
+            </div>
+          </div>
+        ) : error && !points.length ? (
+          <div className="rounded-[32px] border border-amber-200 bg-amber-50 p-8 shadow-sm">
+            <div className="text-lg font-semibold text-amber-900">{error}</div>
+            <p className="mt-2 text-sm text-amber-700">
+              Try another IMF indicator from Quick picks or the full list.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-5 md:grid-cols-3">
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="text-sm text-slate-500">Latest</div>
+                <div className="mt-3 text-5xl font-bold tracking-tight text-slate-950">
+                  {formatNumber(latest)}
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="text-sm text-slate-500">Range (min)</div>
+                <div className="mt-3 text-5xl font-bold tracking-tight text-slate-950">
+                  {formatNumber(minVal)}
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="text-sm text-slate-500">Range (max)</div>
+                <div className="mt-3 text-5xl font-bold tracking-tight text-slate-950">
+                  {formatNumber(maxVal)}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-950">
+                    {payload?.indicator_label ||
+                      payload?.label ||
+                      getIndicatorLabel(selectedIndicator)}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {payload?.country || iso3} â€¢ {selectedIndicator} â€¢{" "}
+                    {payload?.vintage || "Latest WEO vintage"}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 px-4 py-2 text-sm text-slate-600">
+                  {points.length} returned points
+                </div>
+              </div>
+
+              <div className="h-[380px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={points}
+                    margin={{ top: 10, right: 16, left: 6, bottom: 6 }}
+                  >
+                    <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="year"
+                      tick={{ fill: "#475569", fontSize: 12 }}
+                      stroke="#CBD5E1"
+                    />
+                    <YAxis
+                      tick={{ fill: "#475569", fontSize: 12 }}
+                      stroke="#CBD5E1"
+                      tickFormatter={(v) => formatNumber(Number(v))}
+                    />
+                    <Tooltip
+                      formatter={(value: number) => [
+                        formatNumber(Number(value)),
+                        "Value",
+                      ]}
+                      labelFormatter={(label) => `Year: ${label}`}
+                      contentStyle={{
+                        borderRadius: 16,
+                        border: "1px solid #E2E8F0",
+                        background: "#FFFFFF",
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#4F46E5"
+                      strokeWidth={3}
+                      dot={false}
+                      activeDot={{ r: 5 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-2xl font-bold text-slate-950">
+                Diagnostic summary
+              </h3>
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="text-sm text-slate-500">ISO3</div>
+                  <div className="mt-1 font-semibold text-slate-900">
+                    {iso3}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="text-sm text-slate-500">Indicator code</div>
+                  <div className="mt-1 font-semibold text-slate-900">
+                    {selectedIndicator}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="text-sm text-slate-500">Country</div>
+                  <div className="mt-1 font-semibold text-slate-900">
+                    {payload?.country || iso3}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="text-sm text-slate-500">Vintage</div>
+                  <div className="mt-1 font-semibold text-slate-900">
+                    {payload?.vintage || "Latest"}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-2xl font-bold text-slate-950">
+                Returned points
+              </h3>
+              <div className="mt-5 overflow-hidden rounded-3xl border border-slate-200">
+                <div className="grid grid-cols-2 bg-slate-50 px-5 py-4 text-sm font-semibold text-slate-600">
+                  <div>Year</div>
+                  <div>Value</div>
+                </div>
+                <div className="max-h-[420px] overflow-y-auto">
+                  {points.map((p) => (
+                    <div
+                      key={p.year}
+                      className="grid grid-cols-2 border-t border-slate-100 px-5 py-4 text-slate-800"
+                    >
+                      <div>{p.year}</div>
+                      <div>{formatNumber(p.value)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
+
+
+
+==============================
+FILE: app/world/components/WeoTab.tsx
+==============================
+
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+} from "recharts";
+
+type Point = {
+  year: number;
+  value: number;
+};
+
+type WeoResponse = {
+  ok?: boolean;
+  iso3?: string;
+  country?: string;
+  indicator_code?: string;
+  indicator_label?: string;
+  vintage?: string | null;
+  unit?: string | null;
+  unit_label?: string | null;
+  uom?: string | null;
+  scale?: string | null;
+  points?: Array<{
+    year: number | string;
+    value: number | string;
+  }>;
+  points_returned?: number;
+  error?: string;
+};
+
+type Props = {
+  iso3: string;
+  initialIndicator: string;
+};
+
+type PointWithYoY = Point & {
+  yoy: number | null;
+};
+
+function fmt(value: number) {
+  if (!Number.isFinite(value)) return "â€”";
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function fmtYoY(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "â€”";
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${fmt(value)}`;
+}
+
+function getIndicatorUnit(indicator?: string | null): {
+  short: string;
+  long: string;
+} {
+  const code = (indicator || "").toUpperCase().trim();
+
+  // Inflation / prices
+  if (code === "PCPIPCH") {
+    return { short: "%", long: "Annual percent change" };
+  }
+
+  // GDP current prices
+  if (code === "NGDPD") {
+    return { short: "US$ bn", long: "US dollars (billions)" };
+  }
+
+  // GDP per capita, current prices
+  if (code === "NGDPDPC") {
+    return { short: "US$", long: "US dollars per capita" };
+  }
+
+  // GDP constant prices
+  if (code === "NGDP_R" || code === "NGDPR") {
+    return { short: "National currency", long: "Constant prices" };
+  }
+
+  // GDP growth
+  if (code === "NGDP_RPCH") {
+    return { short: "%", long: "Annual percent change" };
+  }
+
+  // GDP PPP
+  if (code === "PPPGDP") {
+    return { short: "PPP$", long: "Purchasing power parity dollars" };
+  }
+
+  // GDP per capita PPP
+  if (code === "NGDPRPPPPC" || code === "PPPPC") {
+    return { short: "PPP$", long: "PPP dollars per capita" };
+  }
+
+  // Current account
+  if (code === "BCA_NGDPD" || code === "BCA_NGDP") {
+    return { short: "% of GDP", long: "Percent of GDP" };
+  }
+  if (code === "BCA") {
+    return { short: "US$ bn", long: "US dollars (billions)" };
+  }
+
+  // Fiscal
+  if (
+    code === "GGXONLB_NGDP" ||
+    code === "GGXCNL_NGDP" ||
+    code === "NGSD_NGDP" ||
+    code === "NID_NGDP"
+  ) {
+    return { short: "% of GDP", long: "Percent of GDP" };
+  }
+
+  if (code === "GGXONLB" || code === "GGXCNL") {
+    return { short: "National currency", long: "National currency" };
+  }
+
+  // Common rule-based fallbacks
+  if (code.endsWith("_NGDP") || code.endsWith("_NGDPD")) {
+    return { short: "% of GDP", long: "Percent of GDP" };
+  }
+
+  if (code.endsWith("DPC")) {
+    return { short: "US$", long: "US dollars per capita" };
+  }
+
+  if (code.endsWith("RPCH") || code.endsWith("PCH")) {
+    return { short: "%", long: "Annual percent change" };
+  }
+
+  if (code.includes("GDP") && !code.includes("NGDP")) {
+    return { short: "US$", long: "US dollars" };
+  }
+
+  return { short: "", long: "" };
+}
+
+export default function WeoTab({ iso3, initialIndicator }: Props) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [payload, setPayload] = useState<WeoResponse | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function load() {
+      try {
+        setLoading(true);
+        setError("");
+        setPayload(null);
+
+        const res = await fetch(
+          `/api/imf/weo/country?iso3=${encodeURIComponent(
+            iso3,
+          )}&indicator=${encodeURIComponent(initialIndicator)}`,
+          { cache: "no-store" },
+        );
+
+        const json: WeoResponse = await res.json();
+
+        if (!alive) return;
+
+        if (!res.ok || json.ok === false) {
+          setPayload(json);
+          setError(json.error || "Failed to load WEO data");
+          return;
+        }
+
+        setPayload(json);
+      } catch (e) {
+        if (!alive) return;
+        setError(e instanceof Error ? e.message : "Failed to load WEO data");
+        setPayload(null);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+
+    if (iso3 && initialIndicator) {
+      load();
+    }
+
+    return () => {
+      alive = false;
+    };
+  }, [iso3, initialIndicator]);
+
+  const points = useMemo<Point[]>(() => {
+    return (payload?.points || [])
+      .map((p) => ({
+        year: Number(p.year),
+        value: Number(p.value),
+      }))
+      .filter((p) => Number.isFinite(p.year) && Number.isFinite(p.value))
+      .sort((a, b) => a.year - b.year);
+  }, [payload]);
+
+  const pointsWithYoY = useMemo<PointWithYoY[]>(() => {
+    return points.map((point, index) => {
+      if (index === 0) return { ...point, yoy: null };
+      const prev = points[index - 1];
+      return {
+        ...point,
+        yoy: point.value - prev.value,
+      };
+    });
+  }, [points]);
+
+  const latest = points.length ? points[points.length - 1].value : NaN;
+  const minVal = points.length ? Math.min(...points.map((p) => p.value)) : NaN;
+  const maxVal = points.length ? Math.max(...points.map((p) => p.value)) : NaN;
+
+  const unitMeta = useMemo(() => {
+    return getIndicatorUnit(payload?.indicator_code || initialIndicator);
+  }, [payload, initialIndicator]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[360px] items-center justify-center">
+        <div className="flex min-w-[240px] flex-col items-center rounded-3xl border border-slate-200 bg-white px-7 py-7 shadow-sm">
+          <div className="mb-4 h-10 w-10 animate-spin rounded-full border-[3px] border-slate-200 border-t-slate-900" />
+          <div className="text-sm font-semibold text-slate-900">
+            Loading IMF WEO...
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            Please wait while data is being fetched
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-[24px] border border-red-200 bg-red-50 p-6">
+        <div className="text-lg font-semibold text-red-700">
+          Failed to load WEO data
+        </div>
+        <div className="mt-2 text-sm text-red-600">{error}</div>
+      </div>
+    );
+  }
+
+  if (!points.length) {
+    return (
+      <div className="rounded-[24px] border border-slate-200 bg-white p-6">
+        <div className="text-base text-slate-700">
+          No WEO data found for this country/indicator.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-[26px] font-bold tracking-tight text-slate-900">
+          IMF â€” World Economic Outlook (WEO)
+        </h2>
+
+        <div className="mt-1.5 text-base text-slate-500">
+          {payload?.indicator_label ||
+            payload?.indicator_code ||
+            initialIndicator}
+        </div>
+
+        <div className="mt-1.5 text-xs text-slate-500">
+          {payload?.country || iso3} â€¢ {payload?.vintage || "Latest vintage"}
+          {unitMeta.long ? ` â€¢ Unit: ${unitMeta.long}` : ""}
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-xs text-slate-500">Latest</div>
+          <div className="mt-2 text-[40px] font-bold tracking-tight text-slate-950">
+            {fmt(latest)}
+          </div>
+          {unitMeta.short ? (
+            <div className="mt-2 text-xs font-medium text-slate-500">
+              {unitMeta.short}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-xs text-slate-500">Range (min)</div>
+          <div className="mt-2 text-[40px] font-bold tracking-tight text-slate-950">
+            {fmt(minVal)}
+          </div>
+          {unitMeta.short ? (
+            <div className="mt-2 text-xs font-medium text-slate-500">
+              {unitMeta.short}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-xs text-slate-500">Range (max)</div>
+          <div className="mt-2 text-[40px] font-bold tracking-tight text-slate-950">
+            {fmt(maxVal)}
+          </div>
+          {unitMeta.short ? (
+            <div className="mt-2 text-xs font-medium text-slate-500">
+              {unitMeta.short}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(420px,0.95fr)]">
+        <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3">
+            <h3 className="text-[20px] font-bold text-slate-900">
+              Series trend
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              {points.length} returned points
+            </p>
+          </div>
+
+          <div className="rounded-[24px] border border-slate-100 bg-slate-50/60 p-3">
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={points}
+                  margin={{ top: 10, right: 14, left: 2, bottom: 4 }}
+                >
+                  <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="year"
+                    stroke="#CBD5E1"
+                    tick={{ fill: "#475569", fontSize: 10 }}
+                    minTickGap={18}
+                  />
+                  <YAxis
+                    stroke="#CBD5E1"
+                    tick={{ fill: "#475569", fontSize: 10 }}
+                    width={56}
+                    tickFormatter={(v) => fmt(Number(v))}
+                  />
+                  <Tooltip
+                    formatter={(value: number) => [
+                      unitMeta.short
+                        ? `${fmt(Number(value))} ${unitMeta.short}`
+                        : fmt(Number(value)),
+                      "Value",
+                    ]}
+                    labelFormatter={(label) => `Year: ${label}`}
+                    contentStyle={{
+                      borderRadius: 14,
+                      border: "1px solid #E2E8F0",
+                      background: "#FFFFFF",
+                      boxShadow: "0 10px 30px rgba(15,23,42,0.08)",
+                      fontSize: "12px",
+                    }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="value"
+                    stroke="#4F46E5"
+                    strokeWidth={2.5}
+                    dot={false}
+                    activeDot={{ r: 4, strokeWidth: 0 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3">
+            <h3 className="text-[20px] font-bold text-slate-900">
+              Returned points
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Value and annual absolute change
+            </p>
+          </div>
+
+          <div className="overflow-hidden rounded-[24px] border border-slate-200">
+            <div className="grid grid-cols-[72px_1fr_1fr] bg-slate-50 px-4 py-3 text-xs font-semibold text-slate-600">
+              <div>Year</div>
+              <div className="text-right">Value</div>
+              <div className="text-right">YoY change</div>
+            </div>
+
+            <div className="max-h-[300px] overflow-y-auto">
+              {pointsWithYoY.map((point) => (
+                <div
+                  key={point.year}
+                  className="grid grid-cols-[72px_1fr_1fr] border-t border-slate-100 px-4 py-3 text-[13px] text-slate-800"
+                >
+                  <div className="font-medium">{point.year}</div>
+
+                  <div className="text-right tabular-nums">
+                    {fmt(point.value)}
+                  </div>
+
+                  <div
+                    className={`text-right tabular-nums font-medium ${
+                      point.yoy === null
+                        ? "text-slate-400"
+                        : point.yoy > 0
+                          ? "text-emerald-600"
+                          : point.yoy < 0
+                            ? "text-rose-600"
+                            : "text-slate-600"
+                    }`}
+                  >
+                    {fmtYoY(point.yoy)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+==============================
+FILE: package.json
+==============================
+
+{
+  "name": "stratify",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build --turbopack",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-scroll-area": "^1.2.10",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-separator": "^1.1.8",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@supabase/supabase-js": "^2.57.4",
+    "@tanstack/react-query": "^5.89.0",
+    "@vnedyalk0v/react19-simple-maps": "^1.2.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "d3-interpolate": "^3.0.1",
+    "d3-scale": "^4.0.2",
+    "d3-scale-chromatic": "^3.1.0",
+    "i18n-iso-countries": "^7.14.0",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.544.0",
+    "mapbox-gl": "^3.21.0",
+    "maplibre-gl": "^5.7.2",
+    "next": "^16.1.4",
+    "pg": "^8.17.2",
+    "radix-ui": "^1.4.3",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-leaflet": "^5.0.0",
+    "react-map-gl": "^8.1.0",
+    "recharts": "^3.2.1",
+    "tailwind-merge": "^3.4.0",
+    "world-countries": "^5.1.0",
+    "zod": "^4.1.9"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/leaflet": "^1.9.21",
+    "@types/mapbox-gl": "^3.4.1",
+    "@types/node": "^20",
+    "@types/pg": "^8.16.0",
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.66",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.7",
+    "mapshaper": "^0.6.113",
+    "tailwindcss": "^4",
+    "tw-animate-css": "^1.3.8",
+    "typescript": "^5"
+  }
+}
+

@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { label: "Energy", href: "/energy" },
   { label: "FAO", href: "/faostat" },
   { label: "Fiscal", href: "/fiscal" },
+  { label: "IMF (WEO)", href: "/imf-weo" },
   { label: "Corporate 500", href: "/corporate-intelligence" },
   { label: "Credits", href: "/credits" },
 ];
@@ -21,6 +22,14 @@ function isActivePath(pathname: string, href: string) {
       pathname === "/faostat" ||
       pathname.includes("dataset=faostat") ||
       pathname.includes("dataset=fao")
+    );
+  }
+
+  if (href === "/imf-weo") {
+    return (
+      pathname === "/imf-weo" ||
+      pathname.startsWith("/imf-weo/") ||
+      pathname.includes("dataset=weo")
     );
   }
 
@@ -57,7 +66,7 @@ export default function TopNav() {
                 key={item.href}
                 href={item.href}
                 className={[
-                  "rounded-full px-4 py-2 text-sm font-bold transition-all",
+                  "rounded-full px-3.5 py-2 text-sm font-bold transition-all xl:px-4",
                   active
                     ? "bg-gradient-to-r from-violet-600 to-blue-600 text-white shadow-md shadow-violet-200"
                     : "text-slate-600 hover:bg-white hover:text-slate-950 hover:shadow-sm",
@@ -89,6 +98,13 @@ export default function TopNav() {
             className="rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700"
           >
             Fiscal
+          </Link>
+
+          <Link
+            href="/imf-weo"
+            className="rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700"
+          >
+            IMF
           </Link>
         </div>
       </div>
