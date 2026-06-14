@@ -21,7 +21,7 @@ const MapContainer = dynamic(
     ssr: false,
     loading: () => (
       <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">
-        Loading Leaflet map...
+        Loading map...
       </div>
     ),
   },
@@ -1083,10 +1083,9 @@ export default function IMFWeoDashboardPage() {
                 WEO country intelligence dashboard
               </h1>
               <p className="mt-2 max-w-3xl text-sm font-medium text-slate-500">
-                Countries are shown as Leaflet proportional points. Point size
-                is scaled by the latest available value of the selected IMF
-                indicator. The time-series chart loads only after a country is
-                selected.
+                Countries are shown on the map with point size scaled by the
+                latest available value of the selected IMF indicator. The
+                time-series chart loads only after a country is selected.
               </p>
               <div className="mt-3 inline-flex max-w-3xl flex-wrap items-center gap-2 rounded-2xl border border-violet-100 bg-violet-50 px-4 py-2 text-sm font-semibold text-slate-700">
                 <span className="text-violet-700">Current indicator:</span>
@@ -1219,7 +1218,7 @@ export default function IMFWeoDashboardPage() {
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-2xl font-black tracking-tight text-slate-950">
-                  Leaflet proportional point map
+                  Map
                 </h2>
                 <p className="mt-1 text-sm font-medium text-slate-500">
                   Point size is scaled by the latest available value of{" "}
