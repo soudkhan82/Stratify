@@ -21,9 +21,11 @@ export default function CorporateDirectoryTable({ rows, onSelect }: Props) {
             Corporate Directory
           </h2>
           <p className="text-xs text-slate-500">
-            Basic company profile data from the GitHub S&amp;P 500 dataset.
+            S&amp;P 500 company profile data. Click any row to view live Finnhub
+            market data.
           </p>
         </div>
+
         <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
           {rows.length} shown
         </div>
@@ -40,7 +42,6 @@ export default function CorporateDirectoryTable({ rows, onSelect }: Props) {
               <th className="px-4 py-3 font-semibold">Country</th>
               <th className="px-4 py-3 font-semibold">Headquarters</th>
               <th className="px-4 py-3 font-semibold">Exchange</th>
-              <th className="px-4 py-3 font-semibold">Source</th>
             </tr>
           </thead>
 
@@ -54,34 +55,35 @@ export default function CorporateDirectoryTable({ rows, onSelect }: Props) {
                 <td className="px-4 py-3 font-semibold text-indigo-700">
                   {clean(row.symbol)}
                 </td>
+
                 <td className="px-4 py-3">
-                  <div className="max-w-[240px] truncate font-medium text-slate-900">
+                  <div className="max-w-[260px] truncate font-semibold text-slate-900">
                     {clean(row.company_name)}
                   </div>
                 </td>
+
                 <td className="px-4 py-3 text-slate-700">
                   {clean(row.sector)}
                 </td>
+
                 <td className="px-4 py-3 text-slate-600">
-                  <div className="max-w-[260px] truncate">
+                  <div className="max-w-[280px] truncate">
                     {clean(row.industry)}
                   </div>
                 </td>
+
                 <td className="px-4 py-3 text-slate-700">
-                  {clean(row.country)}
+                  <div className="max-w-[160px]">{clean(row.country)}</div>
                 </td>
+
                 <td className="px-4 py-3 text-slate-600">
-                  <div className="max-w-[280px] truncate">
+                  <div className="max-w-[300px] truncate">
                     {clean(row.headquarters)}
                   </div>
                 </td>
+
                 <td className="px-4 py-3 text-slate-700">
                   {clean(row.exchange)}
-                </td>
-                <td className="px-4 py-3">
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                    {clean(row.source)}
-                  </span>
                 </td>
               </tr>
             ))}
@@ -89,7 +91,7 @@ export default function CorporateDirectoryTable({ rows, onSelect }: Props) {
             {rows.length === 0 && (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={7}
                   className="px-4 py-10 text-center text-sm text-slate-500"
                 >
                   No companies found for the selected search/filter.

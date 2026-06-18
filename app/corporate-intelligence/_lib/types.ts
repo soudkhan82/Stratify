@@ -1,4 +1,5 @@
 export type CorporateProfile = {
+  id?: number;
   symbol: string;
   company_name: string;
   sector: string | null;
@@ -17,6 +18,27 @@ export type CorporateProfile = {
   website?: string | null;
   employees?: number | string | null;
   business_summary?: string | null;
+
+  // Enriched stock quote fields from v_ci_corporate_directory_enriched
+  price?: number | string | null;
+  change?: number | string | null;
+  change_percent?: number | string | null;
+  volume?: number | string | null;
+  avg_volume?: number | string | null;
+  live_market_cap?: number | string | null;
+  day_low?: number | string | null;
+  day_high?: number | string | null;
+  year_low?: number | string | null;
+  year_high?: number | string | null;
+  pe?: number | string | null;
+  eps?: number | string | null;
+  quote_time?: string | null;
+  quote_source?: string | null;
+  quote_updated_at?: string | null;
+
+  market_cap?: number | string | null;
+  market_value?: number | string | null;
+  market_value_usd?: number | string | null;
 };
 
 export type CorporateDirectorySummary = {

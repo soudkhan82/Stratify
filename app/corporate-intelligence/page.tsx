@@ -27,6 +27,22 @@ type CorporateProfileExtended = CorporateProfile & {
   market_cap?: number | string | null;
   market_value?: number | string | null;
   market_value_usd?: number | string | null;
+  live_market_cap?: number | string | null;
+
+  price?: number | string | null;
+  change?: number | string | null;
+  change_percent?: number | string | null;
+  volume?: number | string | null;
+  avg_volume?: number | string | null;
+  day_low?: number | string | null;
+  day_high?: number | string | null;
+  year_low?: number | string | null;
+  year_high?: number | string | null;
+  pe?: number | string | null;
+  eps?: number | string | null;
+  quote_time?: string | null;
+  quote_source?: string | null;
+  quote_updated_at?: string | null;
 };
 
 type MapPoint = {
@@ -201,7 +217,7 @@ const STATE_CENTROIDS: Record<string, [number, number]> = {
 };
 
 function safeText(value: unknown) {
-  if (value === null || value === undefined || value === "") return "â€”";
+  if (value === null || value === undefined || value === "") return "—";
   return String(value);
 }
 
@@ -216,6 +232,7 @@ function getMarketValue(row: CorporateProfile): number | string | null {
   const extended = row as CorporateProfileExtended;
 
   return (
+    extended.live_market_cap ??
     extended.market_cap ??
     extended.market_value_usd ??
     extended.market_value ??
@@ -337,7 +354,7 @@ function normalizeCountry(row: CorporateProfile): string {
   if (rawLower === "canada") return "Canada";
   if (rawLower === "bermuda") return "Bermuda";
   if (rawLower === "cayman islands") return "Cayman Islands";
-  if (rawLower === "curacao") return "CuraÃ§ao";
+  if (rawLower === "curacao") return "Curaçao";
   if (rawLower === "israel") return "Israel";
 
   return raw || "United States";
@@ -668,6 +685,323 @@ function Info({ label, value }: { label: string; value: unknown }) {
   );
 }
 
+function toNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+
+  const parsed =
+    typeof value === "number"
+      ? value
+      : Number(String(value).replace(/[^0-9.-]/g, ""));
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatMoney(value: unknown) {
+  const num = toNullableNumber(value);
+  if (num === null) return "N/A";
+
+  return `$${num.toFixed(2)}`;
+}
+
+function formatCompactNumber(value: unknown, prefix = "") {
+  const num = toNullableNumber(value);
+  if (num === null) return "N/A";
+
+  const abs = Math.abs(num);
+
+  if (abs >= 1_000_000_000_000) {
+    return `${prefix}${(num / 1_000_000_000_000).toFixed(2)}T`;
+  }
+
+  if (abs >= 1_000_000_000) {
+    return `${prefix}${(num / 1_000_000_000).toFixed(2)}B`;
+  }
+
+  if (abs >= 1_000_000) {
+    return `${prefix}${(num / 1_000_000).toFixed(2)}M`;
+  }
+
+  return `${prefix}${num.toLocaleString()}`;
+}
+
+function formatDecimal(value: unknown, digits = 2) {
+  const num = toNullableNumber(value);
+  if (num === null) return "N/A";
+
+  return num.toLocaleString("en-US", {
+    maximumFractionDigits: digits,
+  });
+}
+
+function formatChangePercent(value: unknown) {
+  const num = toNullableNumber(value);
+  if (num === null) return "N/A";
+
+  return `${num >= 0 ? "+" : ""}${num.toFixed(2)}%`;
+}
+
+function formatQuoteDate(value: unknown) {
+  if (!value) return "N/A";
+
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return "N/A";
+
+  return date.toLocaleString();
+}
+
+function MarketInfo({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  tone?: "default" | "green" | "red" | "indigo";
+}) {
+  const toneClass =
+    tone === "green"
+      ? "text-emerald-700"
+      : tone === "red"
+        ? "text-red-700"
+        : tone === "indigo"
+          ? "text-indigo-700"
+          : "text-slate-950";
+
+  return (
+    <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+      <p className={`mt-1 text-sm font-black ${toneClass}`}>{value}</p>
+    </div>
+  );
+}
+
+function CorporateMarketSnapshot({
+  company,
+}: {
+  company: CorporateProfileExtended;
+}) {
+  const symbol = useMemo(
+    () =>
+      String(company.symbol || "")
+        .trim()
+        .toUpperCase(),
+    [company.symbol],
+  );
+
+  const [liveQuote, setLiveQuote] =
+    useState<Partial<CorporateProfileExtended> | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+
+  const hasLocalMarketData =
+    toNullableNumber(company.price) !== null ||
+    toNullableNumber(company.change) !== null ||
+    toNullableNumber(company.change_percent) !== null ||
+    toNullableNumber(company.live_market_cap) !== null ||
+    toNullableNumber(company.volume) !== null;
+
+  useEffect(() => {
+    if (!symbol) return;
+
+    if (hasLocalMarketData) {
+      setLiveQuote(null);
+      setQuoteError(null);
+      setQuoteLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadLiveQuote() {
+      try {
+        setQuoteLoading(true);
+        setQuoteError(null);
+
+        const cacheKey = `stratify_finnhub_quote_${symbol}`;
+
+        try {
+          const cached = sessionStorage.getItem(cacheKey);
+
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            const ageMs = Date.now() - Number(parsed?.ts || 0);
+
+            if (parsed?.quote && ageMs < 5 * 60 * 1000) {
+              if (!cancelled) {
+                setLiveQuote(parsed.quote);
+                setQuoteLoading(false);
+              }
+              return;
+            }
+          }
+        } catch {
+          // Ignore broken browser cache and fetch fresh data.
+        }
+
+        const res = await fetch(
+          `/api/corporate-intelligence/quote?ticker=${encodeURIComponent(symbol)}`,
+        );
+
+        const json = await res.json();
+
+        if (!res.ok || !json.ok) {
+          throw new Error(json?.error || "Quote not available from Finnhub.");
+        }
+
+        if (!cancelled) {
+          setLiveQuote(json.quote);
+
+          try {
+            sessionStorage.setItem(
+              cacheKey,
+              JSON.stringify({
+                ts: Date.now(),
+                quote: json.quote,
+              }),
+            );
+          } catch {
+            // Ignore storage quota/browser privacy issues.
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLiveQuote(null);
+          setQuoteError(
+            error instanceof Error
+              ? error.message
+              : "Quote not available from Finnhub.",
+          );
+        }
+      } finally {
+        if (!cancelled) setQuoteLoading(false);
+      }
+    }
+
+    loadLiveQuote();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol, hasLocalMarketData]);
+
+  const quote = (
+    hasLocalMarketData ? company : liveQuote
+  ) as Partial<CorporateProfileExtended> | null;
+
+  const price = toNullableNumber(quote?.price);
+  const change = toNullableNumber(quote?.change);
+  const changePercent = toNullableNumber(quote?.change_percent);
+  const isPositive = (change ?? changePercent ?? 0) >= 0;
+
+  const hasMarketData =
+    price !== null ||
+    change !== null ||
+    changePercent !== null ||
+    toNullableNumber(quote?.live_market_cap) !== null ||
+    toNullableNumber(quote?.volume) !== null;
+
+  return (
+    <div className="border-t border-slate-100 px-5 py-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-black text-slate-950">Market Snapshot</h3>
+          <p className="text-xs font-medium text-slate-500">
+            Live stock quote fetched from Finnhub
+          </p>
+        </div>
+
+        <span className="rounded-full bg-indigo-50 px-3 py-1 text-[11px] font-black text-indigo-700">
+          {quote?.quote_source || "Finnhub"}
+        </span>
+      </div>
+
+      {quoteLoading ? (
+        <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
+          Loading stock quote for {safeText(symbol)}...
+        </div>
+      ) : quoteError && !hasMarketData ? (
+        <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+          {quoteError}
+        </div>
+      ) : !hasMarketData ? (
+        <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+          Stock quote is not available for {safeText(symbol)}.
+        </div>
+      ) : (
+        <>
+          <div className="mb-3 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-slate-950 shadow-sm">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide text-indigo-700">
+                  {safeText(symbol)}
+                </p>
+
+                <p className="mt-1 text-3xl font-black leading-none">
+                  {formatMoney(quote?.price)}
+                </p>
+
+                <p className="mt-2 text-[11px] font-semibold text-slate-600">
+                  Updated:{" "}
+                  {formatQuoteDate(
+                    quote?.quote_updated_at || quote?.quote_time,
+                  )}
+                </p>
+              </div>
+
+              <div
+                className={`rounded-2xl px-4 py-3 text-right text-sm font-black ${
+                  isPositive
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-red-100 text-red-700"
+                }`}
+              >
+                <p>
+                  {change === null
+                    ? "N/A"
+                    : `${change >= 0 ? "+" : ""}${change.toFixed(2)}`}
+                </p>
+                <p>{formatChangePercent(quote?.change_percent)}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <MarketInfo
+              label="Market Cap"
+              value={formatCompactNumber(quote?.live_market_cap, "$")}
+            />
+            <MarketInfo
+              label="Volume"
+              value={formatCompactNumber(quote?.volume)}
+            />
+            <MarketInfo
+              label="Day Range"
+              value={`${formatMoney(quote?.day_low)} - ${formatMoney(quote?.day_high)}`}
+            />
+            <MarketInfo
+              label="52W Range"
+              value={`${formatMoney(quote?.year_low)} - ${formatMoney(quote?.year_high)}`}
+            />
+            <MarketInfo
+              label="Average Volume"
+              value={formatCompactNumber(quote?.avg_volume)}
+            />
+            <MarketInfo label="P/E" value={formatDecimal(quote?.pe, 2)} />
+            <MarketInfo label="EPS" value={formatDecimal(quote?.eps, 2)} />
+            <MarketInfo
+              label="Quote Source"
+              value={quote?.quote_source || "Finnhub"}
+              tone="indigo"
+            />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function DetailModal({
   company,
   onClose,
@@ -682,20 +1016,23 @@ function DetailModal({
   const locationParts = [company.city, state, normalizedCountry].filter(
     Boolean,
   );
+  const extendedCompany = company as CorporateProfileExtended;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4">
-      <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+      <div className="max-h-[88vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-100 bg-white px-5 py-4">
           <div>
             <div className="mb-2 inline-flex rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
               {safeText(company.symbol)}
             </div>
+
             <h2 className="text-lg font-semibold text-slate-950">
               {safeText(company.company_name)}
             </h2>
+
             <p className="text-sm text-slate-500">
-              {safeText(company.sector)} Â· {safeText(company.industry)}
+              {safeText(company.sector)} · {safeText(company.industry)}
             </p>
           </div>
 
@@ -717,12 +1054,10 @@ function DetailModal({
           <Info label="Headquarters" value={company.headquarters} />
           <Info label="Founded" value={company.founded} />
           <Info label="CIK" value={company.cik} />
-          <Info
-            label="Market Value"
-            value={formatMarketValue(getMarketValue(company))}
-          />
           <Info label="Source" value={company.source} />
         </div>
+
+        <CorporateMarketSnapshot company={extendedCompany} />
 
         {company.website || company.business_summary ? (
           <div className="border-t border-slate-100 px-5 py-4">
@@ -1137,7 +1472,7 @@ export default function CorporateIntelligencePage() {
         {loading ? (
           <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="rounded-2xl bg-slate-900 px-7 py-6 text-center shadow-xl">
-              <div className="mx-auto mb-3 h-8 w-8 animate-spinA rounded-full border-2 border-white/30 border-t-white" />
+              <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white" />
               <p className="text-sm font-semibold text-white">
                 Loading directory...
               </p>
@@ -1161,6 +1496,3 @@ export default function CorporateIntelligencePage() {
     </main>
   );
 }
-
-
-
