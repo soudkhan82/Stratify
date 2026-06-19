@@ -11,7 +11,6 @@ import {
   RefreshCw,
   Search,
   Sparkles,
-  Wallet,
   X,
 } from "lucide-react";
 
@@ -1243,24 +1242,6 @@ export default function CorporateIntelligencePage() {
     [normalizedRows],
   );
 
-  const marketValueCoverage = useMemo(
-    () =>
-      normalizedRows.filter((row) => {
-        const value = getMarketValue(row);
-        return value !== null && value !== undefined && value !== "";
-      }).length,
-    [normalizedRows],
-  );
-
-  const totalMarketValue = useMemo(
-    () =>
-      normalizedRows.reduce((sum, row) => {
-        const value = getMarketValue(row);
-        return sum + toNumber(value);
-      }, 0),
-    [normalizedRows],
-  );
-
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-5 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-5">
@@ -1317,7 +1298,7 @@ export default function CorporateIntelligencePage() {
           </div>
         ) : null}
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+              <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             title="Total Companies"
             value={computedSummary.total_companies}
@@ -1344,28 +1325,6 @@ export default function CorporateIntelligencePage() {
             value={states.length > 0 ? states.length - 1 : 0}
             helper="Detected HQ states"
             icon={<Globe2 size={20} />}
-          />
-
-          <StatCard
-            title="Enriched Profiles"
-            value={computedSummary.enriched_profiles}
-            helper="Populated profile rows"
-            icon={<Sparkles size={20} />}
-          />
-
-          <StatCard
-            title="Market Cap"
-            value={
-              marketValueCoverage > 0
-                ? formatMarketValue(totalMarketValue)
-                : "N/A"
-            }
-            helper={
-              marketValueCoverage > 0
-                ? `${marketValueCoverage} profiles covered`
-                : "Backend field missing"
-            }
-            icon={<Wallet size={20} />}
           />
         </section>
 
