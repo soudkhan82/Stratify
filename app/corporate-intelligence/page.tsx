@@ -1,6 +1,13 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+  type ReactNode,
+} from "react";
 import dynamic from "next/dynamic";
 import {
   Building2,
@@ -44,12 +51,24 @@ type CorporateProfileExtended = CorporateProfile & {
   quote_updated_at?: string | null;
 };
 
+type MapCompany = {
+  symbol: string;
+  company_name: string;
+  sector?: string | null;
+  state?: string | null;
+  city?: string | null;
+  headquarters?: string | null;
+};
+
 type MapPoint = {
   key: string;
   label: string;
   lat: number;
   lng: number;
   count: number;
+  state: string;
+  isExact: boolean;
+  companies: MapCompany[];
 };
 
 const US_STATES = new Set([
@@ -220,6 +239,37 @@ function safeText(value: unknown) {
   return String(value);
 }
 
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function toMapNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+
+  const parsed =
+    typeof value === "number"
+      ? value
+      : Number(String(value).replace(/[^0-9.-]/g, ""));
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isValidLatLng(lat: number | null, lng: number | null) {
+  return (
+    lat !== null &&
+    lng !== null &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180
+  );
+}
+
 function toNumber(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
 
@@ -237,31 +287,6 @@ function getMarketValue(row: CorporateProfile): number | string | null {
     extended.market_value ??
     null
   );
-}
-
-function formatMarketValue(value: unknown) {
-  if (value === null || value === undefined || value === "") return "N/A";
-
-  const num =
-    typeof value === "number"
-      ? value
-      : Number(String(value).replace(/[^0-9.-]/g, ""));
-
-  if (!Number.isFinite(num)) return String(value);
-
-  if (num >= 1_000_000_000_000) {
-    return `$${(num / 1_000_000_000_000).toFixed(2)}T`;
-  }
-
-  if (num >= 1_000_000_000) {
-    return `$${(num / 1_000_000_000).toFixed(2)}B`;
-  }
-
-  if (num >= 1_000_000) {
-    return `$${(num / 1_000_000).toFixed(2)}M`;
-  }
-
-  return `$${num.toLocaleString()}`;
 }
 
 function normalizeState(value: unknown): string | null {
@@ -435,39 +460,86 @@ function normalizeSummary(
 }
 
 function buildStateMapPoints(rows: CorporateProfile[]): MapPoint[] {
-  const grouped = new Map<string, number>();
+  const grouped = new Map<
+    string,
+    {
+      label: string;
+      lat: number;
+      lng: number;
+      count: number;
+      state: string;
+      isExact: boolean;
+      companies: MapCompany[];
+    }
+  >();
 
   rows.forEach((row) => {
-    const state = getCompanyState(row) ?? "United States";
-    grouped.set(state, (grouped.get(state) ?? 0) + 1);
+    const state = getCompanyState(row) ?? "Unknown";
+    const lat = toMapNumber(row.hq_lat);
+    const lng = toMapNumber(row.hq_lng);
+    const hasExactCoords = isValidLatLng(lat, lng);
+
+    const coords = hasExactCoords
+      ? ([lat as number, lng as number] as [number, number])
+      : (STATE_CENTROIDS[state] ?? [39.8283, -98.5795]);
+
+    const locationLabel =
+      [row.city, state !== "Unknown" ? state : null]
+        .filter(Boolean)
+        .join(", ") ||
+      row.headquarters ||
+      state;
+
+    const key = hasExactCoords
+      ? `exact:${coords[0].toFixed(4)}:${coords[1].toFixed(4)}`
+      : `state:${state}`;
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        label: hasExactCoords ? locationLabel : state,
+        lat: coords[0],
+        lng: coords[1],
+        count: 0,
+        state,
+        isExact: hasExactCoords,
+        companies: [],
+      });
+    }
+
+    const item = grouped.get(key)!;
+
+    item.count += 1;
+    item.companies.push({
+      symbol: row.symbol,
+      company_name: row.company_name,
+      sector: row.sector,
+      state,
+      city: row.city,
+      headquarters: row.headquarters,
+    });
   });
 
   return Array.from(grouped.entries())
-    .map(([state, count]) => {
-      const coords = STATE_CENTROIDS[state] ?? [39.8283, -98.5795];
-
-      return {
-        key: state,
-        label: state,
-        lat: coords[0],
-        lng: coords[1],
-        count,
-      };
-    })
+    .map(([key, value]) => ({
+      key,
+      ...value,
+      companies: value.companies.sort((a, b) =>
+        String(a.company_name || "").localeCompare(
+          String(b.company_name || ""),
+        ),
+      ),
+    }))
     .sort((a, b) => b.count - a.count);
 }
 
-function StatCard({
-  title,
-  value,
-  icon,
-  helper,
-}: {
+type StatCardProps = {
   title: string;
   value: number | string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   helper?: string;
-}) {
+};
+
+function StatCard({ title, value, icon, helper }: StatCardProps) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -475,11 +547,14 @@ function StatCard({
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
             {title}
           </p>
+
           <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
+
           {helper ? (
             <p className="mt-1 text-xs text-slate-500">{helper}</p>
           ) : null}
         </div>
+
         <div className="rounded-xl bg-indigo-50 p-2 text-indigo-700">
           {icon}
         </div>
@@ -543,7 +618,17 @@ function BarListCard({
   );
 }
 
-function UsaLeafletMap({ points }: { points: MapPoint[] }) {
+function UsaLeafletMap({
+  points,
+  totalCompanies,
+  activeState,
+  onStateSelect,
+}: {
+  points: MapPoint[];
+  totalCompanies: number;
+  activeState: string;
+  onStateSelect: (state: string) => void;
+}) {
   const mapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -565,8 +650,8 @@ function UsaLeafletMap({ points }: { points: MapPoint[] }) {
         center: [39.8283, -98.5795],
         zoom: 4,
         minZoom: 3,
-        maxZoom: 8,
-        scrollWheelZoom: false,
+        maxZoom: 12,
+        scrollWheelZoom: true,
         zoomControl: true,
       });
 
@@ -575,19 +660,67 @@ function UsaLeafletMap({ points }: { points: MapPoint[] }) {
       }).addTo(map);
 
       points.forEach((point) => {
-        const radius = Math.max(8, Math.min(28, Math.sqrt(point.count) * 2.4));
+        const radius = point.isExact
+          ? Math.max(7, Math.min(22, Math.sqrt(point.count) * 4.2))
+          : Math.max(10, Math.min(34, Math.sqrt(point.count) * 3.2));
 
-        L.circleMarker([point.lat, point.lng], {
+        const companyList = point.companies
+          .slice(0, 10)
+          .map(
+            (company) =>
+              `<div style="margin-top:5px;line-height:1.25;"><b>${escapeHtml(
+                company.symbol,
+              )}</b> — ${escapeHtml(company.company_name)}</div>`,
+          )
+          .join("");
+
+        const extra =
+          point.companies.length > 10
+            ? `<div style="margin-top:7px;color:#64748b;font-size:11px;">+${
+                point.companies.length - 10
+              } more companies in this location</div>`
+            : "";
+
+        const sourceLabel = point.isExact
+          ? "Stored HQ coordinate"
+          : "State centroid fallback";
+
+        const marker = L.circleMarker([point.lat, point.lng], {
           radius,
-          color: "#312e81",
-          fillColor: "#4f46e5",
-          fillOpacity: 0.72,
-          weight: 1,
+          color: activeState === point.state ? "#0f172a" : "#312e81",
+          fillColor: activeState === point.state ? "#22c55e" : "#4f46e5",
+          fillOpacity: activeState === point.state ? 0.86 : 0.7,
+          weight: activeState === point.state ? 3 : 1.25,
         })
           .addTo(map)
           .bindPopup(
-            `<strong>${point.label}</strong><br/>${point.count} companies`,
+            `<div style="min-width:245px;max-width:315px;">
+              <div style="font-weight:800;font-size:14px;margin-bottom:2px;">
+                ${escapeHtml(point.label)}
+              </div>
+              <div style="font-size:12px;color:#475569;margin-bottom:4px;">
+                ${point.count} ${point.count === 1 ? "company" : "companies"} in current filter
+              </div>
+              <div style="font-size:11px;color:#64748b;margin-bottom:8px;">
+                ${sourceLabel} · ${escapeHtml(point.state)}
+              </div>
+              ${companyList}
+              ${extra}
+              ${
+                point.state !== "Unknown"
+                  ? `<div style="margin-top:10px;color:#4f46e5;font-size:11px;font-weight:800;">Click marker to filter ${escapeHtml(
+                      point.state,
+                    )}</div>`
+                  : ""
+              }
+            </div>`,
           );
+
+        marker.on("click", () => {
+          if (point.state && point.state !== "Unknown") {
+            onStateSelect(point.state);
+          }
+        });
       });
 
       const fitMap = () => {
@@ -595,20 +728,32 @@ function UsaLeafletMap({ points }: { points: MapPoint[] }) {
 
         map.invalidateSize();
 
-        if (points.length > 0) {
+        if (points.length === 1) {
+          map.setView(
+            [points[0].lat, points[0].lng],
+            points[0].isExact ? 8 : 6,
+          );
+          return;
+        }
+
+        if (points.length > 1) {
           const bounds = L.latLngBounds(
             points.map((point) => [point.lat, point.lng]),
           );
+
           map.fitBounds(bounds, {
-            padding: [32, 32],
-            maxZoom: 5,
+            padding: [42, 42],
+            maxZoom: points.every((point) => point.isExact) ? 7 : 5,
           });
+          return;
         }
+
+        map.setView([39.8283, -98.5795], 4);
       };
 
-      setTimeout(fitMap, 150);
-      setTimeout(fitMap, 450);
-      setTimeout(fitMap, 900);
+      setTimeout(fitMap, 100);
+      setTimeout(fitMap, 350);
+      setTimeout(fitMap, 800);
 
       if (mapRef.current && typeof ResizeObserver !== "undefined") {
         resizeObserver = new ResizeObserver(() => {
@@ -637,31 +782,60 @@ function UsaLeafletMap({ points }: { points: MapPoint[] }) {
         map = null;
       }
     };
-  }, [points]);
+  }, [points, activeState, onStateSelect]);
+
+  const exactLocationCount = points.filter((point) => point.isExact).length;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">
             USA Company Map
           </h2>
           <p className="text-xs text-slate-500">
-            State-level distribution based on company headquarters.
+            Filter-responsive headquarters map using stored company Lat/Long.
           </p>
         </div>
 
-        <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-          {points.length} locations
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {activeState !== "All" ? (
+            <button
+              type="button"
+              onClick={() => onStateSelect("All")}
+              className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700 transition hover:bg-indigo-100"
+            >
+              Clear {activeState}
+            </button>
+          ) : null}
+
+          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+            {points.length} locations · {totalCompanies} companies ·{" "}
+            {exactLocationCount} exact
+          </div>
         </div>
       </div>
 
       <div className="relative h-[460px] w-full overflow-hidden bg-slate-100">
         <div ref={mapRef} className="absolute inset-0 h-full w-full" />
+
+        {!points.length ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/75">
+            <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-center shadow-sm">
+              <p className="text-sm font-bold text-slate-900">
+                No mapped companies found
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Adjust search, sector, or state filters.
+              </p>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
 }
+
 const DynamicUsaLeafletMap = dynamic(() => Promise.resolve(UsaLeafletMap), {
   ssr: false,
   loading: () => (
@@ -1182,7 +1356,7 @@ export default function CorporateIntelligencePage() {
         "All",
         ...Array.from(
           new Set(
-            normalizedRows.map((row) => getCompanyState(row)).filter(Boolean),
+            normalizedRows.map((row) => getCompanyState(row) ?? "Unknown"),
           ),
         ).sort(),
       ] as string[],
@@ -1194,7 +1368,7 @@ export default function CorporateIntelligencePage() {
 
     return normalizedRows.filter((row) => {
       const marketValue = getMarketValue(row);
-      const companyState = getCompanyState(row);
+      const companyState = getCompanyState(row) ?? "Unknown";
 
       const matchesSearch =
         !q ||
@@ -1222,25 +1396,29 @@ export default function CorporateIntelligencePage() {
   }, [normalizedRows, search, sector, stateFilter]);
 
   const sectorChart = useMemo(
-    () => countBy(normalizedRows, (row) => row.sector, 10),
-    [normalizedRows],
+    () => countBy(filteredRows, (row) => row.sector, 10),
+    [filteredRows],
   );
 
   const stateChart = useMemo(
-    () =>
-      countBy(normalizedRows, (row) => getCompanyState(row) ?? "Unknown", 10),
-    [normalizedRows],
+    () => countBy(filteredRows, (row) => getCompanyState(row) ?? "Unknown", 10),
+    [filteredRows],
   );
 
   const industryChart = useMemo(
-    () => countBy(normalizedRows, (row) => row.industry, 10),
-    [normalizedRows],
+    () => countBy(filteredRows, (row) => row.industry, 10),
+    [filteredRows],
   );
 
   const mapPoints = useMemo(
-    () => buildStateMapPoints(normalizedRows),
-    [normalizedRows],
+    () => buildStateMapPoints(filteredRows),
+    [filteredRows],
   );
+
+  const handleStateSelect = useCallback((state: string) => {
+    setStateFilter(state || "All");
+    setSearch("");
+  }, []);
 
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-5 text-slate-900 sm:px-6 lg:px-8">
@@ -1298,7 +1476,7 @@ export default function CorporateIntelligencePage() {
           </div>
         ) : null}
 
-              <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             title="Total Companies"
             value={computedSummary.total_companies}
@@ -1343,7 +1521,12 @@ export default function CorporateIntelligencePage() {
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[2fr_1fr]">
-          <DynamicUsaLeafletMap points={mapPoints} />
+          <DynamicUsaLeafletMap
+            points={mapPoints}
+            totalCompanies={filteredRows.length}
+            activeState={stateFilter}
+            onStateSelect={handleStateSelect}
+          />
 
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
@@ -1352,7 +1535,7 @@ export default function CorporateIntelligencePage() {
                   Map Summary
                 </h2>
                 <p className="text-xs text-slate-500">
-                  USA headquarters concentration
+                  Headquarters concentration in current filter
                 </p>
               </div>
               <div className="rounded-xl bg-indigo-50 p-2 text-indigo-700">
@@ -1361,19 +1544,37 @@ export default function CorporateIntelligencePage() {
             </div>
 
             <div className="space-y-2">
-              {mapPoints.slice(0, 8).map((point) => (
-                <div
-                  key={point.key}
-                  className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2"
+              {stateFilter !== "All" ? (
+                <button
+                  type="button"
+                  onClick={() => handleStateSelect("All")}
+                  className="mb-2 w-full rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-left text-xs font-bold text-indigo-700 transition hover:bg-indigo-100"
                 >
-                  <span className="text-sm font-medium text-slate-700">
-                    {point.label}
-                  </span>
-                  <span className="text-sm font-semibold text-slate-950">
-                    {point.count}
-                  </span>
-                </div>
+                  Clear state filter: {stateFilter}
+                </button>
+              ) : null}
+
+              {stateChart.slice(0, 8).map((point) => (
+                <button
+                  type="button"
+                  key={point.name}
+                  onClick={() => handleStateSelect(point.name)}
+                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left transition ${
+                    stateFilter === point.name
+                      ? "bg-indigo-600 text-white"
+                      : "bg-slate-50 text-slate-900 hover:bg-indigo-50"
+                  }`}
+                >
+                  <span className="text-sm font-medium">{point.name}</span>
+                  <span className="text-sm font-semibold">{point.value}</span>
+                </button>
               ))}
+
+              {stateChart.length === 0 ? (
+                <div className="rounded-xl bg-slate-50 px-3 py-8 text-center text-sm text-slate-500">
+                  No locations in current filter.
+                </div>
+              ) : null}
             </div>
           </div>
         </section>

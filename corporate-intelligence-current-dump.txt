@@ -176,27 +176,6 @@ function clean(value: unknown) {
   return String(value);
 }
 
-function toNum(value: unknown): number | null {
-  if (value === null || value === undefined || value === "") return null;
-  const n =
-    typeof value === "number"
-      ? value
-      : Number(String(value).replace(/[^0-9.-]/g, ""));
-  return Number.isFinite(n) ? n : null;
-}
-
-function money(value: unknown) {
-  const n = toNum(value);
-  if (n === null) return "N/A";
-  return `$${n.toFixed(2)}`;
-}
-
-function pct(value: unknown) {
-  const n = toNum(value);
-  if (n === null) return "N/A";
-  return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
-}
-
 export default function CorporateDirectoryTable({ rows, onSelect }: Props) {
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -206,7 +185,8 @@ export default function CorporateDirectoryTable({ rows, onSelect }: Props) {
             Corporate Directory
           </h2>
           <p className="text-xs text-slate-500">
-            S&amp;P 500 profile data enriched with stock quote fields.
+            S&amp;P 500 company profile data. Click any row to view live Finnhub
+            market data.
           </p>
         </div>
 
@@ -216,15 +196,13 @@ export default function CorporateDirectoryTable({ rows, onSelect }: Props) {
       </div>
 
       <div className="max-h-[560px] overflow-auto">
-        <table className="w-full min-w-[1180px] text-left text-sm">
+        <table className="w-full min-w-[980px] text-left text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3 font-semibold">Ticker</th>
               <th className="px-4 py-3 font-semibold">Company</th>
               <th className="px-4 py-3 font-semibold">Sector</th>
               <th className="px-4 py-3 font-semibold">Industry</th>
-              <th className="px-4 py-3 text-right font-semibold">Price</th>
-              <th className="px-4 py-3 text-right font-semibold">Change</th>
               <th className="px-4 py-3 font-semibold">Country</th>
               <th className="px-4 py-3 font-semibold">Headquarters</th>
               <th className="px-4 py-3 font-semibold">Exchange</th>
@@ -232,69 +210,52 @@ export default function CorporateDirectoryTable({ rows, onSelect }: Props) {
           </thead>
 
           <tbody className="divide-y divide-slate-100">
-            {rows.map((row) => {
-              const changePercent = toNum(row.change_percent);
-              const isUp = (changePercent ?? 0) >= 0;
+            {rows.map((row) => (
+              <tr
+                key={row.symbol}
+                onClick={() => onSelect(row)}
+                className="cursor-pointer bg-white transition hover:bg-indigo-50/50"
+              >
+                <td className="px-4 py-3 font-semibold text-indigo-700">
+                  {clean(row.symbol)}
+                </td>
 
-              return (
-                <tr
-                  key={row.symbol}
-                  onClick={() => onSelect(row)}
-                  className="cursor-pointer bg-white transition hover:bg-indigo-50/50"
-                >
-                  <td className="px-4 py-3 font-semibold text-indigo-700">
-                    {clean(row.symbol)}
-                  </td>
+                <td className="px-4 py-3">
+                  <div className="max-w-[260px] truncate font-semibold text-slate-900">
+                    {clean(row.company_name)}
+                  </div>
+                </td>
 
-                  <td className="px-4 py-3">
-                    <div className="max-w-[240px] truncate font-medium text-slate-900">
-                      {clean(row.company_name)}
-                    </div>
-                  </td>
+                <td className="px-4 py-3 text-slate-700">
+                  {clean(row.sector)}
+                </td>
 
-                  <td className="px-4 py-3 text-slate-700">
-                    {clean(row.sector)}
-                  </td>
+                <td className="px-4 py-3 text-slate-600">
+                  <div className="max-w-[280px] truncate">
+                    {clean(row.industry)}
+                  </div>
+                </td>
 
-                  <td className="px-4 py-3 text-slate-600">
-                    <div className="max-w-[260px] truncate">
-                      {clean(row.industry)}
-                    </div>
-                  </td>
+                <td className="px-4 py-3 text-slate-700">
+                  <div className="max-w-[160px]">{clean(row.country)}</div>
+                </td>
 
-                  <td className="px-4 py-3 text-right font-black text-slate-950">
-                    {money(row.price)}
-                  </td>
+                <td className="px-4 py-3 text-slate-600">
+                  <div className="max-w-[300px] truncate">
+                    {clean(row.headquarters)}
+                  </div>
+                </td>
 
-                  <td
-                    className={`px-4 py-3 text-right font-black ${
-                      isUp ? "text-emerald-700" : "text-red-700"
-                    }`}
-                  >
-                    {pct(row.change_percent)}
-                  </td>
-
-                  <td className="px-4 py-3 text-slate-700">
-                    {clean(row.country)}
-                  </td>
-
-                  <td className="px-4 py-3 text-slate-600">
-                    <div className="max-w-[280px] truncate">
-                      {clean(row.headquarters)}
-                    </div>
-                  </td>
-
-                  <td className="px-4 py-3 text-slate-700">
-                    {clean(row.exchange)}
-                  </td>
-                </tr>
-              );
-            })}
+                <td className="px-4 py-3 text-slate-700">
+                  {clean(row.exchange)}
+                </td>
+              </tr>
+            ))}
 
             {rows.length === 0 && (
               <tr>
                 <td
-                  colSpan={9}
+                  colSpan={7}
                   className="px-4 py-10 text-center text-sm text-slate-500"
                 >
                   No companies found for the selected search/filter.
@@ -815,7 +776,13 @@ export type CorporateProfile = {
   employees?: number | string | null;
   business_summary?: string | null;
 
-  // Enriched stock quote fields from v_ci_corporate_directory_enriched
+  hq_lat?: number | string | null;
+  hq_lng?: number | string | null;
+  geocode_provider?: string | null;
+  geocode_status?: string | null;
+  geocode_query?: string | null;
+  geocoded_at?: string | null;
+
   price?: number | string | null;
   change?: number | string | null;
   change_percent?: number | string | null;
@@ -867,7 +834,6 @@ import {
   RefreshCw,
   Search,
   Sparkles,
-  Wallet,
   X,
 } from "lucide-react";
 
@@ -1638,17 +1604,125 @@ function CorporateMarketSnapshot({
 }: {
   company: CorporateProfileExtended;
 }) {
-  const price = toNullableNumber(company.price);
-  const change = toNullableNumber(company.change);
-  const changePercent = toNullableNumber(company.change_percent);
+  const symbol = useMemo(
+    () =>
+      String(company.symbol || "")
+        .trim()
+        .toUpperCase(),
+    [company.symbol],
+  );
+
+  const [liveQuote, setLiveQuote] =
+    useState<Partial<CorporateProfileExtended> | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+
+  const hasLocalMarketData =
+    toNullableNumber(company.price) !== null ||
+    toNullableNumber(company.change) !== null ||
+    toNullableNumber(company.change_percent) !== null ||
+    toNullableNumber(company.live_market_cap) !== null ||
+    toNullableNumber(company.volume) !== null;
+
+  useEffect(() => {
+    if (!symbol) return;
+
+    if (hasLocalMarketData) {
+      setLiveQuote(null);
+      setQuoteError(null);
+      setQuoteLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadLiveQuote() {
+      try {
+        setQuoteLoading(true);
+        setQuoteError(null);
+
+        const cacheKey = `stratify_finnhub_quote_${symbol}`;
+
+        try {
+          const cached = sessionStorage.getItem(cacheKey);
+
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            const ageMs = Date.now() - Number(parsed?.ts || 0);
+
+            if (parsed?.quote && ageMs < 5 * 60 * 1000) {
+              if (!cancelled) {
+                setLiveQuote(parsed.quote);
+                setQuoteLoading(false);
+              }
+              return;
+            }
+          }
+        } catch {
+          // Ignore broken browser cache and fetch fresh data.
+        }
+
+        const res = await fetch(
+          `/api/corporate-intelligence/quote?ticker=${encodeURIComponent(symbol)}`,
+        );
+
+        const json = await res.json();
+
+        if (!res.ok || !json.ok) {
+          throw new Error(json?.error || "Quote not available from Finnhub.");
+        }
+
+        if (!cancelled) {
+          setLiveQuote(json.quote);
+
+          try {
+            sessionStorage.setItem(
+              cacheKey,
+              JSON.stringify({
+                ts: Date.now(),
+                quote: json.quote,
+              }),
+            );
+          } catch {
+            // Ignore storage quota/browser privacy issues.
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLiveQuote(null);
+          setQuoteError(
+            error instanceof Error
+              ? error.message
+              : "Quote not available from Finnhub.",
+          );
+        }
+      } finally {
+        if (!cancelled) setQuoteLoading(false);
+      }
+    }
+
+    loadLiveQuote();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol, hasLocalMarketData]);
+
+  const quote = (
+    hasLocalMarketData ? company : liveQuote
+  ) as Partial<CorporateProfileExtended> | null;
+
+  const price = toNullableNumber(quote?.price);
+  const change = toNullableNumber(quote?.change);
+  const changePercent = toNullableNumber(quote?.change_percent);
   const isPositive = (change ?? changePercent ?? 0) >= 0;
 
   const hasMarketData =
     price !== null ||
     change !== null ||
     changePercent !== null ||
-    toNullableNumber(company.live_market_cap) !== null ||
-    toNullableNumber(company.volume) !== null;
+    toNullableNumber(quote?.live_market_cap) !== null ||
+    toNullableNumber(quote?.volume) !== null;
 
   return (
     <div className="border-t border-slate-100 px-5 py-4">
@@ -1656,37 +1730,44 @@ function CorporateMarketSnapshot({
         <div>
           <h3 className="text-sm font-black text-slate-950">Market Snapshot</h3>
           <p className="text-xs font-medium text-slate-500">
-            Stock quote data from enriched corporate directory view
+            Live stock quote fetched from Finnhub
           </p>
         </div>
 
         <span className="rounded-full bg-indigo-50 px-3 py-1 text-[11px] font-black text-indigo-700">
-          {company.quote_source || "FMP"}
+          {quote?.quote_source || "Finnhub"}
         </span>
       </div>
 
-      {!hasMarketData ? (
+      {quoteLoading ? (
+        <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
+          Loading stock quote for {safeText(symbol)}...
+        </div>
+      ) : quoteError && !hasMarketData ? (
         <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
-          Stock quote is not available for {safeText(company.symbol)}. Confirm
-          your enriched view has quote values.
+          {quoteError}
+        </div>
+      ) : !hasMarketData ? (
+        <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+          Stock quote is not available for {safeText(symbol)}.
         </div>
       ) : (
         <>
-          <div className="mb-3 rounded-2xl bg-slate-950 p-4 text-white shadow-lg">
+          <div className="mb-3 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-slate-950 shadow-sm">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-black uppercase tracking-wide text-slate-400">
-                  {safeText(company.symbol)}
+                <p className="text-xs font-black uppercase tracking-wide text-indigo-700">
+                  {safeText(symbol)}
                 </p>
 
                 <p className="mt-1 text-3xl font-black leading-none">
-                  {formatMoney(company.price)}
+                  {formatMoney(quote?.price)}
                 </p>
 
-                <p className="mt-2 text-[11px] font-medium text-slate-400">
+                <p className="mt-2 text-[11px] font-semibold text-slate-600">
                   Updated:{" "}
                   {formatQuoteDate(
-                    company.quote_updated_at || company.quote_time,
+                    quote?.quote_updated_at || quote?.quote_time,
                   )}
                 </p>
               </div>
@@ -1694,8 +1775,8 @@ function CorporateMarketSnapshot({
               <div
                 className={`rounded-2xl px-4 py-3 text-right text-sm font-black ${
                   isPositive
-                    ? "bg-emerald-500/15 text-emerald-300"
-                    : "bg-red-500/15 text-red-300"
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-red-100 text-red-700"
                 }`}
               >
                 <p>
@@ -1703,7 +1784,7 @@ function CorporateMarketSnapshot({
                     ? "N/A"
                     : `${change >= 0 ? "+" : ""}${change.toFixed(2)}`}
                 </p>
-                <p>{formatChangePercent(company.change_percent)}</p>
+                <p>{formatChangePercent(quote?.change_percent)}</p>
               </div>
             </div>
           </div>
@@ -1711,29 +1792,29 @@ function CorporateMarketSnapshot({
           <div className="grid gap-3 sm:grid-cols-2">
             <MarketInfo
               label="Market Cap"
-              value={formatCompactNumber(company.live_market_cap, "$")}
+              value={formatCompactNumber(quote?.live_market_cap, "$")}
             />
             <MarketInfo
               label="Volume"
-              value={formatCompactNumber(company.volume)}
+              value={formatCompactNumber(quote?.volume)}
             />
             <MarketInfo
               label="Day Range"
-              value={`${formatMoney(company.day_low)} - ${formatMoney(company.day_high)}`}
+              value={`${formatMoney(quote?.day_low)} - ${formatMoney(quote?.day_high)}`}
             />
             <MarketInfo
               label="52W Range"
-              value={`${formatMoney(company.year_low)} - ${formatMoney(company.year_high)}`}
+              value={`${formatMoney(quote?.year_low)} - ${formatMoney(quote?.year_high)}`}
             />
             <MarketInfo
               label="Average Volume"
-              value={formatCompactNumber(company.avg_volume)}
+              value={formatCompactNumber(quote?.avg_volume)}
             />
-            <MarketInfo label="P/E" value={formatDecimal(company.pe, 2)} />
-            <MarketInfo label="EPS" value={formatDecimal(company.eps, 2)} />
+            <MarketInfo label="P/E" value={formatDecimal(quote?.pe, 2)} />
+            <MarketInfo label="EPS" value={formatDecimal(quote?.eps, 2)} />
             <MarketInfo
               label="Quote Source"
-              value={company.quote_source || "N/A"}
+              value={quote?.quote_source || "Finnhub"}
               tone="indigo"
             />
           </div>
@@ -1795,10 +1876,6 @@ function DetailModal({
           <Info label="Headquarters" value={company.headquarters} />
           <Info label="Founded" value={company.founded} />
           <Info label="CIK" value={company.cik} />
-          <Info
-            label="Market Value"
-            value={formatMarketValue(getMarketValue(company))}
-          />
           <Info label="Source" value={company.source} />
         </div>
 
@@ -1988,24 +2065,6 @@ export default function CorporateIntelligencePage() {
     [normalizedRows],
   );
 
-  const marketValueCoverage = useMemo(
-    () =>
-      normalizedRows.filter((row) => {
-        const value = getMarketValue(row);
-        return value !== null && value !== undefined && value !== "";
-      }).length,
-    [normalizedRows],
-  );
-
-  const totalMarketValue = useMemo(
-    () =>
-      normalizedRows.reduce((sum, row) => {
-        const value = getMarketValue(row);
-        return sum + toNumber(value);
-      }, 0),
-    [normalizedRows],
-  );
-
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-5 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-5">
@@ -2062,7 +2121,7 @@ export default function CorporateIntelligencePage() {
           </div>
         ) : null}
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+              <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             title="Total Companies"
             value={computedSummary.total_companies}
@@ -2089,28 +2148,6 @@ export default function CorporateIntelligencePage() {
             value={states.length > 0 ? states.length - 1 : 0}
             helper="Detected HQ states"
             icon={<Globe2 size={20} />}
-          />
-
-          <StatCard
-            title="Enriched Profiles"
-            value={computedSummary.enriched_profiles}
-            helper="Populated profile rows"
-            icon={<Sparkles size={20} />}
-          />
-
-          <StatCard
-            title="Market Cap"
-            value={
-              marketValueCoverage > 0
-                ? formatMarketValue(totalMarketValue)
-                : "N/A"
-            }
-            helper={
-              marketValueCoverage > 0
-                ? `${marketValueCoverage} profiles covered`
-                : "Backend field missing"
-            }
-            icon={<Wallet size={20} />}
           />
         </section>
 
@@ -2252,18 +2289,108 @@ import supabase from "@/app/config/supabase-config";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type CompanyRow = {
+  symbol: string;
+  name: string | null;
+  sector: string | null;
+  sub_industry: string | null;
+  headquarters: string | null;
+  date_added: string | null;
+  cik: string | null;
+  founded: string | null;
+  source: string | null;
+};
+
+type ProfileRow = {
+  symbol: string;
+  company_name: string | null;
+  exchange: string | null;
+  sector: string | null;
+  industry: string | null;
+  country: string | null;
+  city: string | null;
+  state: string | null;
+  address: string | null;
+  website: string | null;
+  employees: number | string | null;
+  business_summary: string | null;
+  source: string | null;
+  fetched_at: string | null;
+  hq_lat: number | null;
+  hq_lng: number | null;
+  geocode_provider: string | null;
+  geocode_status: string | null;
+  geocode_query: string | null;
+  geocoded_at: string | null;
+};
+
 export async function GET() {
   try {
-    const { data, error } = await supabase
-      .from("v_ci_corporate_directory_enriched")
-      .select("*")
-      .order("company_name", { ascending: true });
+    const [companiesRes, profilesRes] = await Promise.all([
+      supabase
+        .from("ci_companies")
+        .select(
+          "symbol, name, sector, sub_industry, headquarters, date_added, cik, founded, source",
+        )
+        .order("symbol", { ascending: true }),
+      supabase
+        .from("ci_corporate_profiles")
+        .select(
+          "symbol, company_name, exchange, sector, industry, country, city, state, address, website, employees, business_summary, source, fetched_at, hq_lat, hq_lng, geocode_provider, geocode_status, geocode_query, geocoded_at",
+        ),
+    ]);
 
-    if (error) throw error;
+    if (companiesRes.error) throw companiesRes.error;
+    if (profilesRes.error) throw profilesRes.error;
+
+    const companies = (companiesRes.data ?? []) as CompanyRow[];
+    const profiles = (profilesRes.data ?? []) as ProfileRow[];
+
+    const profileMap = new Map(
+      profiles.map((profile) => [
+        String(profile.symbol || "").toUpperCase(),
+        profile,
+      ]),
+    );
+
+    const rows = companies
+      .map((company) => {
+        const symbol = String(company.symbol || "").toUpperCase();
+        const profile = profileMap.get(symbol);
+
+        return {
+          symbol,
+          company_name: profile?.company_name || company.name || symbol,
+          sector: profile?.sector ?? company.sector ?? null,
+          industry: profile?.industry ?? company.sub_industry ?? null,
+          country: profile?.country ?? "United States",
+          city: profile?.city ?? null,
+          state: profile?.state ?? null,
+          headquarters: profile?.address ?? company.headquarters ?? null,
+          exchange: profile?.exchange ?? "NYSE/Nasdaq",
+          source: profile?.source ?? company.source ?? "github_sp500",
+          fetched_at: profile?.fetched_at ?? null,
+          date_added: company.date_added ?? null,
+          cik: company.cik ?? null,
+          founded: company.founded ?? null,
+          website: profile?.website ?? null,
+          employees: profile?.employees ?? null,
+          business_summary: profile?.business_summary ?? null,
+          hq_lat: profile?.hq_lat ?? null,
+          hq_lng: profile?.hq_lng ?? null,
+          geocode_provider: profile?.geocode_provider ?? null,
+          geocode_status: profile?.geocode_status ?? null,
+          geocode_query: profile?.geocode_query ?? null,
+          geocoded_at: profile?.geocoded_at ?? null,
+        };
+      })
+      .sort((a, b) =>
+        String(a.company_name).localeCompare(String(b.company_name)),
+      );
 
     return NextResponse.json({
       ok: true,
-      data: data ?? [],
+      data: rows,
     });
   } catch (error) {
     const message =
@@ -2276,6 +2403,318 @@ export async function GET() {
         ok: false,
         error: message,
         data: [],
+      },
+      { status: 500 },
+    );
+  }
+}
+
+
+
+==================== FILE: app\api\corporate-intelligence\geocode\refresh\route.ts ====================
+
+import { NextResponse } from "next/server";
+import supabase from "@/app/config/supabase-config";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type ProfileRow = {
+  symbol: string;
+  company_name: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  hq_lat?: number | null;
+  hq_lng?: number | null;
+  geocode_status?: string | null;
+};
+
+const DEFAULT_LIMIT = 10;
+const MAX_LIMIT = 50;
+
+function clean(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function toNumber(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function buildQuery(row: ProfileRow) {
+  const address = clean(row.address);
+  const city = clean(row.city);
+  const state = clean(row.state);
+  const country = clean(row.country || "United States");
+
+  if (address) {
+    const addressLower = address.toLowerCase();
+
+    const extraParts = [city, state, country].filter((part) => {
+      if (!part) return false;
+      return !addressLower.includes(part.toLowerCase());
+    });
+
+    return [address, ...extraParts].filter(Boolean).join(", ");
+  }
+
+  return [city, state, country].filter(Boolean).join(", ");
+}
+
+async function geocodeOpenCage(query: string, apiKey: string) {
+  const url = `https://api.opencagedata.com/geocode/v1/json?q=${encodeURIComponent(
+    query,
+  )}&key=${encodeURIComponent(apiKey)}&limit=1&no_annotations=1`;
+
+  const res = await fetch(url, {
+    cache: "no-store",
+    headers: {
+      "User-Agent": "Stratify Corporate Intelligence Geocoder",
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`OpenCage failed with status ${res.status}`);
+  }
+
+  const json = await res.json();
+  const first = json?.results?.[0];
+
+  if (!first?.geometry) {
+    return {
+      status: "not_found",
+      lat: null as number | null,
+      lng: null as number | null,
+    };
+  }
+
+  return {
+    status: "success",
+    lat: toNumber(first.geometry.lat),
+    lng: toNumber(first.geometry.lng),
+  };
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function saveGeocode({
+  symbol,
+  lat,
+  lng,
+  status,
+  query,
+}: {
+  symbol: string;
+  lat: number | null;
+  lng: number | null;
+  status: string;
+  query: string | null;
+}) {
+  const { data: affected, error } = await supabase.rpc(
+    "ci_update_profile_geocode",
+    {
+      p_symbol: symbol,
+      p_hq_lat: lat,
+      p_hq_lng: lng,
+      p_geocode_provider: "opencage",
+      p_geocode_status: status,
+      p_geocode_query: query,
+    },
+  );
+
+  if (error) throw error;
+
+  return Number(affected ?? 0);
+}
+
+export async function POST(request: Request) {
+  try {
+    const apiKey = process.env.OPENCAGE_API_KEY;
+
+    if (!apiKey) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Missing OPENCAGE_API_KEY in .env.local / Vercel env.",
+        },
+        { status: 500 },
+      );
+    }
+
+    const body = await request.json().catch(() => null);
+
+    const requestedLimit = Number(body?.limit ?? DEFAULT_LIMIT);
+    const limit =
+      Number.isFinite(requestedLimit) && requestedLimit > 0
+        ? Math.min(requestedLimit, MAX_LIMIT)
+        : DEFAULT_LIMIT;
+
+    const symbols = Array.isArray(body?.symbols)
+      ? body.symbols.map((x: unknown) => clean(x).toUpperCase()).filter(Boolean)
+      : [];
+
+    const { data, error } = await supabase
+      .from("ci_corporate_profiles")
+      .select(
+        `
+        symbol,
+        company_name,
+        address,
+        city,
+        state,
+        country,
+        hq_lat,
+        hq_lng,
+        geocode_status
+      `,
+      )
+      .order("symbol", { ascending: true })
+      .limit(1000);
+
+    if (error) throw error;
+
+    const allRows = (data ?? []) as ProfileRow[];
+
+    const targetRows = allRows
+      .filter((row) => {
+        const symbol = clean(row.symbol).toUpperCase();
+
+        if (symbols.length) {
+          return symbols.includes(symbol);
+        }
+
+        const missingCoords = row.hq_lat == null || row.hq_lng == null;
+        const finalFailedStatus = ["not_found", "skipped_empty_query"].includes(
+          clean(row.geocode_status),
+        );
+
+        return missingCoords && !finalFailedStatus;
+      })
+      .slice(0, limit);
+
+    if (!targetRows.length) {
+      return NextResponse.json({
+        ok: true,
+        provider: "opencage",
+        requested: 0,
+        successCount: 0,
+        failedCount: 0,
+        skippedCount: 0,
+        dbUpdatedCount: 0,
+        message: "No missing geocodes found.",
+        details: [],
+      });
+    }
+
+    const details: any[] = [];
+    let successCount = 0;
+    let failedCount = 0;
+    let skippedCount = 0;
+    let dbUpdatedCount = 0;
+
+    for (const row of targetRows) {
+      const geocodeQuery = buildQuery(row);
+
+      if (!geocodeQuery) {
+        skippedCount += 1;
+
+        const dbUpdated = await saveGeocode({
+          symbol: row.symbol,
+          lat: null,
+          lng: null,
+          status: "skipped_empty_query",
+          query: null,
+        });
+
+        dbUpdatedCount += dbUpdated;
+
+        details.push({
+          symbol: row.symbol,
+          status: "skipped_empty_query",
+          dbUpdated,
+        });
+
+        await sleep(1100);
+        continue;
+      }
+
+      try {
+        const result = await geocodeOpenCage(geocodeQuery, apiKey);
+
+        const dbUpdated = await saveGeocode({
+          symbol: row.symbol,
+          lat: result.lat,
+          lng: result.lng,
+          status: result.status,
+          query: geocodeQuery,
+        });
+
+        dbUpdatedCount += dbUpdated;
+
+        if (result.status === "success") {
+          successCount += 1;
+        } else {
+          failedCount += 1;
+        }
+
+        details.push({
+          symbol: row.symbol,
+          status: result.status,
+          lat: result.lat,
+          lng: result.lng,
+          query: geocodeQuery,
+          dbUpdated,
+        });
+      } catch (err) {
+        failedCount += 1;
+
+        const message =
+          err instanceof Error ? err.message : "Unknown geocode error";
+
+        const dbUpdated = await saveGeocode({
+          symbol: row.symbol,
+          lat: null,
+          lng: null,
+          status: "failed",
+          query: geocodeQuery,
+        });
+
+        dbUpdatedCount += dbUpdated;
+
+        details.push({
+          symbol: row.symbol,
+          status: "failed",
+          error: message,
+          query: geocodeQuery,
+          dbUpdated,
+        });
+      }
+
+      await sleep(1100);
+    }
+
+    return NextResponse.json({
+      ok: true,
+      provider: "opencage",
+      requested: targetRows.length,
+      successCount,
+      failedCount,
+      skippedCount,
+      dbUpdatedCount,
+      details,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to refresh geocodes.";
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: message,
       },
       { status: 500 },
     );
@@ -2961,4 +3400,142 @@ export async function GET() {
     );
   }
 }
+
+
+
+==================== KEYWORD CHECKS ====================
+
+
+Path                                                                                  LineNumber Line                                                                                                                                                                                                                                
+----                                                                                  ---------- ----                                                                                                                                                                                                                                
+C:\NextJS\stratify\app\corporate-intelligence\_components\CompanyMetricCards.tsx              23       label: "Total Market Cap",                                                                                                                                                                                                    
+C:\NextJS\stratify\app\corporate-intelligence\_components\CompanyTable.tsx                    45             <th className="px-4 py-3 text-right">Market Cap</th>                                                                                                                                                                    
+C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateDirectoryTable.tsx         44               <th className="px-4 py-3 font-semibold">Exchange</th>                                                                                                                                                                 
+C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateDirectoryTable.tsx         86                   {clean(row.exchange)}                                                                                                                                                                                             
+C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateMarketSnapshot.tsx         88 export default function CorporateMarketSnapshot({                                                                                                                                                                                   
+C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateMarketSnapshot.tsx         93   const price = toNum(company.price);                                                                                                                                                                                               
+C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateMarketSnapshot.tsx         94   const change = toNum(company.change);                                                                                                                                                                                             
+C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateMarketSnapshot.tsx         95   const changePercent = toNum(company.change_percent);                                                                                                                                                                              
+C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateMarketSnapshot.tsx         96   const isUp = (change ?? changePercent ?? 0) >= 0;                                                                                                                                                                                 
+C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateMarketSnapshot.tsx         99     price !== null ||                                                                                                                                                                                                               
+C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateMarketSnapshot.tsx        100     change !== null ||                                                                                                                                                                                                              
+C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateMarketSnapshot.tsx        101     changePercent !== null ||                                                                                                                                                                                                       
+C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateMarketSnapshot.tsx        134                   {money(company.price)}                                                                                                                                                                                            
+C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateMarketSnapshot.tsx        150                   {change === null                                                                                                                                                                                                  
+C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateMarketSnapshot.tsx        152                     : `${change >= 0 ? "+" : ""}${change.toFixed(2)}`}                                                                                                                                                              
+C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateMarketSnapshot.tsx        154                 <p>{pct(company.change_percent)}</p>                                                                                                                                                                                
+C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateMarketSnapshot.tsx        161               label="Market Cap"                                                                                                                                                                                                    
+C:\NextJS\stratify\app\corporate-intelligence\_components\SectorBreakdown.tsx                 36         <p className="text-xs text-slate-500">Company count and market cap by sector</p>                                                                                                                                            
+C:\NextJS\stratify\app\corporate-intelligence\_components\TopCompaniesChart.tsx               33         <h2 className="text-lg font-bold text-slate-950">Top Companies by Market Cap</h2>                                                                                                                                           
+C:\NextJS\stratify\app\corporate-intelligence\_components\TopCompaniesChart.tsx               55                   "Market Cap",                                                                                                                                                                                                     
+C:\NextJS\stratify\app\corporate-intelligence\_components\TopCompaniesChart.tsx               63             No market cap data available.                                                                                                                                                                                           
+C:\NextJS\stratify\app\corporate-intelligence\_lib\corporateTypes.ts                           5   exchange: string | null;                                                                                                                                                                                                          
+C:\NextJS\stratify\app\corporate-intelligence\_lib\types.ts                                   11   exchange: string | null;                                                                                                                                                                                                          
+C:\NextJS\stratify\app\corporate-intelligence\_lib\types.ts                                   22   hq_lat?: number | string | null;                                                                                                                                                                                                  
+C:\NextJS\stratify\app\corporate-intelligence\_lib\types.ts                                   23   hq_lng?: number | string | null;                                                                                                                                                                                                  
+C:\NextJS\stratify\app\corporate-intelligence\_lib\types.ts                                   24   geocode_provider?: string | null;                                                                                                                                                                                                 
+C:\NextJS\stratify\app\corporate-intelligence\_lib\types.ts                                   25   geocode_status?: string | null;                                                                                                                                                                                                   
+C:\NextJS\stratify\app\corporate-intelligence\_lib\types.ts                                   26   geocode_query?: string | null;                                                                                                                                                                                                    
+C:\NextJS\stratify\app\corporate-intelligence\_lib\types.ts                                   27   geocoded_at?: string | null;                                                                                                                                                                                                      
+C:\NextJS\stratify\app\corporate-intelligence\_lib\types.ts                                   29   price?: number | string | null;                                                                                                                                                                                                   
+C:\NextJS\stratify\app\corporate-intelligence\_lib\types.ts                                   30   change?: number | string | null;                                                                                                                                                                                                  
+C:\NextJS\stratify\app\corporate-intelligence\_lib\types.ts                                   31   change_percent?: number | string | null;                                                                                                                                                                                          
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                        31   price?: number | string | null;                                                                                                                                                                                                   
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                        32   change?: number | string | null;                                                                                                                                                                                                  
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                        33   change_percent?: number | string | null;                                                                                                                                                                                          
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       437 function buildStateMapPoints(rows: CorporateProfile[]): MapPoint[] {                                                                                                                                                                
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       546 function UsaLeafletMap({ points }: { points: MapPoint[] }) {                                                                                                                                                                        
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       665 const DynamicUsaLeafletMap = dynamic(() => Promise.resolve(UsaLeafletMap), {                                                                                                                                                        
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       735 function formatChangePercent(value: unknown) {                                                                                                                                                                                      
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       779 function CorporateMarketSnapshot({                                                                                                                                                                                                  
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       798     toNullableNumber(company.price) !== null ||                                                                                                                                                                                     
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       799     toNullableNumber(company.change) !== null ||                                                                                                                                                                                    
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       800     toNullableNumber(company.change_percent) !== null ||                                                                                                                                                                            
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       892   const price = toNullableNumber(quote?.price);                                                                                                                                                                                     
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       893   const change = toNullableNumber(quote?.change);                                                                                                                                                                                   
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       894   const changePercent = toNullableNumber(quote?.change_percent);                                                                                                                                                                    
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       895   const isPositive = (change ?? changePercent ?? 0) >= 0;                                                                                                                                                                           
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       898     price !== null ||                                                                                                                                                                                                               
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       899     change !== null ||                                                                                                                                                                                                              
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       900     changePercent !== null ||                                                                                                                                                                                                       
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       941                   {formatMoney(quote?.price)}                                                                                                                                                                                       
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       960                   {change === null                                                                                                                                                                                                  
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       962                     : `${change >= 0 ? "+" : ""}${change.toFixed(2)}`}                                                                                                                                                              
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       964                 <p>{formatChangePercent(quote?.change_percent)}</p>                                                                                                                                                                 
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                       971               label="Market Cap"                                                                                                                                                                                                    
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                      1049           <Info label="Exchange" value={company.exchange} />                                                                                                                                                                        
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                      1059         <CorporateMarketSnapshot company={extendedCompany} />                                                                                                                                                                       
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                      1192   const filteredRows = useMemo(() => {                                                                                                                                                                                              
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                      1210           row.exchange,                                                                                                                                                                                                             
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                      1240   const mapPoints = useMemo(                                                                                                                                                                                                        
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                      1241     () => buildStateMapPoints(normalizedRows),                                                                                                                                                                                      
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                      1346           <DynamicUsaLeafletMap points={mapPoints} />                                                                                                                                                                               
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                      1364               {mapPoints.slice(0, 8).map((point) => (                                                                                                                                                                               
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                      1399                 onChange={(event) => setSearch(event.target.value)}                                                                                                                                                                 
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                      1407               onChange={(event) => setSector(event.target.value)}                                                                                                                                                                   
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                      1419               onChange={(event) => setStateFilter(event.target.value)}                                                                                                                                                              
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                                      1445             rows={filteredRows}                                                                                                                                                                                                     
+C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts                          22   exchange: string | null;                                                                                                                                                                                                          
+C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts                          34   hq_lat: number | null;                                                                                                                                                                                                            
+C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts                          35   hq_lng: number | null;                                                                                                                                                                                                            
+C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts                          36   geocode_provider: string | null;                                                                                                                                                                                                  
+C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts                          37   geocode_status: string | null;                                                                                                                                                                                                    
+C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts                          38   geocode_query: string | null;                                                                                                                                                                                                     
+C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts                          39   geocoded_at: string | null;                                                                                                                                                                                                       
+C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts                          46         .from("ci_companies")                                                                                                                                                                                                       
+C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts                          52         .from("ci_corporate_profiles")                                                                                                                                                                                              
+C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts                          54           "symbol, company_name, exchange, sector, industry, country, city, state, address, website, employees, business_summary, source, fetched_at, hq_lat, hq_lng, geocode_provider, geocode_status, geocode_query, geocoded_at",
+C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts                          85           exchange: profile?.exchange ?? "NYSE/Nasdaq",                                                                                                                                                                             
+C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts                          94           hq_lat: profile?.hq_lat ?? null,                                                                                                                                                                                          
+C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts                          95           hq_lng: profile?.hq_lng ?? null,                                                                                                                                                                                          
+C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts                          96           geocode_provider: profile?.geocode_provider ?? null,                                                                                                                                                                      
+C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts                          97           geocode_status: profile?.geocode_status ?? null,                                                                                                                                                                          
+C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts                          98           geocode_query: profile?.geocode_query ?? null,                                                                                                                                                                            
+C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts                          99           geocoded_at: profile?.geocoded_at ?? null,                                                                                                                                                                                
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                    14   hq_lat?: number | null;                                                                                                                                                                                                           
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                    15   hq_lng?: number | null;                                                                                                                                                                                                           
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                    16   geocode_status?: string | null;                                                                                                                                                                                                   
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                    51 async function geocodeOpenCage(query: string, apiKey: string) {                                                                                                                                                                     
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                    52   const url = `https://api.opencagedata.com/geocode/v1/json?q=${encodeURIComponent(                                                                                                                                                 
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                    59       "User-Agent": "Stratify Corporate Intelligence Geocoder",                                                                                                                                                                     
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                    89 async function saveGeocode({                                                                                                                                                                                                        
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   103     "ci_update_profile_geocode",                                                                                                                                                                                                    
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   106       p_hq_lat: lat,                                                                                                                                                                                                                
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   107       p_hq_lng: lng,                                                                                                                                                                                                                
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   108       p_geocode_provider: "opencage",                                                                                                                                                                                               
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   109       p_geocode_status: status,                                                                                                                                                                                                     
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   110       p_geocode_query: query,                                                                                                                                                                                                       
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   146       .from("ci_corporate_profiles")                                                                                                                                                                                                
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   155         hq_lat,                                                                                                                                                                                                                     
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   156         hq_lng,                                                                                                                                                                                                                     
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   157         geocode_status                                                                                                                                                                                                              
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   175         const missingCoords = row.hq_lat == null || row.hq_lng == null;                                                                                                                                                             
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   177           clean(row.geocode_status),                                                                                                                                                                                                
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   193         message: "No missing geocodes found.",                                                                                                                                                                                      
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   205       const geocodeQuery = buildQuery(row);                                                                                                                                                                                         
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   207       if (!geocodeQuery) {                                                                                                                                                                                                          
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   210         const dbUpdated = await saveGeocode({                                                                                                                                                                                       
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   231         const result = await geocodeOpenCage(geocodeQuery, apiKey);                                                                                                                                                                 
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   233         const dbUpdated = await saveGeocode({                                                                                                                                                                                       
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   238           query: geocodeQuery,                                                                                                                                                                                                      
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   254           query: geocodeQuery,                                                                                                                                                                                                      
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   261           err instanceof Error ? err.message : "Unknown geocode error";                                                                                                                                                             
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   263         const dbUpdated = await saveGeocode({                                                                                                                                                                                       
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   268           query: geocodeQuery,                                                                                                                                                                                                      
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   277           query: geocodeQuery,                                                                                                                                                                                                      
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts                   297       error instanceof Error ? error.message : "Unable to refresh geocodes.";                                                                                                                                                       
+C:\NextJS\stratify\app\api\corporate-intelligence\profiles\refresh\route.ts                   93       .from("ci_companies")                                                                                                                                                                                                         
+C:\NextJS\stratify\app\api\corporate-intelligence\profiles\refresh\route.ts                  106       .from("ci_corporate_profiles")                                                                                                                                                                                                
+C:\NextJS\stratify\app\api\corporate-intelligence\profiles\refresh\route.ts                  146         exchange: "NYSE/Nasdaq",                                                                                                                                                                                                    
+C:\NextJS\stratify\app\api\corporate-intelligence\quote\route.ts                               7   c?: number; // current price                                                                                                                                                                                                      
+C:\NextJS\stratify\app\api\corporate-intelligence\quote\route.ts                               8   d?: number; // price change                                                                                                                                                                                                       
+C:\NextJS\stratify\app\api\corporate-intelligence\quote\route.ts                               9   dp?: number; // change percent                                                                                                                                                                                                    
+C:\NextJS\stratify\app\api\corporate-intelligence\quote\route.ts                             138     const price = toNumber(quote.c);                                                                                                                                                                                                
+C:\NextJS\stratify\app\api\corporate-intelligence\quote\route.ts                             140     if (price === null || price <= 0) {                                                                                                                                                                                             
+C:\NextJS\stratify\app\api\corporate-intelligence\quote\route.ts                             164       price,                                                                                                                                                                                                                        
+C:\NextJS\stratify\app\api\corporate-intelligence\quote\route.ts                             165       change: toNumber(quote.d),                                                                                                                                                                                                    
+C:\NextJS\stratify\app\api\corporate-intelligence\quote\route.ts                             166       change_percent: toNumber(quote.dp),                                                                                                                                                                                           
+C:\NextJS\stratify\app\api\corporate-intelligence\summary\route.ts                            10       .from("v_ci_corporate_directory_summary")                                                                                                                                                                                     
+
+
 

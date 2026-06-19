@@ -19,7 +19,13 @@ export type CorporateProfile = {
   employees?: number | string | null;
   business_summary?: string | null;
 
-  // Enriched stock quote fields from v_ci_corporate_directory_enriched
+  hq_lat?: number | string | null;
+  hq_lng?: number | string | null;
+  geocode_provider?: string | null;
+  geocode_status?: string | null;
+  geocode_query?: string | null;
+  geocoded_at?: string | null;
+
   price?: number | string | null;
   change?: number | string | null;
   change_percent?: number | string | null;
