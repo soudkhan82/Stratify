@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
+import CountryWikiCard from "@/app/world/components/CountryWikiCard";
 import { useRouter } from "next/navigation";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,10 +15,6 @@ import {
   Tooltip,
 } from "recharts";
 
-/* =======================
-   Types
-======================= */
-
 export type WdiPoint = { year: number; value: number; unit?: string | null };
 
 export type WdiResponse = {
@@ -30,19 +27,23 @@ export type WdiResponse = {
   error?: string;
 };
 
-/* =======================
-   Helpers (export parse)
-======================= */
-
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
+
 function asString(v: unknown, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
 }
+
 function asNumber(v: unknown): number | null {
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
 }
+
 function asNullableString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
@@ -60,7 +61,7 @@ export function parseWdiResponse(
       indicator: { code: indicator, label: indicator, unit: null },
       latest: null,
       series: [],
-      error: "Invalid WDI API response (not an object).",
+      error: "Invalid WDI API response.",
     };
   }
 
@@ -83,36 +84,41 @@ export function parseWdiResponse(
   const ind = isRecord(raw.indicator) ? raw.indicator : {};
   const code = asString(ind.code, indicator);
   const label = asString(ind.label, indicator);
-  const unit = (typeof ind.unit === "string" ? ind.unit : null) as
-    | string
-    | null;
+  const unit = typeof ind.unit === "string" ? ind.unit : null;
 
   const latestRaw = isRecord(raw.latest) ? raw.latest : null;
+
+  const latestYear = latestRaw ? asNumber(latestRaw.year) : null;
+  const latestValue = latestRaw ? asNumber(latestRaw.value) : null;
+
   const latest: WdiPoint | null =
-    latestRaw &&
-    asNumber(latestRaw.year) !== null &&
-    asNumber(latestRaw.value) !== null
+    latestYear !== null && latestValue !== null
       ? {
-          year: asNumber(latestRaw.year)!,
-          value: asNumber(latestRaw.value)!,
-          unit: typeof latestRaw.unit === "string" ? latestRaw.unit : null,
+          year: latestYear,
+          value: latestValue,
+          unit: latestRaw?.unit as string | null,
         }
       : null;
 
   const seriesRaw = Array.isArray(raw.series) ? raw.series : [];
+
   const series = seriesRaw
     .map((r): WdiPoint | null => {
       if (!isRecord(r)) return null;
+
       const y = asNumber(r.year);
       const v = asNumber(r.value);
+
       if (y === null || v === null) return null;
+
       return {
         year: y,
         value: v,
         unit: typeof r.unit === "string" ? r.unit : null,
       };
     })
-    .filter((x): x is WdiPoint => x !== null);
+    .filter((x): x is WdiPoint => x !== null)
+    .sort((a, b) => a.year - b.year);
 
   return {
     iso3,
@@ -124,27 +130,29 @@ export function parseWdiResponse(
   };
 }
 
-/* =======================
-   Formatting
-======================= */
-
 function fmt(n: number | null | undefined): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return "—";
   return new Intl.NumberFormat("en-US").format(n);
 }
+
 function fmtCompact(n: number | null | undefined): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return "—";
+
   const v = n as number;
+
   if (Math.abs(v) >= 1e12) return `${(v / 1e12).toFixed(2)}T`;
   if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
   if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
   if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(2)}K`;
+
   return Number.isInteger(v) ? String(v) : v.toFixed(2);
 }
+
 function fmtPct(n: number | null | undefined): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return "—";
   return `${n.toFixed(1)}%`;
 }
+
 function toFiniteNumber(v: unknown): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string") {
@@ -153,11 +161,13 @@ function toFiniteNumber(v: unknown): number | null {
   }
   return null;
 }
+
 function tooltipNumber(v: unknown): string {
   const n = toFiniteNumber(v);
   if (n === null) return "—";
   return n.toLocaleString();
 }
+
 function stableColorFromKey(key: string): string {
   let h = 0;
   for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
@@ -170,7 +180,11 @@ function qsSet(
   iso3: string,
   code: string,
 ) {
-  routerReplace(`/world/country/${iso3}?indicator=${encodeURIComponent(code)}`);
+  routerReplace(
+    `/world/country/${encodeURIComponent(
+      iso3,
+    )}?indicator=${encodeURIComponent(code)}&dataset=wdi`,
+  );
 }
 
 export default function WdiTab(props: {
@@ -202,6 +216,7 @@ export default function WdiTab(props: {
 
     return series.map((cur, idx) => {
       const prev = idx > 0 ? series[idx - 1] : null;
+
       const yoy =
         prev && prev.value !== 0 && Number.isFinite(prev.value)
           ? ((cur.value - prev.value) / Math.abs(prev.value)) * 100
@@ -219,25 +234,34 @@ export default function WdiTab(props: {
 
   return (
     <div className="space-y-3">
+      <CountryWikiCard
+        iso3={props.iso3}
+        countryName={props.wdi?.country}
+        region={props.wdi?.region}
+      />
+
       <Card className="shadow-sm">
         <CardHeader className="py-3">
           <CardTitle className="text-sm font-semibold text-slate-800">
             Quick indicator picks
           </CardTitle>
         </CardHeader>
+
         <CardContent className="pt-0">
           <div className="flex flex-wrap gap-2">
             {quickPicks.map((p) => {
               const active =
                 (props.wdi?.indicator?.code ?? props.indicator) === p.code;
+
               return (
                 <button
                   key={p.code}
+                  type="button"
                   onClick={() => qsSet(router.replace, props.iso3, p.code)}
                   className={[
                     "rounded-full border px-3 py-1.5 text-xs font-medium transition",
                     active
-                      ? "bg-slate-900 text-white border-slate-900"
+                      ? "border-slate-900 bg-slate-900 text-white"
                       : "bg-white text-slate-700 hover:bg-slate-50",
                   ].join(" ")}
                 >
@@ -256,13 +280,16 @@ export default function WdiTab(props: {
               Latest
             </CardTitle>
           </CardHeader>
+
           <CardContent className="pt-0">
             <div className="text-xs text-slate-500">
               {wdiLatest ? `${wdiLatest.year}` : "—"}
             </div>
+
             <div className="mt-1 text-2xl font-bold text-slate-900">
               {wdiLatest ? fmt(wdiLatest.value) : "—"}
             </div>
+
             <div className="mt-1 text-xs text-slate-500">
               {props.wdi?.indicator?.unit ?? ""}
             </div>
@@ -275,6 +302,7 @@ export default function WdiTab(props: {
               Trend (Bar) + YoY%
             </CardTitle>
           </CardHeader>
+
           <CardContent className="pt-0">
             {props.loading ? (
               <div className="rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -308,7 +336,7 @@ export default function WdiTab(props: {
                   </ResponsiveContainer>
                 </div>
 
-                <div className="rounded-lg border overflow-auto max-h-[300px]">
+                <div className="max-h-[300px] overflow-auto rounded-lg border">
                   <table className="min-w-full text-xs">
                     <thead className="sticky top-0 bg-slate-50">
                       <tr>
@@ -323,6 +351,7 @@ export default function WdiTab(props: {
                         </th>
                       </tr>
                     </thead>
+
                     <tbody>
                       {wdiTable
                         .slice()
@@ -332,9 +361,11 @@ export default function WdiTab(props: {
                             <td className="px-3 py-2 text-slate-700">
                               {r.year}
                             </td>
+
                             <td className="px-3 py-2 text-right font-semibold text-slate-900">
                               {fmt(r.value)}
                             </td>
+
                             <td className="px-3 py-2 text-right">
                               <span
                                 className={[
@@ -342,8 +373,8 @@ export default function WdiTab(props: {
                                   r.yoy === null
                                     ? "border-slate-200 text-slate-500"
                                     : r.yoy >= 0
-                                      ? "border-emerald-200 text-emerald-700 bg-emerald-50"
-                                      : "border-rose-200 text-rose-700 bg-rose-50",
+                                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                      : "border-rose-200 bg-rose-50 text-rose-700",
                                 ].join(" ")}
                               >
                                 {r.yoy === null ? "—" : fmtPct(r.yoy)}
