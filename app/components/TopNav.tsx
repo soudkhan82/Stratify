@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { label: "FAO", href: "/faostat" },
   { label: "Fiscal", href: "/fiscal" },
   { label: "IMF (WEO)", href: "/imf-weo" },
+  { label: "History", href: "/history" },
   { label: "Corporate 500", href: "/corporate-intelligence" },
   { label: "Credits", href: "/credits" },
 ];
@@ -20,6 +21,7 @@ function isActivePath(pathname: string, href: string) {
   if (href === "/faostat") {
     return (
       pathname === "/faostat" ||
+      pathname.startsWith("/faostat/") ||
       pathname.includes("dataset=faostat") ||
       pathname.includes("dataset=fao")
     );
@@ -33,11 +35,15 @@ function isActivePath(pathname: string, href: string) {
     );
   }
 
+  if (href === "/history") {
+    return pathname === "/history" || pathname.startsWith("/history/");
+  }
+
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 export default function TopNav() {
-  const pathname = usePathname();
+  const pathname = usePathname() || "/";
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 shadow-sm backdrop-blur-xl">
@@ -66,7 +72,7 @@ export default function TopNav() {
                 key={item.href}
                 href={item.href}
                 className={[
-                  "rounded-full px-3.5 py-2 text-sm font-bold transition-all xl:px-4",
+                  "rounded-full px-3 py-2 text-sm font-bold transition-all xl:px-3.5",
                   active
                     ? "bg-gradient-to-r from-violet-600 to-blue-600 text-white shadow-md shadow-violet-200"
                     : "text-slate-600 hover:bg-white hover:text-slate-950 hover:shadow-sm",
@@ -81,28 +87,48 @@ export default function TopNav() {
         <div className="ml-auto flex items-center gap-2 md:hidden">
           <Link
             href="/"
-            className="rounded-full bg-violet-600 px-3 py-2 text-xs font-black text-white shadow-md shadow-violet-200"
+            className={[
+              "rounded-full px-3 py-2 text-xs font-black shadow-md",
+              pathname === "/"
+                ? "bg-violet-600 text-white shadow-violet-200"
+                : "bg-slate-100 text-slate-700 shadow-none",
+            ].join(" ")}
           >
             Home
           </Link>
 
           <Link
+            href="/history"
+            className={[
+              "rounded-full px-3 py-2 text-xs font-black",
+              pathname.startsWith("/history")
+                ? "bg-violet-600 text-white shadow-md shadow-violet-200"
+                : "bg-slate-100 text-slate-700",
+            ].join(" ")}
+          >
+            History
+          </Link>
+
+          <Link
             href="/faostat"
-            className="rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700"
+            className={[
+              "rounded-full px-3 py-2 text-xs font-black",
+              pathname.startsWith("/faostat")
+                ? "bg-violet-600 text-white shadow-md shadow-violet-200"
+                : "bg-slate-100 text-slate-700",
+            ].join(" ")}
           >
             FAO
           </Link>
 
           <Link
-            href="/fiscal"
-            className="rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700"
-          >
-            Fiscal
-          </Link>
-
-          <Link
             href="/imf-weo"
-            className="rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700"
+            className={[
+              "rounded-full px-3 py-2 text-xs font-black",
+              pathname.startsWith("/imf-weo")
+                ? "bg-violet-600 text-white shadow-md shadow-violet-200"
+                : "bg-slate-100 text-slate-700",
+            ].join(" ")}
           >
             IMF
           </Link>
