@@ -129,6 +129,7 @@ export default function EventDetailDialog({
   useEffect(() => {
     if (!qid) return;
 
+    const safeQid = qid;
     const controller = new AbortController();
 
     async function loadDetail() {
@@ -137,7 +138,7 @@ export default function EventDetailDialog({
         setPayload(null);
 
         const response = await fetch(
-          `/api/history/event-detail?qid=${encodeURIComponent(qid)}`,
+          `/api/history/event-detail?qid=${encodeURIComponent(safeQid)}`,
           {
             cache: "no-store",
             signal: controller.signal,
@@ -393,3 +394,4 @@ export default function EventDetailDialog({
     </div>
   );
 }
+
