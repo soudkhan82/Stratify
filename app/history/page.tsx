@@ -230,7 +230,7 @@ function getDefaultCenturyForTab(tabKey: HistoryTab) {
   const tab = TABS.find((item) => item.key === tabKey) || TABS[0];
   if (tab.key === "on-this-day") return "custom";
 
-  const century = getCenturyFromYear(tab.from);
+  const century = getCenturyFromYear(tab.to);
   return String(century);
 }
 
@@ -408,7 +408,7 @@ export default function HistoryPage() {
   const [fromYear, setFromYear] = useState(defaultRange.from);
   const [toYear, setToYear] = useState(defaultRange.to);
   const [centuryValue, setCenturyValue] = useState(defaultCentury);
-  const [limit, setLimit] = useState(50);
+  const [limit, setLimit] = useState(10);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -601,31 +601,47 @@ export default function HistoryPage() {
             <div className="grid gap-3 sm:grid-cols-3">
               <StatCard
                 label="Current tab"
-                value={activeMeta.label}
-                helper={activeMeta.short}
+                value={loading ? "Loading..." : activeMeta.label}
+                helper={loading ? "Fetching selected module" : activeMeta.short}
               />
 
               <StatCard
                 label="Events"
                 value={
-                  isOnThisDay
-                    ? fmtNumber(
-                        (onThisDay?.selected?.length || 0) +
-                          (onThisDay?.events?.length || 0),
-                      )
-                    : fmtNumber(eventsPayload?.total || 0)
+                  loading
+                    ? "Loading..."
+                    : isOnThisDay
+                      ? fmtNumber(
+                          (onThisDay?.selected?.length || 0) +
+                            (onThisDay?.events?.length || 0),
+                        )
+                      : fmtNumber(eventsPayload?.total || 0)
                 }
-                helper={isOnThisDay ? "Daily entries" : "Unique events"}
+                helper={
+                  loading
+                    ? "Fetching events"
+                    : isOnThisDay
+                      ? "Daily entries"
+                      : "Unique events"
+                }
               />
 
               <StatCard
                 label="Era range"
                 value={
-                  isOnThisDay
-                    ? "Daily"
-                    : `${fmtYear(earliestYear)} → ${fmtYear(latestYear)}`
+                  loading
+                    ? "Loading..."
+                    : isOnThisDay
+                      ? "Daily"
+                      : `${fmtYear(earliestYear)} → ${fmtYear(latestYear)}`
                 }
-                helper={isOnThisDay ? "Wikipedia feed" : "Returned timeline"}
+                helper={
+                  loading
+                    ? "Resolving timeline"
+                    : isOnThisDay
+                      ? "Wikipedia feed"
+                      : "Returned timeline"
+                }
               />
             </div>
           </div>
@@ -1071,3 +1087,4 @@ export default function HistoryPage() {
     </main>
   );
 }
+
