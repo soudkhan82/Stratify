@@ -275,8 +275,7 @@ async function fetchWikipediaPageHtml(title: string) {
       signal: controller.signal,
       headers: {
         Accept: "application/json",
-        "User-Agent":
-          "StratifyAnalytics/1.0 (https://worldstats360.com; segment-source-records)",
+        "User-Agent": "StratifyAnalytics/1.0 (https://worldstats360.com; segment-source-records)",
       },
       next: { revalidate: 3600 },
     });
@@ -292,11 +291,22 @@ async function fetchWikipediaPageHtml(title: string) {
   }
 }
 
+function getRecordStart(record: HistoryRecord) {
+  return record.startYear ?? record.year;
+}
+
+function inRange(record: HistoryRecord, from: number, to: number) {
+  const start = getRecordStart(record);
+  if (start === null || start === undefined || !Number.isFinite(start)) return false;
+
+  return start >= from && start <= to;
+}
+
 function buildBuckets(records: HistoryRecord[]) {
   const map = new Map<number, number>();
 
   for (const record of records) {
-    const y = record.startYear ?? record.year;
+    const y = getRecordStart(record);
     if (y === null || y === undefined || !Number.isFinite(y)) continue;
 
     const bucket = y > 0 ? Math.floor((y - 1) / 100) * 100 + 1 : Math.floor(y / 100) * 100;
@@ -306,6 +316,8 @@ function buildBuckets(records: HistoryRecord[]) {
   const rows = Array.from(map.entries())
     .map(([bucket, count]) => ({
       bucket,
+      from: bucket,
+      to: bucket + 99,
       label:
         bucket < 0
           ? `${Math.abs(bucket)}–${Math.abs(bucket + 99)} BC`
@@ -333,15 +345,21 @@ export async function GET(req: Request) {
   const pageSize = clamp(asInt(searchParams.get("pageSize"), 25), 10, 50);
   const q = cleanText(searchParams.get("q") || "").toLowerCase();
 
+  const fromParam = searchParams.get("from");
+  const toParam = searchParams.get("to");
+  const hasRange = fromParam !== null && toParam !== null;
+  const from = asInt(fromParam, -999999);
+  const to = asInt(toParam, 999999);
+
   const config = SOURCE_CONFIG[segment];
   const source = config.sources.find((s) => s.key === sourceKey) || config.sources[0];
 
   try {
     const html = await fetchWikipediaPageHtml(source.title);
-    let records = parsePage(html, source);
+    let baseRecords = parsePage(html, source);
 
     if (q) {
-      records = records.filter((record) => {
+      baseRecords = baseRecords.filter((record) => {
         const haystack = [
           record.title,
           record.description,
@@ -356,6 +374,12 @@ export async function GET(req: Request) {
         return haystack.includes(q);
       });
     }
+
+    const buckets = buildBuckets(baseRecords);
+
+    const records = hasRange
+      ? baseRecords.filter((record) => inRange(record, Math.min(from, to), Math.max(from, to)))
+      : baseRecords;
 
     const total = records.length;
     const offset = (page - 1) * pageSize;
@@ -375,7 +399,13 @@ export async function GET(req: Request) {
         events,
         total,
         hasMore,
-        buckets: buildBuckets(records),
+        buckets,
+        activeRange: hasRange
+          ? {
+              from: Math.min(from, to),
+              to: Math.max(from, to),
+            }
+          : null,
         source: "Wikipedia source page",
         queryMode: "single-source-lazy-tab",
       },
@@ -398,8 +428,7 @@ export async function GET(req: Request) {
         total: 0,
         hasMore: false,
         buckets: [],
-        warning:
-          error instanceof Error ? error.message : "Source page returned no records.",
+        warning: error instanceof Error ? error.message : "Source page returned no records.",
       },
       { status: 200 },
     );

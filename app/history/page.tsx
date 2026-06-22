@@ -14,6 +14,7 @@ import {
   ScrollText,
   ShieldAlert,
   Swords,
+  X,
 } from "lucide-react";
 
 import EventDetailDialog from "@/app/history/components/EventDetailDialog";
@@ -44,6 +45,8 @@ type HistoryRecord = {
 
 type Bucket = {
   bucket: number;
+  from: number;
+  to: number;
   label: string;
   count: number;
   pct: number;
@@ -62,8 +65,18 @@ type RecordsPayload = {
   total?: number;
   hasMore?: boolean;
   buckets?: Bucket[];
+  activeRange?: {
+    from: number;
+    to: number;
+  } | null;
   warning?: string | null;
 };
+
+type ActiveRange = {
+  from: number;
+  to: number;
+  label: string;
+} | null;
 
 const SEGMENTS: Array<{
   key: SegmentKey;
@@ -139,15 +152,6 @@ const SEGMENTS: Array<{
   },
 ];
 
-function cleanText(value: unknown) {
-  return String(value ?? "")
-    .normalize("NFKC")
-    .replace(/\uFEFF/g, "")
-    .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function fmtNumber(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   return new Intl.NumberFormat("en-US").format(value);
@@ -173,10 +177,16 @@ function FrequencyPanel({
   loading,
   buckets,
   total,
+  activeRange,
+  onBucketClick,
+  onClearRange,
 }: {
   loading: boolean;
   buckets: Bucket[];
   total: number;
+  activeRange: ActiveRange;
+  onBucketClick: (bucket: Bucket) => void;
+  onClearRange: () => void;
 }) {
   return (
     <aside className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm">
@@ -189,10 +199,32 @@ function FrequencyPanel({
             Records by century
           </h3>
           <p className="mt-1 text-xs font-semibold text-slate-500">
-            Based on {fmtNumber(total)} filtered records.
+            Click a century to filter the event table.
           </p>
         </div>
         <BarChart3 className="h-5 w-5 text-violet-700" />
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+        <div className="min-w-0">
+          <div className="text-[11px] font-black uppercase tracking-wide text-slate-400">
+            Active timeframe
+          </div>
+          <div className="truncate text-xs font-black text-slate-800">
+            {activeRange ? activeRange.label : "All centuries"}
+          </div>
+        </div>
+
+        {activeRange ? (
+          <button
+            type="button"
+            onClick={onClearRange}
+            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] font-black text-slate-600 shadow-sm hover:text-rose-600"
+          >
+            <X className="h-3 w-3" />
+            Clear
+          </button>
+        ) : null}
       </div>
 
       <div className="mt-4 max-h-[610px] space-y-3 overflow-auto pr-1">
@@ -201,24 +233,49 @@ function FrequencyPanel({
             <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
           </div>
         ) : buckets.length ? (
-          buckets.map((bucket) => (
-            <div key={bucket.bucket}>
-              <div className="mb-1 flex items-center justify-between gap-2">
-                <span className="truncate text-[11px] font-black text-slate-600">
-                  {bucket.label}
-                </span>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-black text-slate-700">
-                  {bucket.count}
-                </span>
-              </div>
-              <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
-                <div
-                  className="h-full rounded-full bg-violet-600"
-                  style={{ width: `${bucket.pct}%` }}
-                />
-              </div>
-            </div>
-          ))
+          buckets.map((bucket) => {
+            const active =
+              activeRange?.from === bucket.from && activeRange?.to === bucket.to;
+
+            return (
+              <button
+                key={`${bucket.from}-${bucket.to}`}
+                type="button"
+                onClick={() => onBucketClick(bucket)}
+                className={[
+                  "block w-full rounded-2xl border p-2 text-left transition",
+                  active
+                    ? "border-violet-300 bg-violet-50 shadow-sm"
+                    : "border-transparent hover:border-slate-200 hover:bg-slate-50",
+                ].join(" ")}
+              >
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <span className="truncate text-[11px] font-black text-slate-700">
+                    {bucket.label}
+                  </span>
+                  <span
+                    className={[
+                      "rounded-full px-2 py-0.5 text-[11px] font-black",
+                      active
+                        ? "bg-violet-600 text-white"
+                        : "bg-slate-100 text-slate-700",
+                    ].join(" ")}
+                  >
+                    {bucket.count}
+                  </span>
+                </div>
+                <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className={[
+                      "h-full rounded-full",
+                      active ? "bg-slate-950" : "bg-violet-600",
+                    ].join(" ")}
+                    style={{ width: `${bucket.pct}%` }}
+                  />
+                </div>
+              </button>
+            );
+          })
         ) : (
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
             No frequency data for this source.
@@ -235,6 +292,9 @@ export default function HistoryPage() {
   const [searchText, setSearchText] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [activeRange, setActiveRange] = useState<ActiveRange>(null);
+  const [fromYearText, setFromYearText] = useState("");
+  const [toYearText, setToYearText] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [payload, setPayload] = useState<RecordsPayload | null>(null);
@@ -269,6 +329,44 @@ export default function HistoryPage() {
     setDetailFallbackTitle(record.title || null);
   }
 
+  function clearRange() {
+    setActiveRange(null);
+    setFromYearText("");
+    setToYearText("");
+    resetPaging();
+  }
+
+  function applyBucket(bucket: Bucket) {
+    setActiveRange({
+      from: bucket.from,
+      to: bucket.to,
+      label: bucket.label,
+    });
+    setFromYearText(String(bucket.from));
+    setToYearText(String(bucket.to));
+    resetPaging();
+  }
+
+  function applyCustomRange() {
+    const from = Number(fromYearText);
+    const to = Number(toYearText);
+
+    if (!Number.isFinite(from) || !Number.isFinite(to)) return;
+
+    const start = Math.trunc(Math.min(from, to));
+    const end = Math.trunc(Math.max(from, to));
+
+    setActiveRange({
+      from: start,
+      to: end,
+      label: `${fmtYear(start)}-${fmtYear(end)}`,
+    });
+
+    setFromYearText(String(start));
+    setToYearText(String(end));
+    resetPaging();
+  }
+
   useEffect(() => {
     const controller = new AbortController();
 
@@ -282,6 +380,10 @@ export default function HistoryPage() {
         qs.set("page", String(page));
         qs.set("pageSize", String(pageSize));
         if (searchText.trim()) qs.set("q", searchText.trim());
+        if (activeRange) {
+          qs.set("from", String(activeRange.from));
+          qs.set("to", String(activeRange.to));
+        }
 
         const response = await fetch(`/api/history/source-records?${qs.toString()}`, {
           cache: "no-store",
@@ -315,7 +417,7 @@ export default function HistoryPage() {
     loadRecords();
 
     return () => controller.abort();
-  }, [activeSegment, activeSource.key, page, pageSize, searchText]);
+  }, [activeSegment, activeSource.key, page, pageSize, searchText, activeRange]);
 
   return (
     <main className="min-h-screen bg-[#eef3fb] px-4 py-5 sm:px-6 lg:px-8">
@@ -330,7 +432,7 @@ export default function HistoryPage() {
                 Multi-tab historical event intelligence
               </h1>
               <p className="mt-2 max-w-4xl text-sm font-medium leading-6 text-slate-500">
-                Each segment loads only its selected source index, keeping the page fast while still giving searchable chronological records and frequency insight.
+                Each segment loads only its selected source index. Click the frequency bars to apply a century-level timeframe to the event table.
               </p>
             </div>
 
@@ -344,7 +446,7 @@ export default function HistoryPage() {
               <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="text-[11px] font-black uppercase tracking-wide text-slate-400">Records</div>
                 <div className="mt-2 text-2xl font-black text-slate-950">{loading ? "Loading..." : fmtNumber(total)}</div>
-                <div className="mt-1 text-xs font-semibold text-slate-500">Filtered source records</div>
+                <div className="mt-1 text-xs font-semibold text-slate-500">{activeRange ? activeRange.label : "Filtered source records"}</div>
               </div>
 
               <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
@@ -370,6 +472,9 @@ export default function HistoryPage() {
                     setActiveSegment(segment.key);
                     setActiveSourceKey(segment.sources[0].key);
                     setSearchText("");
+                    setActiveRange(null);
+                    setFromYearText("");
+                    setToYearText("");
                     resetPaging();
                   }}
                   className={[
@@ -392,7 +497,7 @@ export default function HistoryPage() {
             <div>
               <h2 className="text-lg font-black text-slate-950">{activeMeta.label}</h2>
               <p className="mt-1 text-sm font-medium text-slate-500">
-                Select a valid source index. The table fetches only that index to avoid heavy queries.
+                Select a source index, edit the year range manually, or click a frequency bar to filter by century.
               </p>
             </div>
 
@@ -404,6 +509,9 @@ export default function HistoryPage() {
                   onChange={(event) => {
                     setActiveSourceKey(event.target.value);
                     setSearchText("");
+                    setActiveRange(null);
+                    setFromYearText("");
+                    setToYearText("");
                     resetPaging();
                   }}
                   className="mt-1 block h-10 w-64 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-violet-400"
@@ -415,6 +523,53 @@ export default function HistoryPage() {
                   ))}
                 </select>
               </label>
+
+              <label className="text-xs font-black uppercase tracking-wide text-slate-500">
+                From year
+                <input
+                  type="number"
+                  value={fromYearText}
+                  onChange={(event) => setFromYearText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") applyCustomRange();
+                  }}
+                  placeholder="1901"
+                  className="mt-1 block h-10 w-28 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-violet-400"
+                />
+              </label>
+
+              <label className="text-xs font-black uppercase tracking-wide text-slate-500">
+                To year
+                <input
+                  type="number"
+                  value={toYearText}
+                  onChange={(event) => setToYearText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") applyCustomRange();
+                  }}
+                  placeholder="2000"
+                  className="mt-1 block h-10 w-28 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-violet-400"
+                />
+              </label>
+
+              <button
+                type="button"
+                onClick={applyCustomRange}
+                className="mt-5 inline-flex h-10 items-center rounded-xl bg-slate-950 px-4 text-xs font-black text-white shadow-sm transition hover:bg-slate-800"
+              >
+                Apply time-frame
+              </button>
+
+              {activeRange ? (
+                <button
+                  type="button"
+                  onClick={clearRange}
+                  className="mt-5 inline-flex h-10 items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:text-rose-600"
+                >
+                  <X className="h-4 w-4" />
+                  Clear
+                </button>
+              ) : null}
 
               <label className="text-xs font-black uppercase tracking-wide text-slate-500">
                 Search
@@ -463,7 +618,7 @@ export default function HistoryPage() {
               <div>
                 <h2 className="text-xl font-black text-slate-950">Event table</h2>
                 <p className="mt-1 text-xs font-semibold text-slate-500">
-                  {activeMeta.label} · {activeSource.label} · Page {page}
+                  {activeMeta.label} · {activeSource.label} · {activeRange ? activeRange.label : "All centuries"} · Page {page}
                 </p>
               </div>
 
@@ -472,6 +627,17 @@ export default function HistoryPage() {
                   <Clock3 className="h-4 w-4 text-violet-700" />
                   Lazy source fetch
                 </div>
+
+                {activeRange ? (
+                  <button
+                    type="button"
+                    onClick={clearRange}
+                    className="inline-flex items-center gap-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:text-rose-600"
+                  >
+                    <X className="h-4 w-4" />
+                    Clear century
+                  </button>
+                ) : null}
 
                 <button
                   type="button"
@@ -568,7 +734,7 @@ export default function HistoryPage() {
                   ) : (
                     <tr>
                       <td colSpan={3} className="px-4 py-12 text-center text-sm font-semibold text-slate-500">
-                        No records returned for this source/search.
+                        No records returned for this source/search/timeframe.
                       </td>
                     </tr>
                   )}
@@ -589,7 +755,14 @@ export default function HistoryPage() {
             </div>
           </section>
 
-          <FrequencyPanel loading={loading} buckets={buckets} total={total} />
+          <FrequencyPanel
+            loading={loading}
+            buckets={buckets}
+            total={buckets.reduce((sum, bucket) => sum + bucket.count, 0)}
+            activeRange={activeRange}
+            onBucketClick={applyBucket}
+            onClearRange={clearRange}
+          />
         </section>
 
         <EventDetailDialog
@@ -606,3 +779,5 @@ export default function HistoryPage() {
     </main>
   );
 }
+
+
