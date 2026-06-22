@@ -18,94 +18,61 @@ type BindingValue = {
 
 type SparqlRow = Record<string, BindingValue>;
 
-type ModernCountry = {
-  iso3: string;
-  country: string;
-};
-
 type HistoryEvent = {
-  qid: string;
+  qid?: string | null;
   title: string;
   description: string | null;
   type: string;
   year: number | null;
+  startYear: number | null;
+  endYear: number | null;
   startDate: string | null;
   endDate: string | null;
-  location: string | null;
-  modernCountry: string | null;
-  modernIso3: string | null;
-  modernCountries: ModernCountry[];
-  participants: string[];
-  outcomes: string[];
-  lat: number | null;
-  lng: number | null;
   articleUrl: string | null;
-  confidence: "high" | "medium" | "low";
+  source: string;
 };
 
-const TAB_CONFIG: Record<
-  HistoryTab,
-  {
-    label: string;
-    classes: string[];
-    defaultFrom: number;
-    defaultTo: number;
-    note: string;
-  }
-> = {
+const TAB_CONFIG: Record<HistoryTab, { label: string; classes: string[] }> = {
   conflicts: {
     label: "Wars & Conflicts",
-    classes: ["Q198", "Q8465", "Q180684"],
-    defaultFrom: 401,
-    defaultTo: 2026,
-    note: "Wars, civil wars and wider military conflicts.",
+    classes: ["Q198", "Q8465", "Q180684", "Q350604"],
   },
   battles: {
     label: "Battles & Sieges",
-    classes: ["Q178561", "Q188055"],
-    defaultFrom: -500,
-    defaultTo: 2026,
-    note: "Battle and siege-level events.",
+    classes: ["Q178561", "Q188055", "Q645883"],
   },
   revolutions: {
     label: "Independence & Revolutions",
     classes: ["Q10931", "Q45382", "Q124734"],
-    defaultFrom: 1701,
-    defaultTo: 2026,
-    note: "Revolutions, coups, uprisings and independence-related events.",
   },
   empires: {
     label: "Empires & Kingdoms",
     classes: ["Q48349", "Q3024240", "Q1790360"],
-    defaultFrom: -500,
-    defaultTo: 2026,
-    note: "Empires, kingdoms and historical states where dates exist.",
   },
   civilizations: {
-    label: "Civilizations",
+    label: "Empires & Civilizations",
     classes: ["Q8432", "Q3024240"],
-    defaultFrom: -4000,
-    defaultTo: 1600,
-    note: "Civilizations and ancient historical entities where Wikidata has dates.",
   },
 };
 
-const TERRITORY_BLOCKLIST = new Set([
-  "ATA",
-  "ATF",
-  "BVT",
-  "CCK",
-  "CXR",
-  "HMD",
-  "IOT",
-  "SGS",
-]);
+const WAR_SOURCE_PAGES = [
+  { title: "List of wars: before 1000", from: -5000, to: 999 },
+  { title: "List of wars: 1000–1499", from: 1000, to: 1499 },
+  { title: "List of wars: 1500–1799", from: 1500, to: 1799 },
+  { title: "List of wars: 1800–1899", from: 1800, to: 1899 },
+  { title: "List of wars: 1900–1944", from: 1900, to: 1944 },
+  { title: "List of wars: 1945–1989", from: 1945, to: 1989 },
+  { title: "List of wars: 1990–2002", from: 1990, to: 2002 },
+  { title: "List of wars: 2003–2019", from: 2003, to: 2019 },
+  { title: "List of wars: 2020–present", from: 2020, to: 2026 },
+];
 
 function cleanText(value: unknown) {
   return String(value ?? "")
     .normalize("NFKC")
     .replace(/\uFEFF/g, "")
     .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
+    .replace(/\[\d+\]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -117,6 +84,194 @@ function asInt(value: unknown, fallback: number) {
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
+}
+
+function decodeHtml(value: string) {
+  return value
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&ndash;/g, "–")
+    .replace(/&mdash;/g, "—")
+    .replace(/&#(\d+);/g, (_, code) => {
+      const n = Number(code);
+      return Number.isFinite(n) ? String.fromCharCode(n) : "";
+    });
+}
+
+function htmlToText(html: string) {
+  return cleanText(
+    decodeHtml(
+      String(html || "")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<sup\b[\s\S]*?<\/sup>/gi, " ")
+        .replace(/<br\s*\/?>/gi, " | ")
+        .replace(/<\/li>/gi, " | ")
+        .replace(/<\/p>/gi, " ")
+        .replace(/<[^>]+>/g, " "),
+    ),
+  );
+}
+
+function firstWikiUrl(html: string) {
+  const match = String(html || "").match(/href="(\/wiki\/[^"#:]*)"/i);
+  if (!match) return null;
+  return `https://en.wikipedia.org${match[1]}`;
+}
+
+function parseYearCell(value: string): number | null {
+  const text = htmlToText(value).toLowerCase();
+
+  if (!text) return null;
+  if (text.includes("present") || text.includes("ongoing")) return 2026;
+
+  const bc = text.match(/(\d{1,5})\s*bc/i);
+  if (bc) {
+    const n = Number(bc[1]);
+    return Number.isFinite(n) ? -n : null;
+  }
+
+  const year = text.match(/-?\d{1,5}/);
+  if (!year) return null;
+
+  const n = Number(year[0]);
+  return Number.isFinite(n) ? n : null;
+}
+
+function trimText(value: string | null, max = 260) {
+  const text = cleanText(value);
+  if (!text) return null;
+  return text.length > max ? `${text.slice(0, max).trim()}...` : text;
+}
+
+function overlapsPeriod(
+  startYear: number | null,
+  endYear: number | null,
+  from: number,
+  to: number,
+) {
+  if (startYear === null) return false;
+  const safeEnd = endYear ?? startYear;
+  return startYear <= to && safeEnd >= from;
+}
+
+function eventKey(event: HistoryEvent) {
+  return cleanText(event.articleUrl || event.title).toLowerCase();
+}
+
+async function fetchWikipediaPageHtml(title: string) {
+  const url = new URL("https://en.wikipedia.org/w/api.php");
+  url.searchParams.set("action", "parse");
+  url.searchParams.set("page", title);
+  url.searchParams.set("prop", "text");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("redirects", "1");
+  url.searchParams.set("origin", "*");
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const response = await fetch(url.toString(), {
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        "User-Agent":
+          "StratifyAnalytics/1.0 (https://worldstats360.com; history-war-list)",
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) return "";
+
+    const json = await response.json();
+    return String(json?.parse?.text?.["*"] || "");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function parseWarListRows(html: string, sourceTitle: string): HistoryEvent[] {
+  const rows = Array.from(String(html || "").matchAll(/<tr[\s\S]*?<\/tr>/gi));
+  const events: HistoryEvent[] = [];
+
+  for (const rowMatch of rows) {
+    const rowHtml = rowMatch[0];
+
+    const cells = Array.from(
+      rowHtml.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi),
+    ).map((match) => match[1]);
+
+    if (cells.length < 3) continue;
+
+    const startYear = parseYearCell(cells[0]);
+    const endYear = parseYearCell(cells[1]) ?? startYear;
+    const nameCell = cells[2];
+
+    const rawTitle = htmlToText(nameCell);
+    const title = rawTitle
+      .split("|")[0]
+      .replace(/\s*;\s*part of.*$/i, "")
+      .replace(/^name of conflict$/i, "")
+      .replace(/^conflict$/i, "")
+      .trim();
+
+    if (startYear === null || !title || title.length < 3) continue;
+    if (/^start$/i.test(title) || /^finish$/i.test(title)) continue;
+
+    const articleUrl = firstWikiUrl(nameCell);
+
+    const sideA = cells[3] ? htmlToText(cells[3]) : "";
+    const sideB = cells[4] ? htmlToText(cells[4]) : "";
+    const description = trimText([sideA, sideB].filter(Boolean).join(" | "));
+
+    events.push({
+      qid: null,
+      title,
+      description,
+      type: "war / conflict",
+      year: startYear,
+      startYear,
+      endYear,
+      startDate: String(startYear),
+      endDate: endYear !== null ? String(endYear) : null,
+      articleUrl,
+      source: `Wikipedia · ${sourceTitle}`,
+    });
+  }
+
+  return events;
+}
+
+async function fetchWarsFromWikipediaLists(from: number, to: number) {
+  const sourcePages = WAR_SOURCE_PAGES.filter(
+    (page) => page.from <= to && page.to >= from,
+  );
+
+  const pageResults = await Promise.all(
+    sourcePages.map(async (source) => {
+      try {
+        const html = await fetchWikipediaPageHtml(source.title);
+        return parseWarListRows(html, source.title).filter((event) =>
+          overlapsPeriod(event.startYear, event.endYear, from, to),
+        );
+      } catch {
+        return [];
+      }
+    }),
+  );
+
+  const map = new Map<string, HistoryEvent>();
+
+  for (const event of pageResults.flat()) {
+    const key = eventKey(event);
+    if (!key) continue;
+    if (!map.has(key)) map.set(key, event);
+  }
+
+  return Array.from(map.values());
 }
 
 function binding(row: SparqlRow, key: string) {
@@ -143,96 +298,15 @@ function parseYear(value: string): number | null {
   return Number.isFinite(year) ? Math.trunc(year) : null;
 }
 
-function parsePoint(value: string): { lat: number; lng: number } | null {
-  const s = cleanText(value);
-  const match = s.match(/Point\(([-\d.]+)\s+([-\d.]+)\)/i);
-  if (!match) return null;
-
-  const lng = Number(match[1]);
-  const lat = Number(match[2]);
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  return { lat, lng };
-}
-
-function addUniqueString(list: string[], value: string) {
-  const clean = cleanText(value);
-  if (!clean) return list;
-
-  if (list.some((item) => item.toLowerCase() === clean.toLowerCase())) {
-    return list;
-  }
-
-  return [...list, clean];
-}
-
-function addUniqueCountry(list: ModernCountry[], iso3: string, country: string) {
-  const cleanIso3 = cleanText(iso3).toUpperCase();
-  const cleanCountry = cleanText(country) || cleanIso3;
-
-  if (!cleanIso3 || cleanIso3.length !== 3) return list;
-  if (TERRITORY_BLOCKLIST.has(cleanIso3)) return list;
-
-  if (list.some((item) => item.iso3 === cleanIso3)) {
-    return list;
-  }
-
-  return [...list, { iso3: cleanIso3, country: cleanCountry }];
-}
-
-function buildSeedQuery(args: {
+function buildWikidataQuery(args: {
   tab: HistoryTab;
   from: number;
   to: number;
   limit: number;
+  offset: number;
 }) {
   const config = TAB_CONFIG[args.tab];
   const classes = config.classes.map((qid) => `wd:${qid}`).join(" ");
-
-  return `
-PREFIX wd: <http://www.wikidata.org/entity/>
-PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-PREFIX bd: <http://www.bigdata.com/rdf#>
-PREFIX wikibase: <http://wikiba.se/ontology#>
-
-SELECT DISTINCT
-  ?item
-  ?itemLabel
-  ?itemDescription
-  ?classLabel
-  ?eventDate
-  ?endDate
-  ?year
-WHERE {
-  VALUES ?class { ${classes} }
-
-  ?item wdt:P31 ?class .
-
-  OPTIONAL { ?item wdt:P585 ?pointDate. }
-  OPTIONAL { ?item wdt:P580 ?startDate. }
-  OPTIONAL { ?item wdt:P571 ?inceptionDate. }
-
-  BIND(COALESCE(?pointDate, ?startDate, ?inceptionDate) AS ?eventDate)
-  FILTER(BOUND(?eventDate))
-
-  BIND(YEAR(?eventDate) AS ?year)
-  FILTER(?year >= ${args.from} && ?year <= ${args.to})
-
-  OPTIONAL { ?item wdt:P582 ?endDateRaw. }
-  OPTIONAL { ?item wdt:P576 ?dissolvedDate. }
-  BIND(COALESCE(?endDateRaw, ?dissolvedDate) AS ?endDate)
-
-  SERVICE wikibase:label {
-    bd:serviceParam wikibase:language "en" .
-  }
-}
-ORDER BY ASC(?year) ?itemLabel
-LIMIT ${args.limit}
-`;
-}
-
-function buildDetailQuery(qids: string[]) {
-  const values = qids.map((qid) => `wd:${qid}`).join(" ");
 
   return `
 PREFIX wd: <http://www.wikidata.org/entity/>
@@ -243,49 +317,35 @@ PREFIX schema: <http://schema.org/>
 
 SELECT DISTINCT
   ?item
-  ?locationLabel
-  ?coord
-  ?countryLabel
-  ?iso3
-  ?participantLabel
-  ?participantCountryLabel
-  ?participantIso3
-  ?winnerLabel
-  ?winnerCountryLabel
-  ?winnerIso3
+  ?itemLabel
+  ?itemDescription
+  ?classLabel
+  ?startDate
+  ?endDate
+  ?startYear
+  ?endYear
   ?article
 WHERE {
-  VALUES ?item { ${values} }
+  VALUES ?class { ${classes} }
 
-  OPTIONAL { ?item wdt:P276 ?location. }
-  OPTIONAL { ?location wdt:P625 ?locationCoord. }
-  OPTIONAL { ?location wdt:P17 ?locationCountry. }
+  ?item wdt:P31/wdt:P279* ?class .
 
-  OPTIONAL { ?item wdt:P625 ?itemCoord. }
-  OPTIONAL { ?item wdt:P17 ?itemCountry. }
+  OPTIONAL { ?item wdt:P585 ?pointDate. }
+  OPTIONAL { ?item wdt:P580 ?directStartDate. }
+  OPTIONAL { ?item wdt:P571 ?inceptionDate. }
 
-  OPTIONAL {
-    ?item wdt:P36 ?capital.
-    OPTIONAL { ?capital wdt:P625 ?capitalCoord. }
-    OPTIONAL { ?capital wdt:P17 ?capitalCountry. }
-  }
+  BIND(COALESCE(?directStartDate, ?pointDate, ?inceptionDate) AS ?startDate)
+  FILTER(BOUND(?startDate))
 
-  BIND(COALESCE(?itemCoord, ?locationCoord, ?capitalCoord) AS ?coord)
-  BIND(COALESCE(?locationCountry, ?itemCountry, ?capitalCountry) AS ?country)
+  OPTIONAL { ?item wdt:P582 ?directEndDate. }
+  OPTIONAL { ?item wdt:P576 ?dissolvedDate. }
 
-  OPTIONAL { ?country wdt:P298 ?iso3. }
+  BIND(COALESCE(?directEndDate, ?dissolvedDate, ?pointDate, ?startDate) AS ?endDate)
 
-  OPTIONAL {
-    ?item wdt:P710 ?participant.
-    OPTIONAL { ?participant wdt:P17 ?participantCountry. }
-    OPTIONAL { ?participantCountry wdt:P298 ?participantIso3. }
-  }
+  BIND(YEAR(?startDate) AS ?startYear)
+  BIND(YEAR(?endDate) AS ?endYear)
 
-  OPTIONAL {
-    ?item wdt:P1346 ?winner.
-    OPTIONAL { ?winner wdt:P17 ?winnerCountry. }
-    OPTIONAL { ?winnerCountry wdt:P298 ?winnerIso3. }
-  }
+  FILTER(?startYear <= ${args.to} && ?endYear >= ${args.from})
 
   OPTIONAL {
     ?article schema:about ?item ;
@@ -296,12 +356,15 @@ WHERE {
     bd:serviceParam wikibase:language "en" .
   }
 }
+ORDER BY ASC(?startYear) ?itemLabel
+LIMIT ${args.limit}
+OFFSET ${args.offset}
 `;
 }
 
-async function queryWikidata(sparql: string, timeoutMs = 12000) {
+async function queryWikidata(sparql: string) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const timeout = setTimeout(() => controller.abort(), 9000);
 
   try {
     const body = new URLSearchParams();
@@ -315,21 +378,15 @@ async function queryWikidata(sparql: string, timeoutMs = 12000) {
         Accept: "application/sparql-results+json",
         "Content-Type": "application/x-www-form-urlencoded",
         "User-Agent":
-          "StratifyAnalytics/1.0 (https://worldstats360.com; history-intelligence)",
+          "StratifyAnalytics/1.0 (https://worldstats360.com; history-wikidata)",
       },
       body,
       cache: "no-store",
     });
 
-    const text = await response.text();
+    if (!response.ok) return [];
 
-    if (!response.ok) {
-      throw new Error(
-        `Wikidata query failed: ${response.status} ${response.statusText}`,
-      );
-    }
-
-    const json = JSON.parse(text) as {
+    const json = (await response.json()) as {
       results?: {
         bindings?: SparqlRow[];
       };
@@ -341,17 +398,7 @@ async function queryWikidata(sparql: string, timeoutMs = 12000) {
   }
 }
 
-function chunkArray<T>(items: T[], size: number) {
-  const chunks: T[][] = [];
-
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size));
-  }
-
-  return chunks;
-}
-
-function normalizeSeedRows(rows: SparqlRow[]): HistoryEvent[] {
+function normalizeWikidataRows(rows: SparqlRow[]): HistoryEvent[] {
   const map = new Map<string, HistoryEvent>();
 
   for (const row of rows) {
@@ -359,138 +406,57 @@ function normalizeSeedRows(rows: SparqlRow[]): HistoryEvent[] {
     const title = binding(row, "itemLabel");
 
     if (!qid || !title) continue;
-
     if (map.has(qid)) continue;
+
+    const startYear = parseYear(binding(row, "startYear"));
+    const endYear = parseYear(binding(row, "endYear"));
 
     map.set(qid, {
       qid,
       title,
-      description: binding(row, "itemDescription") || null,
+      description: trimText(binding(row, "itemDescription") || null),
       type: binding(row, "classLabel") || "Historical event",
-      year: parseYear(binding(row, "year")),
-      startDate: binding(row, "eventDate") || null,
+      year: startYear,
+      startYear,
+      endYear,
+      startDate: binding(row, "startDate") || null,
       endDate: binding(row, "endDate") || null,
-      location: null,
-      modernCountry: null,
-      modernIso3: null,
-      modernCountries: [],
-      participants: [],
-      outcomes: [],
-      lat: null,
-      lng: null,
-      articleUrl: `https://www.wikidata.org/wiki/${qid}`,
-      confidence: "low",
+      articleUrl:
+        binding(row, "article") || `https://www.wikidata.org/wiki/${qid}`,
+      source: "Wikidata / Wikipedia",
     });
   }
 
-  return Array.from(map.values()).sort((a, b) => {
-    const ay = a.year ?? 999999;
-    const by = b.year ?? 999999;
+  return Array.from(map.values());
+}
+
+async function fetchFromWikidata(
+  tab: HistoryTab,
+  from: number,
+  to: number,
+  pageSize: number,
+  offset: number,
+) {
+  const rows = await queryWikidata(
+    buildWikidataQuery({
+      tab,
+      from,
+      to,
+      limit: pageSize + 1,
+      offset,
+    }),
+  );
+
+  return normalizeWikidataRows(rows);
+}
+
+function sortEvents(events: HistoryEvent[]) {
+  return events.sort((a, b) => {
+    const ay = a.startYear ?? a.year ?? 999999;
+    const by = b.startYear ?? b.year ?? 999999;
     if (ay !== by) return ay - by;
     return a.title.localeCompare(b.title);
   });
-}
-
-function mergeDetailRows(events: HistoryEvent[], rows: SparqlRow[]) {
-  const map = new Map(events.map((event) => [event.qid, event]));
-
-  for (const row of rows) {
-    const qid = qidFromUri(binding(row, "item"));
-    const event = map.get(qid);
-    if (!event) continue;
-
-    const coord = parsePoint(binding(row, "coord"));
-    if (coord && event.lat === null && event.lng === null) {
-      event.lat = coord.lat;
-      event.lng = coord.lng;
-    }
-
-    const location = binding(row, "locationLabel");
-    if (location) {
-      const currentLocations = event.location
-        ? event.location.split(",").map((x) => x.trim())
-        : [];
-
-      const merged = addUniqueString(currentLocations, location);
-      event.location = merged.join(", ");
-    }
-
-    event.modernCountries = addUniqueCountry(
-      event.modernCountries,
-      binding(row, "iso3"),
-      binding(row, "countryLabel"),
-    );
-
-    event.modernCountries = addUniqueCountry(
-      event.modernCountries,
-      binding(row, "participantIso3"),
-      binding(row, "participantCountryLabel"),
-    );
-
-    event.modernCountries = addUniqueCountry(
-      event.modernCountries,
-      binding(row, "winnerIso3"),
-      binding(row, "winnerCountryLabel"),
-    );
-
-    event.participants = addUniqueString(
-      event.participants,
-      binding(row, "participantLabel"),
-    );
-
-    const winner = binding(row, "winnerLabel");
-    if (winner) {
-      event.outcomes = addUniqueString(event.outcomes, `Winner: ${winner}`);
-    }
-
-    const article = binding(row, "article");
-    if (article) event.articleUrl = article;
-
-    event.modernIso3 = event.modernCountries[0]?.iso3 || null;
-    event.modernCountry = event.modernCountries[0]?.country || null;
-
-    event.confidence =
-      event.lat !== null && event.lng !== null && event.modernCountries.length
-        ? "high"
-        : event.modernCountries.length
-          ? "medium"
-          : "low";
-  }
-
-  return Array.from(map.values()).sort((a, b) => {
-    const ay = a.year ?? 999999;
-    const by = b.year ?? 999999;
-    if (ay !== by) return ay - by;
-    return a.title.localeCompare(b.title);
-  });
-}
-
-function aggregateByCountry(events: HistoryEvent[]) {
-  const map = new Map<string, { iso3: string; country: string; value: number }>();
-
-  for (const event of events) {
-    const countedForThisEvent = new Set<string>();
-
-    for (const country of event.modernCountries || []) {
-      const iso3 = country.iso3.toUpperCase();
-      if (!iso3 || countedForThisEvent.has(iso3)) continue;
-
-      countedForThisEvent.add(iso3);
-
-      const current =
-        map.get(iso3) ||
-        ({
-          iso3,
-          country: country.country || iso3,
-          value: 0,
-        } satisfies { iso3: string; country: string; value: number });
-
-      current.value += 1;
-      map.set(iso3, current);
-    }
-  }
-
-  return Array.from(map.values()).sort((a, b) => b.value - a.value);
 }
 
 export async function GET(req: Request) {
@@ -502,83 +468,101 @@ export async function GET(req: Request) {
       ? (tabRaw as HistoryTab)
       : "conflicts";
 
-    const config = TAB_CONFIG[tab];
-
-    const from = asInt(searchParams.get("from"), config.defaultFrom);
-    const to = asInt(searchParams.get("to"), config.defaultTo);
-    const limit = clamp(asInt(searchParams.get("limit"), 50), 10, 80);
+    const from = asInt(searchParams.get("from"), -5000);
+    const to = asInt(searchParams.get("to"), 2026);
+    const page = clamp(asInt(searchParams.get("page"), 1), 1, 5000);
+    const pageSize = clamp(asInt(searchParams.get("pageSize"), 25), 10, 50);
+    const offset = (page - 1) * pageSize;
 
     const normalizedFrom = Math.min(from, to);
     const normalizedTo = Math.max(from, to);
 
-    const seedRows = await queryWikidata(
-      buildSeedQuery({
-        tab,
-        from: normalizedFrom,
-        to: normalizedTo,
-        limit,
-      }),
-      12000,
-    );
+    let events: HistoryEvent[] = [];
+    let total: number | null = null;
+    let hasMore = false;
+    let warning: string | null = null;
+    let queryMode = "wikidata-paged";
 
-    let events = normalizeSeedRows(seedRows);
-    let detailWarning: string | null = null;
+    if (tab === "conflicts") {
+      try {
+        const all = sortEvents(
+          await fetchWarsFromWikipediaLists(normalizedFrom, normalizedTo),
+        );
 
-    const qids = events.map((event) => event.qid).filter(Boolean);
-
-    try {
-      const detailRows: SparqlRow[] = [];
-
-      for (const chunk of chunkArray(qids, 20)) {
-        if (!chunk.length) continue;
-
-        const rows = await queryWikidata(buildDetailQuery(chunk), 12000);
-        detailRows.push(...rows);
+        total = all.length;
+        events = all.slice(offset, offset + pageSize);
+        hasMore = offset + pageSize < all.length;
+        queryMode = "wikipedia-war-list-paged";
+      } catch {
+        warning = "Wikipedia list source failed. Trying Wikidata fallback.";
       }
-
-      events = mergeDetailRows(events, detailRows);
-    } catch (detailError) {
-      detailWarning =
-        detailError instanceof Error
-          ? detailError.message
-          : "Detail enrichment failed";
     }
 
-    const countryRows = aggregateByCountry(events);
+    if (!events.length && tab !== "conflicts") {
+      const rows = await fetchFromWikidata(
+        tab,
+        normalizedFrom,
+        normalizedTo,
+        pageSize,
+        offset,
+      );
+
+      hasMore = rows.length > pageSize;
+      events = rows.slice(0, pageSize);
+      total = null;
+      queryMode = "wikidata-paged";
+    }
+
+    if (!events.length && tab === "conflicts" && warning) {
+      const rows = await fetchFromWikidata(
+        tab,
+        normalizedFrom,
+        normalizedTo,
+        pageSize,
+        offset,
+      );
+
+      hasMore = rows.length > pageSize;
+      events = rows.slice(0, pageSize);
+      total = null;
+      queryMode = "wikidata-fallback-paged";
+    }
 
     return NextResponse.json(
       {
         ok: true,
         tab,
-        label: config.label,
-        note: config.note,
+        label: TAB_CONFIG[tab].label,
         from: normalizedFrom,
         to: normalizedTo,
+        page,
+        pageSize,
         events,
-        countryRows,
-        total: events.length,
-        mappedCountries: countryRows.length,
-        source: "Wikidata Query Service",
-        queryMode: "two-step-seed-plus-detail",
-        detailWarning,
+        total,
+        hasMore,
+        warning,
+        source:
+          tab === "conflicts"
+            ? "Wikipedia list pages + Wikidata fallback"
+            : "Wikidata Query Service",
+        queryMode,
       },
       {
         headers: {
-          "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+          "Cache-Control": "public, max-age=900, stale-while-revalidate=3600",
         },
       },
     );
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       {
-        ok: false,
-        error:
-          error instanceof Error ? error.message : "History events API failed",
-        hint: "Try a smaller century/range or reduce limit.",
+        ok: true,
         events: [],
-        countryRows: [],
+        total: 0,
+        hasMore: false,
+        warning: "No record returned for this filter.",
       },
-      { status: 500 },
+      { status: 200 },
     );
   }
 }
