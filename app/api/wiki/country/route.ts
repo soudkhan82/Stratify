@@ -1,732 +1,681 @@
-import { NextResponse } from "next/server";
-import countries from "world-countries";
+﻿import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-type RawCountry = {
-  cca3?: string;
-  name?: {
-    common?: string;
-    official?: string;
-  };
-};
-
-type WikiSummary = {
-  title?: string;
-  displaytitle?: string;
-  description?: string;
-  extract?: string;
-  content_urls?: {
-    desktop?: {
-      page?: string;
-    };
-  };
-  thumbnail?: {
-    source?: string;
-  };
-};
-
-type WikiFact = {
-  group: string;
+type SourcePage = {
   label: string;
-  value: string;
+  page: string;
+  category: string;
 };
 
-type CacheEntry = {
-  ts: number;
-  payload: any;
+type HistoryRecord = {
+  id: string;
+  timeline: string;
+  year: number;
+  startYear: number;
+  endYear: number;
+  fromYear: number;
+  toYear: number;
+  title: string;
+  record: string;
+  type: string;
+  category: string;
+  source: string;
+  description: string;
+  summary: string;
+  extract: string;
+  url: string | null;
+  wikiUrl: string | null;
+  articleUrl: string | null;
 };
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __WIKI_COUNTRY_PROFILE_CACHE__: Map<string, CacheEntry> | undefined;
-}
+const WIKI_ORIGIN = "https://en.wikipedia.org";
 
-const CACHE =
-  global.__WIKI_COUNTRY_PROFILE_CACHE__ ?? new Map<string, CacheEntry>();
-global.__WIKI_COUNTRY_PROFILE_CACHE__ = CACHE;
+const REVOLUTION_SOURCES: SourcePage[] = [
+  {
+    label: "List of revolutions and rebellions",
+    page: "List_of_revolutions_and_rebellions",
+    category: "INDEPENDENCE / REVOLUTION",
+  },
+];
 
-const TTL_MS = 1000 * 60 * 60 * 24;
-
-const COUNTRY_TITLE_OVERRIDES: Record<string, string> = {
-  USA: "United States",
-  GBR: "United Kingdom",
-  ARE: "United Arab Emirates",
-  CZE: "Czech Republic",
-  COD: "Democratic Republic of the Congo",
-  COG: "Republic of the Congo",
-  KOR: "South Korea",
-  PRK: "North Korea",
-  RUS: "Russia",
-  IRN: "Iran",
-  SYR: "Syria",
-  LAO: "Laos",
-  VNM: "Vietnam",
-  BOL: "Bolivia",
-  VEN: "Venezuela",
-  TZA: "Tanzania",
-  FSM: "Federated States of Micronesia",
-  MDA: "Moldova",
-  BRN: "Brunei",
-  SWZ: "Eswatini",
-  MKD: "North Macedonia",
-  PSE: "State of Palestine",
-  TUR: "Turkey",
-  TLS: "East Timor",
-  CPV: "Cape Verde",
-  CIV: "Ivory Coast",
-  VAT: "Vatican City",
-  HKG: "Hong Kong",
-  MAC: "Macau",
-  TWN: "Taiwan",
-};
-
-const ECONOMY_TITLE_OVERRIDES: Record<string, string> = {
-  USA: "Economy of the United States",
-  GBR: "Economy of the United Kingdom",
-  ARE: "Economy of the United Arab Emirates",
-  COD: "Economy of the Democratic Republic of the Congo",
-  COG: "Economy of the Republic of the Congo",
-  CZE: "Economy of the Czech Republic",
-  KOR: "Economy of South Korea",
-  PRK: "Economy of North Korea",
-  PSE: "Economy of the State of Palestine",
-  GMB: "Economy of the Gambia",
-  BHS: "Economy of the Bahamas",
-  NLD: "Economy of the Netherlands",
-  PHL: "Economy of the Philippines",
-  VAT: "Economy of Vatican City",
-};
+const WAR_SOURCES: SourcePage[] = [
+  {
+    label: "List of wars: before 1000",
+    page: "List_of_wars:_before_1000",
+    category: "WAR / CONFLICT",
+  },
+  {
+    label: "List of wars: 1000–1499",
+    page: "List_of_wars:_1000%E2%80%931499",
+    category: "WAR / CONFLICT",
+  },
+  {
+    label: "List of wars: 1500–1799",
+    page: "List_of_wars:_1500%E2%80%931799",
+    category: "WAR / CONFLICT",
+  },
+  {
+    label: "List of wars: 1800–1899",
+    page: "List_of_wars:_1800%E2%80%931899",
+    category: "WAR / CONFLICT",
+  },
+  {
+    label: "List of wars: 1900–1944",
+    page: "List_of_wars:_1900%E2%80%931944",
+    category: "WAR / CONFLICT",
+  },
+  {
+    label: "List of wars: 1945–1989",
+    page: "List_of_wars:_1945%E2%80%931989",
+    category: "WAR / CONFLICT",
+  },
+  {
+    label: "List of wars: 1990–2002",
+    page: "List_of_wars:_1990%E2%80%932002",
+    category: "WAR / CONFLICT",
+  },
+  {
+    label: "List of wars: 2003–2019",
+    page: "List_of_wars:_2003%E2%80%932019",
+    category: "WAR / CONFLICT",
+  },
+  {
+    label: "List of wars: 2020–present",
+    page: "List_of_wars:_2020%E2%80%93present",
+    category: "WAR / CONFLICT",
+  },
+];
 
 function decodeEntities(value: string) {
-  return value
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&#160;/g, " ")
-    .replace(/&#91;/g, "[")
-    .replace(/&#93;/g, "]")
-    .replace(/&#40;/g, "(")
-    .replace(/&#41;/g, ")");
+  return String(value ?? "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
 }
 
-function cleanText(value: unknown) {
+function cleanHtml(value: string) {
   return decodeEntities(String(value ?? ""))
-    .normalize("NFKC")
-    .replace(/\uFEFF/g, "")
-    .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
-    .replace(/\[[a-z]\]/gi, "")
-    .replace(/\[\d+\]/g, "")
-    .replace(/\[citation needed\]/gi, "")
-    .replace(/[▲▼△▽]/g, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<sup[\s\S]*?<\/sup>/gi, " ")
+    .replace(/<span[^>]*class="mw-editsection"[\s\S]*?<\/span>/gi, " ")
+    .replace(/<br\s*\/?>/gi, " | ")
+    .replace(/<\/li>/gi, " | ")
+    .replace(/<\/p>/gi, " | ")
+    .replace(/<\/div>/gi, " | ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\[\s*\d+\s*\]/g, " ")
+    .replace(/\s*\|\s*/g, " | ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function htmlToText(html: string) {
-  return cleanText(
-    html
-      .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<script[\s\S]*?<\/script>/gi, " ")
-      .replace(/<sup\b[^>]*class="[^"]*reference[^"]*"[\s\S]*?<\/sup>/gi, " ")
-      .replace(
-        /<span\b[^>]*class="[^"]*mw-editsection[^"]*"[\s\S]*?<\/span>/gi,
-        " ",
-      )
-      .replace(/<br\s*\/?>/gi, " ")
-      .replace(/<\/li>/gi, " • ")
-      .replace(/<\/p>/gi, " ")
-      .replace(/<[^>]+>/g, " "),
-  );
+function normalizeText(value: unknown) {
+  return cleanHtml(String(value ?? ""))
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function getCountryNameFromIso3(iso3: string) {
-  const override = COUNTRY_TITLE_OVERRIDES[iso3];
-  if (override) return override;
-
-  const row = (countries as RawCountry[]).find(
-    (country) => String(country.cca3 || "").toUpperCase() === iso3,
-  );
-
-  return cleanText(row?.name?.common || row?.name?.official || iso3);
+function keyOf(value: unknown) {
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function wikiSummaryUrl(title: string) {
-  const normalized = title.trim().replace(/\s+/g, "_");
+function expandShortEndYear(start: number, endRaw: string) {
+  const end = Number(endRaw);
+  if (!Number.isFinite(end)) return start;
 
-  return `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(
-    normalized,
-  )}`;
-}
+  const startAbs = Math.abs(start);
+  const endDigits = endRaw.length;
+  const startDigits = String(startAbs).length;
 
-async function fetchJsonWithTimeout(url: string, ms = 12000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ms);
+  if (start > 0 && endDigits < startDigits) {
+    const factor = Math.pow(10, endDigits);
+    let expanded = Math.floor(start / factor) * factor + end;
 
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        Accept: "application/json",
-        "User-Agent":
-          "StratifyAnalytics/1.0 (https://worldstats360.com; country-profile)",
-        "Api-User-Agent":
-          "StratifyAnalytics/1.0 (https://worldstats360.com; country-profile)",
-      },
-      cache: "no-store",
-    });
+    if (expanded < start) expanded += factor;
 
-    const text = await response.text();
-
-    let json: any = null;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      json = null;
-    }
-
-    return { response, json };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function searchWikipediaTitle(query: string) {
-  const url = new URL("https://en.wikipedia.org/w/api.php");
-
-  url.searchParams.set("action", "query");
-  url.searchParams.set("list", "search");
-  url.searchParams.set("srsearch", query);
-  url.searchParams.set("format", "json");
-  url.searchParams.set("srlimit", "1");
-  url.searchParams.set("origin", "*");
-
-  const { response, json } = await fetchJsonWithTimeout(url.toString());
-
-  if (!response.ok) return null;
-
-  const first = json?.query?.search?.[0]?.title;
-  return typeof first === "string" && first.trim() ? first.trim() : null;
-}
-
-async function loadWikipediaSummary(title: string) {
-  const first = await fetchJsonWithTimeout(wikiSummaryUrl(title));
-
-  if (first.response.ok && first.json?.extract) {
-    return first.json as WikiSummary;
+    return expanded;
   }
 
-  const fallbackTitle = await searchWikipediaTitle(title);
-  if (!fallbackTitle) return null;
-
-  const fallback = await fetchJsonWithTimeout(wikiSummaryUrl(fallbackTitle));
-
-  if (!fallback.response.ok || !fallback.json?.extract) return null;
-
-  return fallback.json as WikiSummary;
+  return end;
 }
 
-async function loadWikipediaPageHtml(title: string) {
-  const url = new URL("https://en.wikipedia.org/w/api.php");
-
-  url.searchParams.set("action", "parse");
-  url.searchParams.set("page", title);
-  url.searchParams.set("prop", "text");
-  url.searchParams.set("format", "json");
-  url.searchParams.set("redirects", "1");
-  url.searchParams.set("disabletoc", "1");
-  url.searchParams.set("origin", "*");
-
-  const { response, json } = await fetchJsonWithTimeout(url.toString(), 14000);
-
-  if (!response.ok || !json?.parse?.text?.["*"]) return "";
-
-  return String(json.parse.text["*"]);
+function applyEra(year: number, era?: string | null) {
+  const e = String(era ?? "").toUpperCase();
+  if (e === "BC" || e === "BCE") return -Math.abs(year);
+  return year;
 }
 
-function extractFirstInfobox(html: string) {
-  const startMatch = /<table\b[^>]*class="[^"]*\binfobox\b[^"]*"[^>]*>/i.exec(
-    html,
+function parseYearRange(textValue: string) {
+  const text = normalizeText(textValue)
+    .replace(/,/g, "")
+    .replace(/[−‐-‒–—]/g, "-");
+
+  const range = text.match(
+    /(?:c\.?\s*)?(\d{1,4})\s*(BC|BCE|AD|CE)?\s*(?:-|to|until|through)\s*(?:c\.?\s*)?(\d{1,4}|present|ongoing)\s*(BC|BCE|AD|CE)?/i
   );
 
-  if (!startMatch || startMatch.index === undefined) return "";
+  if (range) {
+    const startRaw = range[1];
+    const startEra = range[2];
+    const endRaw = range[3];
+    const endEra = range[4] || startEra;
 
-  const start = startMatch.index;
-  const tableTagRegex = /<\/?table\b[^>]*>/gi;
+    let startYear = Number(startRaw);
+    if (!Number.isFinite(startYear)) return null;
 
-  tableTagRegex.lastIndex = start;
+    startYear = applyEra(startYear, startEra);
 
-  let depth = 0;
-  let match: RegExpExecArray | null;
+    let endYear: number;
 
-  while ((match = tableTagRegex.exec(html))) {
-    const tag = match[0].toLowerCase();
-
-    if (tag.startsWith("<table")) depth += 1;
-    if (tag.startsWith("</table")) depth -= 1;
-
-    if (depth === 0) {
-      return html.slice(start, tableTagRegex.lastIndex);
-    }
-  }
-
-  return "";
-}
-
-function getCountryFactGroup(label: string, currentGroup: string) {
-  const s = label.toLowerCase();
-
-  if (/population|density/.test(s)) return "Population";
-  if (/area|water/.test(s)) return "Area";
-  if (/time zone|date format|calling code|iso|internet tld/.test(s)) {
-    return "Codes & standards";
-  }
-  if (
-    /capital|largest city|official|language|religion|demonym|government/.test(s)
-  ) {
-    return "General";
-  }
-
-  return currentGroup || "General";
-}
-
-function getEconomyFactGroup(label: string, currentGroup: string) {
-  const s = label.toLowerCase();
-
-  if (/currency|fiscal year|trade organisations|country group/.test(s)) {
-    return "Economic profile";
-  }
-  if (/gdp|inflation|poverty|gini|hdi|labour|unemployment|industries/.test(s)) {
-    return "Economic indicators";
-  }
-  if (/exports|imports|trade|debt|revenue|expenses|aid|remittances/.test(s)) {
-    return "Trade & finance";
-  }
-
-  return currentGroup || "Economy";
-}
-
-function extractInfoboxFacts(html: string, kind: "country" | "economy") {
-  const infobox = extractFirstInfobox(html);
-  if (!infobox) return [];
-
-  const rows = infobox.match(/<tr[\s\S]*?<\/tr>/gi) || [];
-  const facts: WikiFact[] = [];
-
-  let currentGroup = kind === "economy" ? "Economy" : "General";
-
-  for (const row of rows) {
-    const cells = Array.from(
-      row.matchAll(/<(th|td)\b[^>]*>([\s\S]*?)<\/\1>/gi),
-    ).map((m) => ({
-      tag: m[1].toLowerCase(),
-      text: htmlToText(m[2]),
-    }));
-
-    if (!cells.length) continue;
-
-    if (cells.length === 1 && cells[0].tag === "th") {
-      const heading = cells[0].text;
-      if (heading && heading.length <= 90) currentGroup = heading;
-      continue;
+    if (/present|ongoing/i.test(endRaw)) {
+      endYear = new Date().getUTCFullYear();
+    } else {
+      endYear = expandShortEndYear(startYear, endRaw);
+      endYear = applyEra(endYear, endEra);
     }
 
-    const firstTh = cells.find((cell) => cell.tag === "th");
-    const firstTd = cells.find((cell) => cell.tag === "td");
+    if (!Number.isFinite(endYear)) endYear = startYear;
 
-    const label = firstTh?.text || cells[0]?.text || "";
-    const value =
-      firstTd?.text ||
-      cells
-        .slice(1)
-        .map((cell) => cell.text)
-        .filter(Boolean)
-        .join(" ");
-
-    if (!label || !value) continue;
-    if (label.length > 100 || value.length > 700) continue;
-
-    const group =
-      kind === "economy"
-        ? getEconomyFactGroup(label, currentGroup)
-        : getCountryFactGroup(label, currentGroup);
-
-    facts.push({
-      group,
-      label,
-      value,
-    });
-
-    if (/statistics|gdp|population|area/i.test(label)) {
-      currentGroup = label;
-    }
-  }
-
-  const seen = new Set<string>();
-
-  return facts.filter((fact) => {
-    const key = `${fact.group}|${fact.label}|${fact.value}`.toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function isEconomicCountryFact(fact: WikiFact) {
-  return /gdp|gini|hdi|currency|economy|nominal|ppp/i.test(
-    `${fact.group} ${fact.label}`,
-  );
-}
-
-function findFact(facts: WikiFact[], labelMatch: RegExp, groupMatch?: RegExp) {
-  return (
-    facts.find((fact) => {
-      const labelOk = labelMatch.test(fact.label);
-      const groupOk = groupMatch ? groupMatch.test(fact.group) : true;
-      return labelOk && groupOk;
-    }) || null
-  );
-}
-
-function extractFromValue(value: string, keyword: RegExp) {
-  const chunks = value
-    .split(/•|;|\n/g)
-    .map(cleanText)
-    .filter(Boolean);
-
-  return chunks.find((chunk) => keyword.test(chunk)) || "";
-}
-
-function buildCountryHighlights(facts: WikiFact[]) {
-  const picks: Array<{ title: string; fact: WikiFact | null }> = [
-    { title: "Capital", fact: findFact(facts, /capital/i) },
-    { title: "Area", fact: findFact(facts, /total/i, /area/i) },
-    {
-      title: "Population",
-      fact: findFact(facts, /census|estimate|population/i, /population/i),
-    },
-    { title: "Density", fact: findFact(facts, /density/i, /population/i) },
-    { title: "Time zone", fact: findFact(facts, /time zone/i) },
-    { title: "Calling code", fact: findFact(facts, /calling code/i) },
-  ];
-
-  const out: WikiFact[] = [];
-
-  for (const item of picks) {
-    if (!item.fact) continue;
-
-    out.push({
-      group: item.fact.group,
-      label: item.title,
-      value: item.fact.value,
-    });
-  }
-
-  return dedupeFacts(out);
-}
-
-function buildEconomyHighlights(facts: WikiFact[]) {
-  const out: WikiFact[] = [];
-
-  const gdp = findFact(facts, /^gdp$/i);
-  if (gdp) {
-    const nominal = extractFromValue(gdp.value, /nominal/i);
-    const ppp = extractFromValue(gdp.value, /\bppp\b/i);
-
-    if (nominal) {
-      out.push({
-        group: "Economic indicators",
-        label: "GDP nominal",
-        value: nominal,
-      });
-    }
-
-    if (ppp) {
-      out.push({
-        group: "Economic indicators",
-        label: "GDP PPP",
-        value: ppp,
-      });
-    }
-
-    if (!nominal && !ppp) {
-      out.push({
-        group: "Economic indicators",
-        label: "GDP",
-        value: gdp.value,
-      });
-    }
-  }
-
-  const picks: Array<{ title: string; fact: WikiFact | null }> = [
-    { title: "GDP growth", fact: findFact(facts, /gdp growth/i) },
-    { title: "GDP per capita", fact: findFact(facts, /gdp per capita/i) },
-    { title: "Inflation", fact: findFact(facts, /inflation/i) },
-    { title: "Unemployment", fact: findFact(facts, /unemployment/i) },
-    { title: "Currency", fact: findFact(facts, /currency/i) },
-    { title: "Fiscal year", fact: findFact(facts, /fiscal year/i) },
-  ];
-
-  for (const item of picks) {
-    if (!item.fact) continue;
-
-    out.push({
-      group: item.fact.group,
-      label: item.title,
-      value: item.fact.value,
-    });
-  }
-
-  return dedupeFacts(out).slice(0, 10);
-}
-
-function dedupeFacts(facts: WikiFact[]) {
-  const seen = new Set<string>();
-
-  return facts.filter((fact) => {
-    const key = `${fact.label}|${fact.value}`.toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function extractSectionHtml(html: string, sectionTitle: string) {
-  const h2Regex = /<h2[\s\S]*?<\/h2>/gi;
-  const headings = Array.from(html.matchAll(h2Regex)).map((m) => ({
-    index: m.index ?? 0,
-    html: m[0],
-    title: htmlToText(m[0])
-      .replace(/\[edit\]/gi, "")
-      .trim(),
-  }));
-
-  const current = headings.find((h) =>
-    h.title.toLowerCase().includes(sectionTitle.toLowerCase()),
-  );
-
-  if (!current) return "";
-
-  const next = headings.find((h) => h.index > current.index);
-  const end = next ? next.index : html.length;
-
-  return html.slice(current.index, end);
-}
-
-function extractParagraphs(sectionHtml: string, limit = 6) {
-  return Array.from(sectionHtml.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi))
-    .map((m) => htmlToText(m[1]))
-    .filter((text) => text.length >= 70)
-    .slice(0, limit);
-}
-
-function extractDemographics(html: string) {
-  const section = extractSectionHtml(html, "Demographics");
-  const paragraphs = extractParagraphs(section, 6);
-
-  return {
-    title: "Demographics",
-    paragraphs,
-  };
-}
-
-function extractEconomySections(html: string) {
-  const wanted = [
-    "Data",
-    "Gross domestic product",
-    "Currency",
-    "Major sectors",
-    "Foreign trade",
-  ];
-
-  const sections = wanted
-    .map((title) => {
-      const sectionHtml = extractSectionHtml(html, title);
-      const paragraphs = extractParagraphs(sectionHtml, 3);
-
-      return {
-        title,
-        paragraphs,
-      };
-    })
-    .filter((section) => section.paragraphs.length > 0);
-
-  return sections;
-}
-
-function buildEconomyTitleCandidates(countryTitle: string, iso3: string) {
-  const override = ECONOMY_TITLE_OVERRIDES[iso3];
-  const cleaned = cleanText(countryTitle);
-
-  const candidates = [
-    override,
-    `Economy of ${cleaned}`,
-    `Economy of the ${cleaned}`,
-  ].filter(Boolean) as string[];
-
-  return Array.from(new Set(candidates));
-}
-
-async function loadBestSummaryFromCandidates(
-  candidates: string[],
-  fallbackSearch: string,
-) {
-  for (const candidate of candidates) {
-    const summary = await loadWikipediaSummary(candidate);
-    if (summary?.extract) return summary;
-  }
-
-  const searchedTitle = await searchWikipediaTitle(fallbackSearch);
-  if (!searchedTitle) return null;
-
-  return loadWikipediaSummary(searchedTitle);
-}
-
-async function loadEconomyProfile(countryTitle: string, iso3: string) {
-  const candidates = buildEconomyTitleCandidates(countryTitle, iso3);
-
-  const summary = await loadBestSummaryFromCandidates(
-    candidates,
-    `Economy of ${countryTitle}`,
-  );
-
-  if (!summary?.extract) {
     return {
-      ok: false,
-      error: "Economy page unavailable",
-      facts: [],
-      highlights: [],
-      sections: [],
+      startYear,
+      endYear,
     };
   }
 
-  const actualTitle = cleanText(summary.title || candidates[0]);
-  const html = await loadWikipediaPageHtml(actualTitle);
+  const single = text.match(/(?:^|[^\d])(?:c\.?\s*)?(\d{1,4})\s*(BC|BCE|AD|CE)?(?:$|[^\d])/i);
 
-  const facts = html ? extractInfoboxFacts(html, "economy") : [];
-  const highlights = buildEconomyHighlights(facts);
-  const sections = html ? extractEconomySections(html) : [];
+  if (!single) return null;
+
+  const year = applyEra(Number(single[1]), single[2]);
+
+  if (!Number.isFinite(year)) return null;
 
   return {
-    ok: true,
-    title: actualTitle,
-    displayTitle: cleanText(
-      summary.displaytitle || summary.title || actualTitle,
-    ),
-    description: cleanText(summary.description),
-    extract: cleanText(summary.extract),
-    pageUrl: summary.content_urls?.desktop?.page || null,
-    thumbnailUrl: summary.thumbnail?.source || null,
-    facts,
-    highlights,
-    sections,
+    startYear: year,
+    endYear: year,
   };
+}
+
+function startsWithYear(text: string) {
+  return /^\s*(?:c\.?\s*)?\d{1,4}\s*(?:BC|BCE|AD|CE)?/i.test(normalizeText(text));
+}
+
+function extractCells(rowHtml: string) {
+  const cells: { raw: string; text: string }[] = [];
+  const re = /<(td|th)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(rowHtml))) {
+    const raw = match[2] ?? "";
+    const text = cleanHtml(raw);
+
+    if (text) {
+      cells.push({ raw, text });
+    }
+  }
+
+  return cells;
+}
+
+function firstArticle(rawHtml: string) {
+  const re = /<a\b[^>]*href="\/wiki\/([^"#?:]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(rawHtml))) {
+    const href = decodeURIComponent(match[1] ?? "");
+    const title = cleanHtml(match[2] ?? "");
+
+    if (!href || !title) continue;
+
+    const bad =
+      href.startsWith("File:") ||
+      href.startsWith("Help:") ||
+      href.startsWith("Special:") ||
+      href.startsWith("Category:") ||
+      href.startsWith("Template:") ||
+      href.startsWith("Wikipedia:") ||
+      href.startsWith("Portal:");
+
+    if (bad) continue;
+
+    return {
+      title,
+      url: `${WIKI_ORIGIN}/wiki/${encodeURIComponent(href).replace(/%2F/g, "/")}`,
+    };
+  }
+
+  return null;
+}
+
+function timelineLabel(startYear: number, endYear: number) {
+  if (startYear === endYear) return String(startYear);
+  return `${startYear}-${endYear}`;
+}
+
+function makeRecord(args: {
+  source: SourcePage;
+  title: string;
+  startYear: number;
+  endYear: number;
+  summary: string;
+  url: string | null;
+}) {
+  const title = normalizeText(args.title);
+  const summary = normalizeText(args.summary || title);
+
+  const record: HistoryRecord = {
+    id: `${args.source.page}-${args.startYear}-${args.endYear}-${keyOf(title)}`,
+    timeline: timelineLabel(args.startYear, args.endYear),
+    year: args.startYear,
+    startYear: args.startYear,
+    endYear: args.endYear,
+    fromYear: args.startYear,
+    toYear: args.endYear,
+    title,
+    record: title,
+    type: args.source.category,
+    category: args.source.category,
+    source: args.source.label,
+    description: summary,
+    summary,
+    extract: summary,
+    url: args.url,
+    wikiUrl: args.url,
+    articleUrl: args.url,
+  };
+
+  return record;
+}
+
+function parseTableRows(html: string, source: SourcePage) {
+  const records: HistoryRecord[] = [];
+  const rows = html.match(/<tr\b[\s\S]*?<\/tr>/gi) ?? [];
+
+  for (const rowHtml of rows) {
+    const cells = extractCells(rowHtml);
+    if (cells.length < 2) continue;
+
+    let startYear: number | null = null;
+    let endYear: number | null = null;
+    let titleIndex = -1;
+
+    const firstYears = parseYearRange(cells[0]?.text ?? "");
+    const secondYears = parseYearRange(cells[1]?.text ?? "");
+
+    // War tables commonly use: Start | Finish | Conflict
+    if (
+      cells.length >= 3 &&
+      firstYears &&
+      secondYears &&
+      startsWithYear(cells[0].text) &&
+      startsWithYear(cells[1].text)
+    ) {
+      startYear = firstYears.startYear;
+      endYear = secondYears.startYear;
+      titleIndex = 2;
+    }
+    // Revolution lists/tables commonly use: Date | Event
+    else if (firstYears && startsWithYear(cells[0].text)) {
+      startYear = firstYears.startYear;
+      endYear = firstYears.endYear;
+      titleIndex = 1;
+    }
+    // Some tables use: Event | Date
+    else if (secondYears && startsWithYear(cells[1].text)) {
+      startYear = secondYears.startYear;
+      endYear = secondYears.endYear;
+      titleIndex = 0;
+    }
+
+    if (startYear === null || endYear === null || titleIndex < 0) continue;
+
+    const titleCell = cells[titleIndex];
+    if (!titleCell) continue;
+
+    const article = firstArticle(titleCell.raw);
+    const title = article?.title || titleCell.text;
+
+    const titleKey = keyOf(title);
+
+    if (
+      !titleKey ||
+      titleKey === "event" ||
+      titleKey === "conflict" ||
+      titleKey === "name of conflict" ||
+      titleKey === "date" ||
+      titleKey === "result"
+    ) {
+      continue;
+    }
+
+    const summary = cells
+      .filter((_, i) => i !== titleIndex)
+      .map((c) => c.text)
+      .filter(Boolean)
+      .slice(0, 6)
+      .join(" | ");
+
+    records.push(
+      makeRecord({
+        source,
+        title,
+        startYear,
+        endYear,
+        summary,
+        url: article?.url ?? null,
+      })
+    );
+  }
+
+  return records;
+}
+
+function fallbackTitleFromListText(text: string) {
+  const cleaned = normalizeText(text)
+    .replace(/^\*?\s*(?:c\.?\s*)?\d{1,4}\s*(?:BC|BCE|AD|CE)?\s*(?:[-–—]\s*(?:c\.?\s*)?\d{1,4}\s*(?:BC|BCE|AD|CE)?)?\s*[:;,-]?\s*/i, "")
+    .replace(/^the\s+/i, "")
+    .trim();
+
+  const beforeStop = cleaned.split(/[.;|]/)[0]?.trim();
+
+  return beforeStop || cleaned.slice(0, 90);
+}
+
+function parseListItems(html: string, source: SourcePage) {
+  const records: HistoryRecord[] = [];
+  const items = html.match(/<li\b[^>]*>[\s\S]*?<\/li>/gi) ?? [];
+
+  for (const raw of items) {
+    const text = cleanHtml(raw);
+
+    if (!text || text.length < 8) continue;
+
+    const years = parseYearRange(text);
+
+    if (!years) continue;
+
+    const article = firstArticle(raw);
+    const title = article?.title || fallbackTitleFromListText(text);
+
+    const titleKey = keyOf(title);
+
+    if (
+      !titleKey ||
+      titleKey.includes("isbn") ||
+      titleKey.includes("citation needed") ||
+      titleKey === "edit" ||
+      titleKey === "main article" ||
+      titleKey === "see also" ||
+      titleKey === "references" ||
+      titleKey === "external links"
+    ) {
+      continue;
+    }
+
+    records.push(
+      makeRecord({
+        source,
+        title,
+        startYear: years.startYear,
+        endYear: years.endYear,
+        summary: text,
+        url: article?.url ?? null,
+      })
+    );
+  }
+
+  return records;
+}
+
+function dedupe(records: HistoryRecord[]) {
+  const seen = new Set<string>();
+  const output: HistoryRecord[] = [];
+
+  for (const r of records) {
+    const key = `${r.startYear}|${r.endYear}|${keyOf(r.title)}`;
+
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    output.push(r);
+  }
+
+  return output;
+}
+
+async function fetchWikiHtml(page: string) {
+  const url = new URL(`${WIKI_ORIGIN}/w/api.php`);
+  url.searchParams.set("action", "parse");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("origin", "*");
+  url.searchParams.set("prop", "text");
+  url.searchParams.set("page", decodeURIComponent(page));
+
+  const res = await fetch(url.toString(), {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "Stratify-History-Module/1.0",
+    },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(`Wikipedia fetch failed for ${page}: ${res.status}`);
+  }
+
+  const json = await res.json();
+
+  return String(json?.parse?.text?.["*"] ?? "");
+}
+
+function getSources(sourceValue: string, fromYear: number | null, toYear: number | null) {
+  const key = keyOf(sourceValue);
+
+  const isWar =
+    key.includes("war") ||
+    key.includes("conflict") ||
+    key.includes("battle") ||
+    key.includes("military");
+
+  if (!isWar) return REVOLUTION_SOURCES;
+
+  if (fromYear === null || toYear === null) return WAR_SOURCES;
+
+  return WAR_SOURCES.filter((src) => {
+    const label = keyOf(src.label);
+
+    if (label.includes("before 1000")) return fromYear <= 999;
+    if (label.includes("1000 1499")) return fromYear <= 1499 && toYear >= 1000;
+    if (label.includes("1500 1799")) return fromYear <= 1799 && toYear >= 1500;
+    if (label.includes("1800 1899")) return fromYear <= 1899 && toYear >= 1800;
+    if (label.includes("1900 1944")) return fromYear <= 1944 && toYear >= 1900;
+    if (label.includes("1945 1989")) return fromYear <= 1989 && toYear >= 1945;
+    if (label.includes("1990 2002")) return fromYear <= 2002 && toYear >= 1990;
+    if (label.includes("2003 2019")) return fromYear <= 2019 && toYear >= 2003;
+    if (label.includes("2020 present")) return toYear >= 2020;
+
+    return true;
+  });
+}
+
+function toInt(value: string | null, fallback: number | null) {
+  if (value === null || value === "") return fallback;
+
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) return fallback;
+
+  return Math.trunc(parsed);
+}
+
+function filterByRange(records: HistoryRecord[], fromYear: number | null, toYear: number | null) {
+  if (fromYear === null || toYear === null) return records;
+
+  // Start-year bucketing/filtering matches your frequency chart behavior.
+  return records.filter((r) => r.startYear >= fromYear && r.startYear <= toYear);
+}
+
+function filterBySearch(records: HistoryRecord[], search: string) {
+  const q = keyOf(search);
+
+  if (!q) return records;
+
+  const tokens = q.split(" ").filter(Boolean);
+
+  return records.filter((r) => {
+    const haystack = keyOf(
+      [
+        r.timeline,
+        r.title,
+        r.record,
+        r.category,
+        r.type,
+        r.source,
+        r.description,
+        r.summary,
+        r.extract,
+        r.url,
+      ].join(" ")
+    );
+
+    if (haystack.includes(q)) return true;
+
+    return tokens.every((t) => haystack.includes(t));
+  });
+}
+
+function buildFrequency(records: HistoryRecord[], fromYear: number | null, toYear: number | null) {
+  if (fromYear === null || toYear === null) return [];
+
+  const bucketCount = 10;
+  const span = Math.max(1, toYear - fromYear + 1);
+  const step = Math.max(1, Math.ceil(span / bucketCount));
+
+  const buckets = [];
+
+  for (let start = fromYear; start <= toYear; start += step) {
+    const end = Math.min(toYear, start + step - 1);
+    const count = records.filter((r) => r.startYear >= start && r.startYear <= end).length;
+
+    buckets.push({
+      label: `${start}-${end}`,
+      period: `${start}-${end}`,
+      timePeriod: `${start}-${end}`,
+      fromYear: start,
+      toYear: end,
+      eventCount: count,
+      count,
+    });
+  }
+
+  return buckets;
 }
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
 
-    const iso3 = cleanText(searchParams.get("iso3")).toUpperCase().slice(0, 3);
+    const source =
+      searchParams.get("source") ||
+      searchParams.get("sourceIndex") ||
+      searchParams.get("sourceTitle") ||
+      searchParams.get("tab") ||
+      "Revolutions & rebellions";
 
-    const countryParam = cleanText(searchParams.get("country"));
+    const fromYear = toInt(searchParams.get("fromYear"), null);
+    const toYear = toInt(searchParams.get("toYear"), null);
 
-    if (!iso3) {
-      return NextResponse.json(
-        { ok: false, error: "Missing iso3" },
-        { status: 400 },
-      );
-    }
+    const search = searchParams.get("search") || searchParams.get("q") || "";
 
-    const countryTitle = countryParam || getCountryNameFromIso3(iso3);
-    const key = `${iso3}:${countryTitle.toLowerCase()}:v2`;
+    const page = Math.max(1, toInt(searchParams.get("page"), 1) ?? 1);
+    const rows = Math.max(1, Math.min(500, toInt(searchParams.get("rows"), 25) ?? 25));
 
-    const cached = CACHE.get(key);
-    if (cached && Date.now() - cached.ts < TTL_MS) {
-      return NextResponse.json(cached.payload, {
-        status: 200,
-        headers: {
-          "Cache-Control":
-            "public, max-age=86400, stale-while-revalidate=86400",
-        },
-      });
-    }
+    const sources = getSources(source, fromYear, toYear);
 
-    const [summary, countryHtml, economy] = await Promise.all([
-      loadWikipediaSummary(countryTitle),
-      loadWikipediaPageHtml(countryTitle),
-      loadEconomyProfile(countryTitle, iso3),
-    ]);
+    const parsedGroups = await Promise.all(
+      sources.map(async (src) => {
+        const html = await fetchWikiHtml(src.page);
 
-    if (!summary?.extract) {
-      const payload = {
-        ok: false,
-        iso3,
-        country: countryTitle,
-        error: "Wikipedia profile unavailable",
-      };
-
-      CACHE.set(key, { ts: Date.now(), payload });
-      return NextResponse.json(payload, { status: 404 });
-    }
-
-    const rawCountryFacts = countryHtml
-      ? extractInfoboxFacts(countryHtml, "country")
-      : [];
-
-    const countryFacts = rawCountryFacts.filter(
-      (fact) => !isEconomicCountryFact(fact),
+        return [
+          ...parseTableRows(html, src),
+          ...parseListItems(html, src),
+        ];
+      })
     );
-    const countryHighlights = buildCountryHighlights(countryFacts);
-    const demographics = countryHtml ? extractDemographics(countryHtml) : null;
 
-    const payload = {
-      ok: true,
-      iso3,
-      country: countryTitle,
-      title: cleanText(summary.title || countryTitle),
-      displayTitle: cleanText(
-        summary.displaytitle || summary.title || countryTitle,
-      ),
-      description: cleanText(summary.description),
-      extract: cleanText(summary.extract),
-      pageUrl: summary.content_urls?.desktop?.page || null,
-      thumbnailUrl: summary.thumbnail?.source || null,
-
-      facts: countryFacts,
-      highlights: countryHighlights,
-      demographics,
-
-      economics: economy,
-
-      source: "Wikipedia",
-      license: "CC BY-SA",
-      fetchedAt: new Date().toISOString(),
-    };
-
-    CACHE.set(key, { ts: Date.now(), payload });
-
-    return NextResponse.json(payload, {
-      status: 200,
-      headers: {
-        "Cache-Control": "public, max-age=86400, stale-while-revalidate=86400",
-      },
+    const all = dedupe(parsedGroups.flat()).sort((a, b) => {
+      if (a.startYear !== b.startYear) return a.startYear - b.startYear;
+      if (a.endYear !== b.endYear) return a.endYear - b.endYear;
+      return a.title.localeCompare(b.title);
     });
+
+    const ranged = filterByRange(all, fromYear, toYear);
+    const searched = filterBySearch(ranged, search);
+
+    const total = searched.length;
+    const start = (page - 1) * rows;
+    const paged = searched.slice(start, start + rows);
+
+    const frequency = buildFrequency(ranged, fromYear, toYear);
+
+    return NextResponse.json(
+      {
+        ok: true,
+        source,
+        sourcePages: sources.map((s) => s.label),
+        fromYear,
+        toYear,
+        page,
+        rows,
+        total,
+        totalRecords: total,
+        pageCount: Math.max(1, Math.ceil(total / rows)),
+        records: paged,
+        events: paged,
+        items: paged,
+        data: paged,
+        frequency,
+        frequencyCounts: frequency,
+        meta: {
+          parser: "generic-wikipedia-table-and-list-parser",
+          hardcodedEvents: false,
+          rangeMode: "startYear",
+        },
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   } catch (error) {
+    console.error("History API error:", error);
+
     return NextResponse.json(
       {
         ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Wikipedia profile API failed",
+        error: error instanceof Error ? error.message : "Unknown history API error",
+        records: [],
+        events: [],
+        items: [],
+        data: [],
+        frequency: [],
+        frequencyCounts: [],
       },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

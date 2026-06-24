@@ -1,0 +1,511 @@
+﻿import { NextResponse } from "next/server";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 3600;
+
+type HistoryRecord = {
+  id: string;
+  timeline: string;
+  startYear: number;
+  endYear: number;
+  title: string;
+  record: string;
+  category: string;
+  source: string;
+  summary: string;
+  extract: string;
+  url: string | null;
+};
+
+type SourcePage = {
+  label: string;
+  page: string;
+  category: string;
+};
+
+const WIKI_ORIGIN = "https://en.wikipedia.org";
+
+const SOURCE_PAGES = {
+  revolutions: [
+    {
+      label: "List of revolutions and rebellions",
+      page: "List_of_revolutions_and_rebellions",
+      category: "INDEPENDENCE / REVOLUTION",
+    },
+  ] satisfies SourcePage[],
+
+  wars: [
+    {
+      label: "List of wars: before 1000",
+      page: "List_of_wars:_before_1000",
+      category: "WAR / CONFLICT",
+    },
+    {
+      label: "List of wars: 1000–1499",
+      page: "List_of_wars:_1000%E2%80%931499",
+      category: "WAR / CONFLICT",
+    },
+    {
+      label: "List of wars: 1500–1799",
+      page: "List_of_wars:_1500%E2%80%931799",
+      category: "WAR / CONFLICT",
+    },
+    {
+      label: "List of wars: 1800–1899",
+      page: "List_of_wars:_1800%E2%80%931899",
+      category: "WAR / CONFLICT",
+    },
+    {
+      label: "List of wars: 1900–1944",
+      page: "List_of_wars:_1900%E2%80%931944",
+      category: "WAR / CONFLICT",
+    },
+    {
+      label: "List of wars: 1945–1989",
+      page: "List_of_wars:_1945%E2%80%931989",
+      category: "WAR / CONFLICT",
+    },
+    {
+      label: "List of wars: 1990–2002",
+      page: "List_of_wars:_1990%E2%80%932002",
+      category: "WAR / CONFLICT",
+    },
+    {
+      label: "List of wars: 2003–2019",
+      page: "List_of_wars:_2003%E2%80%932019",
+      category: "WAR / CONFLICT",
+    },
+    {
+      label: "List of wars: 2020–present",
+      page: "List_of_wars:_2020%E2%80%93present",
+      category: "WAR / CONFLICT",
+    },
+  ] satisfies SourcePage[],
+};
+
+function normalizeText(value: unknown) {
+  return String(value ?? "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&#160;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function searchKey(value: unknown) {
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/<[^>]+>/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function decodeEntities(value: string) {
+  return value
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#160;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function cleanHtmlCell(html: string) {
+  return decodeEntities(html)
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<sup[\s\S]*?<\/sup>/gi, " ")
+    .replace(/<br\s*\/?>/gi, " | ")
+    .replace(/<\/li>/gi, " | ")
+    .replace(/<\/p>/gi, " | ")
+    .replace(/<\/div>/gi, " | ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\[\s*\d+\s*\]/g, " ")
+    .replace(/\s*\|\s*/g, " | ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractCells(rowHtml: string) {
+  const cells: { raw: string; text: string }[] = [];
+  const cellRegex = /<(td|th)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = cellRegex.exec(rowHtml))) {
+    const raw = match[2] ?? "";
+    const text = cleanHtmlCell(raw);
+    if (text) cells.push({ raw, text });
+  }
+
+  return cells;
+}
+
+function firstArticleUrl(rawHtml: string) {
+  const links = [...rawHtml.matchAll(/href="\/wiki\/([^"#?:]+)"/gi)]
+    .map((m) => m[1])
+    .filter(Boolean)
+    .filter((href) => !href.startsWith("File:"))
+    .filter((href) => !href.startsWith("Help:"))
+    .filter((href) => !href.startsWith("Special:"));
+
+  if (!links.length) return null;
+  return `${WIKI_ORIGIN}/wiki/${links[0]}`;
+}
+
+function parseYearNumber(value: string) {
+  const clean = value.replace(/,/g, "");
+  const match = clean.match(/(\d{1,4})\s*(BC|BCE|AD|CE)?/i);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  if (!Number.isFinite(year)) return null;
+
+  const suffix = (match[2] || "").toUpperCase();
+  return suffix === "BC" || suffix === "BCE" ? -year : year;
+}
+
+function parseYearsFromText(value: string) {
+  const text = normalizeText(value).replace(/,/g, "");
+  const matches = [...text.matchAll(/(?:c\.?\s*)?(\d{1,4})\s*(BC|BCE|AD|CE)?/gi)];
+
+  const years = matches
+    .map((m) => {
+      const year = Number(m[1]);
+      if (!Number.isFinite(year)) return null;
+      const suffix = (m[2] || "").toUpperCase();
+      return suffix === "BC" || suffix === "BCE" ? -year : year;
+    })
+    .filter((x): x is number => typeof x === "number" && Number.isFinite(x));
+
+  if (!years.length) return null;
+
+  return {
+    startYear: years[0],
+    endYear: years[1] ?? years[0],
+  };
+}
+
+function isSingleYearCell(value: string) {
+  const clean = normalizeText(value);
+  return /^c?\.?\s*-?\d{1,4}\s*(BC|BCE|AD|CE)?$/i.test(clean);
+}
+
+function parseTimeline(cells: { text: string }[]) {
+  if (!cells.length) return null;
+
+  const first = cells[0]?.text ?? "";
+  const second = cells[1]?.text ?? "";
+
+  // War tables usually use: Start | Finish | Name of conflict
+  if (isSingleYearCell(first) && isSingleYearCell(second) && cells.length >= 3) {
+    const startYear = parseYearNumber(first);
+    const endYear = parseYearNumber(second);
+
+    if (startYear !== null) {
+      return {
+        startYear,
+        endYear: endYear ?? startYear,
+        titleIndex: 2,
+      };
+    }
+  }
+
+  // Revolution tables usually use: Date range | Conflict | Side A | Side B | Result
+  const parsed = parseYearsFromText(first);
+  if (!parsed) return null;
+
+  return {
+    startYear: parsed.startYear,
+    endYear: parsed.endYear,
+    titleIndex: 1,
+  };
+}
+
+function buildTimeline(startYear: number, endYear: number) {
+  if (startYear === endYear) return String(startYear);
+  return `${startYear}-${endYear}`;
+}
+
+function sourcePagesForRequest(source: string, fromYear: number | null, toYear: number | null): SourcePage[] {
+  const key = searchKey(source);
+
+  if (
+    key.includes("war") ||
+    key.includes("conflict") ||
+    key.includes("battle") ||
+    key.includes("military")
+  ) {
+    const pages = SOURCE_PAGES.wars;
+
+    if (fromYear === null || toYear === null) return pages;
+
+    return pages.filter((p) => {
+      const k = searchKey(p.label);
+
+      if (k.includes("before 1000")) return fromYear <= 999;
+      if (k.includes("1000 1499")) return fromYear <= 1499 && toYear >= 1000;
+      if (k.includes("1500 1799")) return fromYear <= 1799 && toYear >= 1500;
+      if (k.includes("1800 1899")) return fromYear <= 1899 && toYear >= 1800;
+      if (k.includes("1900 1944")) return fromYear <= 1944 && toYear >= 1900;
+      if (k.includes("1945 1989")) return fromYear <= 1989 && toYear >= 1945;
+      if (k.includes("1990 2002")) return fromYear <= 2002 && toYear >= 1990;
+      if (k.includes("2003 2019")) return fromYear <= 2019 && toYear >= 2003;
+      if (k.includes("2020 present")) return toYear >= 2020;
+
+      return true;
+    });
+  }
+
+  return SOURCE_PAGES.revolutions;
+}
+
+async function fetchWikiHtml(page: string) {
+  const url = new URL(`${WIKI_ORIGIN}/w/api.php`);
+  url.searchParams.set("action", "parse");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("origin", "*");
+  url.searchParams.set("prop", "text");
+  url.searchParams.set("page", decodeURIComponent(page));
+
+  const res = await fetch(url.toString(), {
+    headers: {
+      "User-Agent": "Stratify-History-Module/1.0",
+      Accept: "application/json",
+    },
+    next: { revalidate: 3600 },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Wikipedia fetch failed for ${page}: ${res.status}`);
+  }
+
+  const json = await res.json();
+  return String(json?.parse?.text?.["*"] ?? "");
+}
+
+function parseRowsFromHtml(html: string, source: SourcePage) {
+  const records: HistoryRecord[] = [];
+  const rows = html.match(/<tr\b[\s\S]*?<\/tr>/gi) ?? [];
+
+  for (const rowHtml of rows) {
+    const cells = extractCells(rowHtml);
+    if (cells.length < 2) continue;
+
+    const timeline = parseTimeline(cells);
+    if (!timeline) continue;
+
+    const { startYear, endYear, titleIndex } = timeline;
+
+    if (!Number.isFinite(startYear)) continue;
+
+    const titleCell = cells[titleIndex];
+    if (!titleCell?.text) continue;
+
+    const title = normalizeText(titleCell.text)
+      .replace(/\s*\|\s*/g, " / ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!title) continue;
+
+    const badTitle = searchKey(title);
+    if (
+      badTitle === "name of conflict" ||
+      badTitle === "conflict" ||
+      badTitle === "event" ||
+      badTitle === "revolution"
+    ) {
+      continue;
+    }
+
+    const url = firstArticleUrl(titleCell.raw);
+
+    const summaryParts = cells
+      .map((c) => c.text)
+      .filter(Boolean)
+      .filter((text, index) => index !== titleIndex)
+      .filter((text, index) => index !== 0)
+      .slice(0, 5);
+
+    const summary = normalizeText(summaryParts.join(" | "));
+
+    records.push({
+      id: `${source.page}-${startYear}-${endYear}-${searchKey(title)}`,
+      timeline: buildTimeline(startYear, endYear),
+      startYear,
+      endYear,
+      title,
+      record: title,
+      category: source.category,
+      source: source.label,
+      summary: summary || title,
+      extract: summary || title,
+      url,
+    });
+  }
+
+  return records;
+}
+
+function dedupeRecords(records: HistoryRecord[]) {
+  const seen = new Set<string>();
+  const output: HistoryRecord[] = [];
+
+  for (const record of records) {
+    const key = `${record.startYear}|${record.endYear}|${searchKey(record.title)}`;
+
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    output.push(record);
+  }
+
+  return output;
+}
+
+function filterByStartYear(records: HistoryRecord[], fromYear: number | null, toYear: number | null) {
+  if (fromYear === null || toYear === null) return records;
+
+  return records.filter((r) => r.startYear >= fromYear && r.startYear <= toYear);
+}
+
+function filterBySearch(records: HistoryRecord[], query: string) {
+  const q = searchKey(query);
+  if (!q) return records;
+
+  const qTokens = q.split(" ").filter(Boolean);
+
+  return records.filter((r) => {
+    const haystack = searchKey(
+      [
+        r.timeline,
+        r.title,
+        r.record,
+        r.category,
+        r.source,
+        r.summary,
+        r.extract,
+        r.url,
+      ].join(" ")
+    );
+
+    if (haystack.includes(q)) return true;
+
+    return qTokens.every((token) => haystack.includes(token));
+  });
+}
+
+function buildFrequency(records: HistoryRecord[], fromYear: number | null, toYear: number | null) {
+  if (fromYear === null || toYear === null) return [];
+
+  const bucketCount = 10;
+  const span = Math.max(1, toYear - fromYear + 1);
+  const step = Math.max(1, Math.ceil(span / bucketCount));
+  const buckets = [];
+
+  for (let start = fromYear; start <= toYear; start += step) {
+    const end = Math.min(toYear, start + step - 1);
+    const count = records.filter((r) => r.startYear >= start && r.startYear <= end).length;
+
+    buckets.push({
+      period: `${start}-${end}`,
+      timePeriod: `${start}-${end}`,
+      fromYear: start,
+      toYear: end,
+      eventCount: count,
+      count,
+    });
+  }
+
+  return buckets;
+}
+
+function toInt(value: string | null, fallback: number | null) {
+  if (value === null || value === "") return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.trunc(n) : fallback;
+}
+
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+
+    const source =
+      searchParams.get("source") ||
+      searchParams.get("sourceIndex") ||
+      searchParams.get("sourceTitle") ||
+      searchParams.get("tab") ||
+      "Revolutions & rebellions";
+
+    const fromYear = toInt(searchParams.get("fromYear"), null);
+    const toYear = toInt(searchParams.get("toYear"), null);
+    const query = searchParams.get("search") || searchParams.get("q") || "";
+
+    const page = Math.max(1, toInt(searchParams.get("page"), 1) ?? 1);
+    const rows = Math.max(1, Math.min(500, toInt(searchParams.get("rows"), 50) ?? 50));
+
+    const pages = sourcePagesForRequest(source, fromYear, toYear);
+
+    const fetched = await Promise.all(
+      pages.map(async (src) => {
+        const html = await fetchWikiHtml(src.page);
+        return parseRowsFromHtml(html, src);
+      })
+    );
+
+    const parsed = dedupeRecords(fetched.flat()).sort((a, b) => {
+      if (a.startYear !== b.startYear) return a.startYear - b.startYear;
+      return a.title.localeCompare(b.title);
+    });
+
+    const ranged = filterByStartYear(parsed, fromYear, toYear);
+    const searched = filterBySearch(ranged, query);
+
+    const total = searched.length;
+    const start = (page - 1) * rows;
+    const paged = searched.slice(start, start + rows);
+    const frequency = buildFrequency(ranged, fromYear, toYear);
+
+    return NextResponse.json({
+      ok: true,
+      source,
+      sourcePages: pages.map((p) => p.label),
+      fromYear,
+      toYear,
+      page,
+      rows,
+      total,
+      totalRecords: total,
+      pages: Math.max(1, Math.ceil(total / rows)),
+      records: paged,
+      events: paged,
+      items: paged,
+      data: paged,
+      frequency,
+      frequencyCounts: frequency,
+      meta: {
+        parser: "generic-wikipedia-table-parser",
+        rangeMode: "start-year",
+        note: "No individual incidents are hard-coded. Rows are parsed directly from Wikipedia tables.",
+      },
+    });
+  } catch (error) {
+    console.error("History API error:", error);
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "Unknown history API error",
+        records: [],
+        events: [],
+        items: [],
+        data: [],
+        frequency: [],
+      },
+      { status: 500 }
+    );
+  }
+}

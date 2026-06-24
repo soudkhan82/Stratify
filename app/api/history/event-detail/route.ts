@@ -2,293 +2,278 @@
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const WIKI_ORIGIN = "https://en.wikipedia.org";
 
 type WikiSection = {
   title: string;
-  paragraphs: string[];
+  content: string;
 };
 
 function cleanText(value: unknown) {
   return String(value ?? "")
-    .normalize("NFKC")
-    .replace(/\uFEFF/g, "")
-    .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
-    .replace(/\[\d+\]/g, "")
-    .replace(/\[citation needed\]/gi, "")
-    .replace(/\s+/g, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<sup[\s\S]*?<\/sup>/gi, " ")
+    .replace(/<table[\s\S]*?<\/table>/gi, " ")
+    .replace(/<figure[\s\S]*?<\/figure>/gi, " ")
+    .replace(/<ul[\s\S]*?<\/ul>/gi, " ")
+    .replace(/<ol[\s\S]*?<\/ol>/gi, " ")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/\[\s*\d+\s*\]/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
-function decodeHtml(value: string) {
+function normalizeTitle(value: string) {
   return value
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&ndash;/g, "–")
-    .replace(/&mdash;/g, "—")
-    .replace(/&#(\d+);/g, (_, code) => {
-      const n = Number(code);
-      return Number.isFinite(n) ? String.fromCharCode(n) : "";
-    });
-}
-
-function htmlToText(html: string) {
-  return cleanText(
-    decodeHtml(
-      String(html || "")
-        .replace(/<style[\s\S]*?<\/style>/gi, " ")
-        .replace(/<script[\s\S]*?<\/script>/gi, " ")
-        .replace(/<sup\b[\s\S]*?<\/sup>/gi, " ")
-        .replace(/<span\b[^>]*class="[^"]*mw-editsection[^"]*"[\s\S]*?<\/span>/gi, " ")
-        .replace(/<br\s*\/?>/gi, " ")
-        .replace(/<\/p>/gi, " ")
-        .replace(/<[^>]+>/g, " "),
-    ),
-  );
-}
-
-function articleTitleFromUrl(url: string | null) {
-  if (!url) return "";
-
-  try {
-    const marker = "/wiki/";
-    const raw = url.includes(marker) ? url.split(marker)[1] || "" : url;
-
-    return decodeURIComponent(raw.split(/[?#]/)[0] || "")
-      .replace(/_/g, " ")
-      .trim();
-  } catch {
-    return "";
-  }
-}
-
-function sectionTitleFromHeading(html: string) {
-  return htmlToText(html)
-    .replace(/\[edit\]/gi, "")
-    .replace(/Contents/gi, "")
+    .replace(/^https?:\/\/en\.wikipedia\.org\/wiki\//i, "")
+    .replace(/^\/wiki\//i, "")
+    .replace(/_/g, " ")
+    .replace(/#.*$/g, "")
     .trim();
 }
 
-function extractParagraphs(html: string, limit = 2) {
-  return Array.from(html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi))
-    .map((match) => htmlToText(match[1]))
-    .filter((text) => text.length >= 60)
-    .slice(0, limit);
+function titleFromArticleUrl(articleUrl: string | null, fallbackTitle: string | null) {
+  if (articleUrl) {
+    try {
+      const url = new URL(articleUrl);
+      const match = url.pathname.match(/\/wiki\/(.+)$/i);
+
+      if (match?.[1]) {
+        return decodeURIComponent(match[1]).replace(/_/g, " ").trim();
+      }
+    } catch {
+      const normalized = normalizeTitle(articleUrl);
+      if (normalized) return normalized;
+    }
+  }
+
+  return normalizeTitle(fallbackTitle || "");
 }
 
-function extractUsefulSections(html: string): WikiSection[] {
-  const blocked = new Set([
-    "See also",
-    "Notes",
-    "References",
-    "Sources",
-    "Further reading",
-    "External links",
-    "Bibliography",
-    "Citations",
+function pageTitleForApi(title: string) {
+  return encodeURIComponent(title.trim().replace(/\s+/g, "_"));
+}
+
+async function fetchJson(url: string) {
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "Stratify-History-Module/1.0",
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) return null;
+
+  return response.json();
+}
+
+async function resolveTitle(title: string) {
+  const directTitle = normalizeTitle(title);
+  if (!directTitle) return "";
+
+  const direct = await fetchJson(
+    `${WIKI_ORIGIN}/api/rest_v1/page/summary/${pageTitleForApi(directTitle)}`
+  );
+
+  if (direct?.title && direct?.extract) {
+    return String(direct.title);
+  }
+
+  const searchUrl = new URL(`${WIKI_ORIGIN}/w/api.php`);
+  searchUrl.searchParams.set("action", "query");
+  searchUrl.searchParams.set("format", "json");
+  searchUrl.searchParams.set("origin", "*");
+  searchUrl.searchParams.set("list", "search");
+  searchUrl.searchParams.set("srsearch", directTitle);
+  searchUrl.searchParams.set("srlimit", "1");
+
+  const search = await fetchJson(searchUrl.toString());
+  const first = search?.query?.search?.[0]?.title;
+
+  return first ? String(first) : directTitle;
+}
+
+async function fetchSummary(title: string) {
+  return fetchJson(`${WIKI_ORIGIN}/api/rest_v1/page/summary/${pageTitleForApi(title)}`);
+}
+
+async function fetchSectionText(title: string, index: string) {
+  const url = new URL(`${WIKI_ORIGIN}/w/api.php`);
+  url.searchParams.set("action", "parse");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("origin", "*");
+  url.searchParams.set("prop", "text");
+  url.searchParams.set("page", title);
+  url.searchParams.set("section", index);
+
+  const json = await fetchJson(url.toString());
+  const html = json?.parse?.text?.["*"];
+
+  return cleanText(html || "");
+}
+
+async function fetchSections(title: string): Promise<WikiSection[]> {
+  const url = new URL(`${WIKI_ORIGIN}/w/api.php`);
+  url.searchParams.set("action", "parse");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("origin", "*");
+  url.searchParams.set("prop", "sections");
+  url.searchParams.set("page", title);
+
+  const json = await fetchJson(url.toString());
+  const rawSections = Array.isArray(json?.parse?.sections) ? json.parse.sections : [];
+
+  const skip = new Set([
+    "see also",
+    "notes",
+    "references",
+    "bibliography",
+    "further reading",
+    "external links",
+    "citations",
+    "sources",
   ]);
 
-  const h2Regex = /<h2[\s\S]*?<\/h2>/gi;
-  const headings = Array.from(html.matchAll(h2Regex)).map((match) => ({
-    index: match.index ?? 0,
-    title: sectionTitleFromHeading(match[0]),
-  }));
+  const useful = rawSections
+    .filter((section: any) => Number(section?.toclevel || 0) <= 2)
+    .filter((section: any) => !skip.has(String(section?.line || "").toLowerCase().trim()))
+    .slice(0, 5);
 
   const sections: WikiSection[] = [];
 
-  for (let i = 0; i < headings.length; i += 1) {
-    const current = headings[i];
-    const next = headings[i + 1];
+  for (const section of useful) {
+    const index = String(section.index || "");
+    const heading = cleanText(section.line || "");
 
-    if (!current.title || blocked.has(current.title)) continue;
+    if (!index || !heading) continue;
 
-    const chunk = html.slice(current.index, next ? next.index : html.length);
-    const paragraphs = extractParagraphs(chunk, 2);
+    const content = await fetchSectionText(title, index);
 
-    if (!paragraphs.length) continue;
+    if (content && content.length > 80) {
+      sections.push({
+        title: heading,
+        content: content.length > 900 ? `${content.slice(0, 900).trim()}...` : content,
+      });
+    }
 
-    sections.push({
-      title: current.title,
-      paragraphs,
-    });
-
-    if (sections.length >= 5) break;
+    if (sections.length >= 4) break;
   }
 
   return sections;
-}
-
-async function fetchJson(url: string, timeoutMs = 10000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        Accept: "application/json",
-        "User-Agent":
-          "StratifyAnalytics/1.0 (https://worldstats360.com; history-detail)",
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) return null;
-    return await response.json();
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function getWikipediaSummary(title: string) {
-  if (!title) return null;
-
-  const normalized = title.trim().replace(/\s+/g, "_");
-  const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(
-    normalized,
-  )}`;
-
-  const json = await fetchJson(url);
-
-  if (!json) return null;
-
-  return {
-    title: cleanText(json?.title || title),
-    description: cleanText(json?.description || ""),
-    extract: cleanText(json?.extract || ""),
-    thumbnailUrl: json?.thumbnail?.source || null,
-    pageUrl: json?.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${encodeURIComponent(normalized)}`,
-  };
-}
-
-async function getWikipediaSections(title: string) {
-  if (!title) return [];
-
-  const url = new URL("https://en.wikipedia.org/w/api.php");
-  url.searchParams.set("action", "parse");
-  url.searchParams.set("page", title);
-  url.searchParams.set("prop", "text");
-  url.searchParams.set("format", "json");
-  url.searchParams.set("redirects", "1");
-  url.searchParams.set("origin", "*");
-
-  const json = await fetchJson(url.toString());
-
-  const html = String(json?.parse?.text?.["*"] || "");
-  if (!html) return [];
-
-  return extractUsefulSections(html);
-}
-
-async function getArticleFromQid(qid: string) {
-  if (!/^Q\d+$/i.test(qid)) return null;
-
-  const sparql = `
-PREFIX wd: <http://www.wikidata.org/entity/>
-PREFIX schema: <http://schema.org/>
-SELECT ?article WHERE {
-  ?article schema:about wd:${qid} ;
-           schema:isPartOf <https://en.wikipedia.org/> .
-}
-LIMIT 1
-`;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-
-  try {
-    const body = new URLSearchParams();
-    body.set("query", sparql);
-    body.set("format", "json");
-
-    const response = await fetch("https://query.wikidata.org/sparql", {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        Accept: "application/sparql-results+json",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent":
-          "StratifyAnalytics/1.0 (https://worldstats360.com; history-detail-qid)",
-      },
-      body,
-      cache: "no-store",
-    });
-
-    if (!response.ok) return null;
-
-    const json = await response.json();
-    return cleanText(json?.results?.bindings?.[0]?.article?.value || "") || null;
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
 
-    const qid = cleanText(searchParams.get("qid")).toUpperCase();
-    const inputUrl = cleanText(searchParams.get("url"));
-    const fallbackTitle = cleanText(searchParams.get("title"));
+    const articleUrl =
+      searchParams.get("articleUrl") ||
+      searchParams.get("url") ||
+      searchParams.get("wikiUrl") ||
+      "";
 
-    let articleUrl = inputUrl || null;
+    const fallbackTitle =
+      searchParams.get("fallbackTitle") ||
+      searchParams.get("title") ||
+      searchParams.get("q") ||
+      "";
 
-    if (!articleUrl && qid) {
-      articleUrl = await getArticleFromQid(qid);
+    const initialTitle = titleFromArticleUrl(articleUrl, fallbackTitle);
+
+    if (!initialTitle) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Missing article title or article URL.",
+        },
+        { status: 400 }
+      );
     }
 
-    const title =
-      articleTitleFromUrl(articleUrl) ||
-      fallbackTitle ||
-      (qid ? qid : "Historical event");
+    const resolvedTitle = await resolveTitle(initialTitle);
+    const summary = await fetchSummary(resolvedTitle);
 
-    const [summary, sections] = await Promise.all([
-      getWikipediaSummary(title),
-      getWikipediaSections(title),
-    ]);
+    const displayTitle = cleanText(summary?.title || resolvedTitle || initialTitle);
+    const extract = cleanText(summary?.extract || "");
+    const description = cleanText(summary?.description || "");
+
+    const finalArticleUrl =
+      summary?.content_urls?.desktop?.page ||
+      articleUrl ||
+      `${WIKI_ORIGIN}/wiki/${pageTitleForApi(displayTitle)}`;
+
+    const imageUrl =
+      summary?.originalimage?.source ||
+      summary?.thumbnail?.source ||
+      null;
+
+    const sections = await fetchSections(displayTitle);
 
     return NextResponse.json(
       {
         ok: true,
-        qid: qid || null,
-        title: summary?.title || title,
-        description: summary?.description || null,
-        extract:
-          summary?.extract ||
-          "No detailed Wikipedia summary was returned for this event, but the source link is available below.",
+
+        // Generic fields
+        title: displayTitle,
+        displayTitle,
+        source: "Wikipedia",
+        description,
+        summary: extract,
+        extract,
+        overview: extract,
+        overviewTitle: description,
+        articleUrl: finalArticleUrl,
+        wikiUrl: finalArticleUrl,
+        url: finalArticleUrl,
+        imageUrl,
+        thumbnailUrl: imageUrl,
+
+        // Detail fields for different component shapes
         sections,
-        types: [],
-        displayDate: null,
-        locations: [],
-        participants: [],
-        lat: null,
-        lng: null,
-        imageUrl: summary?.thumbnailUrl || null,
-        articleUrl: summary?.pageUrl || articleUrl || null,
-        wikidataUrl: qid ? `https://www.wikidata.org/wiki/${qid}` : null,
-        source: qid ? "Wikidata / Wikipedia" : "Wikipedia",
+        details: sections,
+        articleDetails: sections,
+        sourceLinks: [
+          {
+            label: "Open Wikipedia",
+            url: finalArticleUrl,
+          },
+        ],
+
+        meta: {
+          route: "history/event-detail",
+          source: "wikipedia-rest-summary-and-parse-sections",
+          hardcodedEvents: false,
+        },
       },
       {
         headers: {
-          "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+          "Cache-Control": "no-store, no-cache, must-revalidate",
         },
-      },
+      }
     );
   } catch (error) {
+    console.error("History event-detail error:", error);
+
     return NextResponse.json(
       {
-        ok: true,
-        title: "Historical event",
-        extract:
-          "Details could not be fetched from Wikipedia right now. Try opening the source link again later.",
-        sections: [],
-        articleUrl: null,
-        source: "Wikipedia",
-        warning:
-          error instanceof Error ? error.message : "Detail source unavailable",
+        ok: false,
+        error: error instanceof Error ? error.message : "Unable to load event detail.",
       },
-      { status: 200 },
+      { status: 500 }
     );
   }
 }

@@ -1,0 +1,643 @@
+﻿"use client";
+
+import React, { useEffect, useMemo, useState } from "react";
+
+type HistoryRecord = {
+  id: string;
+  timeline: string;
+  year: number;
+  startYear: number;
+  endYear: number;
+  fromYear: number;
+  toYear: number;
+  title: string;
+  record: string;
+  type: string;
+  category: string;
+  source: string;
+  description: string;
+  summary: string;
+  extract: string;
+  url: string | null;
+  wikiUrl: string | null;
+  articleUrl: string | null;
+};
+
+type Bucket = {
+  fromYear: number;
+  toYear: number;
+  label: string;
+  count: number;
+};
+
+const SOURCE_OPTIONS = [
+  {
+    label: "Revolutions & rebellions",
+    heading: "Independence & Revolutions",
+    category: "INDEPENDENCE / REVOLUTION",
+  },
+  {
+    label: "Wars & conflicts",
+    heading: "Wars & Conflicts",
+    category: "WAR / CONFLICT",
+  },
+];
+
+function toYear(value: string, fallback: number) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.trunc(n) : fallback;
+}
+
+function keyOf(value: unknown) {
+  return String(value ?? "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cleanText(value: unknown) {
+  return String(value ?? "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/\s*\|\s*/g, " | ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function recordStartYear(r: HistoryRecord) {
+  const n = Number(r.startYear ?? r.fromYear ?? r.year);
+  return Number.isFinite(n) ? n : null;
+}
+
+function recordEndYear(r: HistoryRecord) {
+  const n = Number(r.endYear ?? r.toYear ?? r.startYear ?? r.year);
+  return Number.isFinite(n) ? n : recordStartYear(r);
+}
+
+function inStartYearRange(r: HistoryRecord, from: number, to: number) {
+  const y = recordStartYear(r);
+  return y !== null && y >= from && y <= to;
+}
+
+function matchesSearch(r: HistoryRecord, query: string) {
+  const q = keyOf(query);
+  if (!q) return true;
+
+  const haystack = keyOf(
+    [
+      r.timeline,
+      r.title,
+      r.record,
+      r.category,
+      r.type,
+      r.source,
+      r.description,
+      r.summary,
+      r.extract,
+      r.url,
+    ].join(" ")
+  );
+
+  if (haystack.includes(q)) return true;
+
+  const tokens = q.split(" ").filter(Boolean);
+  return tokens.every((t) => haystack.includes(t));
+}
+
+function buildTimeline(r: HistoryRecord) {
+  if (r.timeline) return cleanText(r.timeline);
+
+  const s = recordStartYear(r);
+  const e = recordEndYear(r);
+
+  if (s === null) return "—";
+  if (e === null || e === s) return String(s);
+
+  return `${s}-${e}`;
+}
+
+function buildFrequency(records: HistoryRecord[], from: number, to: number): Bucket[] {
+  const bucketCount = 10;
+  const span = Math.max(1, to - from + 1);
+  const step = Math.max(1, Math.ceil(span / bucketCount));
+  const buckets: Bucket[] = [];
+
+  for (let start = from; start <= to; start += step) {
+    const end = Math.min(to, start + step - 1);
+
+    buckets.push({
+      fromYear: start,
+      toYear: end,
+      label: `${start}-${end}`,
+      count: records.filter((r) => inStartYearRange(r, start, end)).length,
+    });
+  }
+
+  return buckets;
+}
+
+export default function HistoryPage() {
+  const [source, setSource] = useState(SOURCE_OPTIONS[0].label);
+  const [records, setRecords] = useState<HistoryRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const [fromYearInput, setFromYearInput] = useState("1700");
+  const [toYearInput, setToYearInput] = useState("1900");
+  const [appliedFromYear, setAppliedFromYear] = useState(1700);
+  const [appliedToYear, setAppliedToYear] = useState(1900);
+
+  const [query, setQuery] = useState("");
+  const [rows, setRows] = useState(25);
+  const [page, setPage] = useState(1);
+  const [activeBucket, setActiveBucket] = useState<Bucket | null>(null);
+
+  const [selectedRecord, setSelectedRecord] = useState<HistoryRecord | null>(null);
+  const activeSource = SOURCE_OPTIONS.find((s) => s.label === source) ?? SOURCE_OPTIONS[0];
+
+  async function loadSource(selectedSource = source) {
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch(`/api/history?source=${encodeURIComponent(selectedSource)}&t=${Date.now()}`, {
+        cache: "no-store",
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || json?.ok === false) {
+        throw new Error(json?.error || "History source fetch failed");
+      }
+
+      const nextRecords = (json.records || json.events || json.items || json.data || []) as HistoryRecord[];
+
+      setRecords(Array.isArray(nextRecords) ? nextRecords : []);
+      setPage(1);
+      setActiveBucket(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+      setRecords([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadSource(source);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source]);
+
+  useEffect(() => {
+    if (!selectedRecord) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectedRecord(null);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedRecord]);
+  const rangedRecords = useMemo(() => {
+    return records.filter((r) => inStartYearRange(r, appliedFromYear, appliedToYear));
+  }, [records, appliedFromYear, appliedToYear]);
+
+  const frequency = useMemo(() => {
+    return buildFrequency(rangedRecords, appliedFromYear, appliedToYear);
+  }, [rangedRecords, appliedFromYear, appliedToYear]);
+
+  const tableRecords = useMemo(() => {
+    const base = activeBucket
+      ? rangedRecords.filter((r) => inStartYearRange(r, activeBucket.fromYear, activeBucket.toYear))
+      : rangedRecords;
+
+    return base.filter((r) => matchesSearch(r, query));
+  }, [rangedRecords, activeBucket, query]);
+
+  const totalPages = Math.max(1, Math.ceil(tableRecords.length / rows));
+
+  const safePage = Math.min(page, totalPages);
+
+  const pagedRecords = useMemo(() => {
+    const start = (safePage - 1) * rows;
+    return tableRecords.slice(start, start + rows);
+  }, [tableRecords, safePage, rows]);
+
+  function applyTimeframe() {
+    const from = toYear(fromYearInput, appliedFromYear);
+    const to = toYear(toYearInput, appliedToYear);
+
+    setAppliedFromYear(Math.min(from, to));
+    setAppliedToYear(Math.max(from, to));
+    setActiveBucket(null);
+    setPage(1);
+  }
+
+  function clearFilters() {
+    setQuery("");
+    setActiveBucket(null);
+    setPage(1);
+  }
+
+  const maxBucketCount = Math.max(1, ...frequency.map((b) => b.count));
+
+  return (
+    <main className="min-h-screen bg-slate-100 px-4 py-6 text-slate-900">
+      <section className="mx-auto max-w-[1560px] rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="grid gap-5 lg:grid-cols-[1fr_2fr]">
+          <div className="flex flex-col justify-center">
+            <h1 className="text-2xl font-black tracking-tight">{activeSource.heading}</h1>
+            <p className="mt-2 max-w-xl text-sm font-medium text-slate-600">
+              Select a source index, edit the year range manually, or click a frequency bar to filter by time-period.
+            </p>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-[260px_110px_110px_auto_auto]">
+            <label className="block">
+              <span className="text-xs font-black uppercase tracking-widest text-slate-500">Source</span>
+              <select
+                value={source}
+                onChange={(e) => {
+                  setSource(e.target.value);
+                  setPage(1);
+                  setActiveBucket(null);
+                  setQuery("");
+                }}
+                className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-black shadow-sm outline-none focus:border-violet-500"
+              >
+                {SOURCE_OPTIONS.map((s) => (
+                  <option key={s.label} value={s.label}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="text-xs font-black uppercase tracking-widest text-slate-500">From year</span>
+              <input
+                value={fromYearInput}
+                onChange={(e) => setFromYearInput(e.target.value)}
+                className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-black shadow-sm outline-none focus:border-violet-500"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-xs font-black uppercase tracking-widest text-slate-500">To year</span>
+              <input
+                value={toYearInput}
+                onChange={(e) => setToYearInput(e.target.value)}
+                className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-black shadow-sm outline-none focus:border-violet-500"
+              />
+            </label>
+
+            <button
+              onClick={applyTimeframe}
+              className="mt-5 h-11 rounded-xl bg-violet-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-violet-700"
+            >
+              Apply time-frame
+            </button>
+
+            <button
+              onClick={clearFilters}
+              className="mt-5 h-11 rounded-xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
+            >
+              × Clear
+            </button>
+
+            <label className="block md:col-span-2">
+              <span className="text-xs font-black uppercase tracking-widest text-slate-500">Search</span>
+              <input
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setPage(1);
+                }}
+                placeholder="Search record, year, type..."
+                className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-bold shadow-sm outline-none focus:border-violet-500"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-xs font-black uppercase tracking-widest text-slate-500">Rows</span>
+              <select
+                value={rows}
+                onChange={(e) => {
+                  setRows(Number(e.target.value));
+                  setPage(1);
+                }}
+                className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-black shadow-sm outline-none focus:border-violet-500"
+              >
+                {[10, 25, 50, 100].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto mt-5 grid max-w-[1560px] gap-5 xl:grid-cols-[1fr_350px]">
+        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-4 border-b border-slate-100 p-5 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-2xl font-black">Event table</h2>
+              <p className="mt-1 text-sm font-semibold text-slate-600">
+                {activeSource.heading}|{source}|{activeBucket ? activeBucket.label : `${appliedFromYear}-${appliedToYear}`}| Page {safePage}
+              </p>
+              <p className="mt-1 text-xs font-bold text-slate-400">
+                Showing {tableRecords.length} synchronized records from {records.length} fetched records.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => loadSource(source)}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 shadow-sm hover:bg-slate-50"
+              >
+                ⏱ Lazy source fetch
+              </button>
+
+              <button
+                onClick={() => {
+                  setActiveBucket(null);
+                  setPage(1);
+                }}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 shadow-sm hover:bg-slate-50"
+              >
+                × Clear time-period
+              </button>
+
+              <button
+                disabled={safePage <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 shadow-sm disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                ← Prev
+              </button>
+
+              <button
+                disabled={safePage >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-600 shadow-sm disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+
+          {error ? (
+            <div className="m-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+              {error}
+            </div>
+          ) : null}
+
+          <div className="grid grid-cols-[165px_1fr_120px] bg-violet-600 px-5 py-3 text-xs font-black uppercase text-white">
+            <div>Timeline</div>
+            <div>Record</div>
+            <div className="text-right">Action</div>
+          </div>
+
+          <div className="max-h-[650px] overflow-y-auto">
+            {loading ? (
+              <div className="p-8 text-center text-sm font-black text-slate-500">Loading Wikipedia source...</div>
+            ) : pagedRecords.length === 0 ? (
+              <div className="p-8 text-center">
+                <div className="text-lg font-black text-slate-800">No synchronized records</div>
+                <p className="mt-2 text-sm font-semibold text-slate-500">
+                  Try widening the year range or clearing the search/time-period filter.
+                </p>
+              </div>
+            ) : (
+              pagedRecords.map((r) => (
+                <div
+                  key={r.id}
+                  className="grid grid-cols-[165px_1fr_120px] gap-4 border-b border-slate-100 px-5 py-4"
+                >
+                  <div>
+                    <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">
+                      {buildTimeline(r)}
+                    </span>
+                  </div>
+
+                  <div>
+                    <div className="text-sm font-black text-slate-900">{cleanText(r.title || r.record)}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-violet-700">
+                        {r.category || r.type || activeSource.category}
+                      </span>
+                      <span className="text-[11px] font-black text-slate-400">{cleanText(r.source)}</span>
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-sm font-semibold leading-6 text-slate-600">
+                      {cleanText(r.summary || r.extract || r.description)}
+                    </p>
+                  </div>
+
+                  <div className="text-right">
+                    <button
+                      onClick={() => setSelectedRecord(r)}
+                      className="rounded-full bg-violet-600 px-4 py-2 text-xs font-black text-white shadow-sm transition hover:bg-violet-700 disabled:opacity-40"
+                    >
+                      Open ↗
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <aside className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-xs font-black uppercase tracking-[0.35em] text-violet-700">Frequency</div>
+          <h3 className="mt-2 text-xl font-black">Frequency count</h3>
+          <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
+            Selected timeframe divided into 10 equal intervals. Click a bar to filter the event table.
+          </p>
+
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs font-black uppercase text-slate-400">Active timeframe</div>
+            <div className="mt-1 text-sm font-black">
+              {activeBucket ? activeBucket.label : `${appliedFromYear}-${appliedToYear}`}
+            </div>
+          </div>
+
+          <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+            <div className="grid grid-cols-[105px_1fr_50px] bg-slate-50 px-3 py-3 text-[10px] font-black uppercase tracking-[0.25em] text-slate-400">
+              <div>Time-period</div>
+              <div>Event count</div>
+              <div className="text-right">Count</div>
+            </div>
+
+            <div className="space-y-2 p-3">
+              {frequency.map((b) => {
+                const width = `${Math.max(8, (b.count / maxBucketCount) * 100)}%`;
+                const active = activeBucket?.label === b.label;
+
+                return (
+                  <button
+                    key={b.label}
+                    onClick={() => {
+                      setActiveBucket(b);
+                      setPage(1);
+                    }}
+                    className={`grid w-full grid-cols-[105px_1fr_50px] items-center gap-2 rounded-2xl border px-3 py-3 text-left transition ${
+                      active ? "border-violet-500 bg-violet-50" : "border-slate-200 bg-white hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="text-xs font-black text-slate-700">{b.label}</div>
+                    <div className="h-8 rounded-xl bg-slate-100">
+                      <div
+                        className="flex h-8 items-center justify-center rounded-xl bg-violet-600 text-xs font-black text-white"
+                        style={{ width }}
+                      >
+                        {b.count > 0 ? b.count : ""}
+                      </div>
+                    </div>
+                    <div className="text-right text-xs font-black text-slate-700">{b.count}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </aside>
+      </section>
+    
+      {selectedRecord ? (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <button
+            aria-label="Close event details"
+            onClick={() => setSelectedRecord(null)}
+            className="absolute inset-0 cursor-default bg-slate-950/60 backdrop-blur-sm"
+          />
+
+          <section
+            role="dialog"
+            aria-modal="true"
+            className="relative z-10 w-full max-w-4xl overflow-hidden rounded-[30px] border border-white/20 bg-white shadow-2xl"
+          >
+            <div className="bg-gradient-to-r from-violet-700 to-indigo-700 px-6 py-5 text-white">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-black">
+                    {buildTimeline(selectedRecord)}
+                  </div>
+
+                  <h3 className="mt-3 text-2xl font-black leading-tight">
+                    {cleanText(selectedRecord.title || selectedRecord.record)}
+                  </h3>
+
+                  <p className="mt-2 text-sm font-bold text-white/75">
+                    {cleanText(selectedRecord.category || selectedRecord.type)} · {cleanText(selectedRecord.source)}
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setSelectedRecord(null)}
+                  className="rounded-full bg-white/15 px-4 py-2 text-lg font-black text-white transition hover:bg-white/25"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <div className="max-h-[72vh] overflow-y-auto p-6">
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-xs font-black uppercase tracking-widest text-slate-400">
+                    Timeline
+                  </div>
+                  <div className="mt-2 text-lg font-black text-slate-900">
+                    {buildTimeline(selectedRecord)}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-xs font-black uppercase tracking-widest text-slate-400">
+                    From year
+                  </div>
+                  <div className="mt-2 text-lg font-black text-slate-900">
+                    {recordStartYear(selectedRecord) ?? "—"}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-xs font-black uppercase tracking-widest text-slate-400">
+                    To year
+                  </div>
+                  <div className="mt-2 text-lg font-black text-slate-900">
+                    {recordEndYear(selectedRecord) ?? "—"}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="text-xs font-black uppercase tracking-widest text-violet-700">
+                  Event details
+                </div>
+
+                <p className="mt-3 text-sm font-semibold leading-7 text-slate-700">
+                  {cleanText(
+                    selectedRecord.summary ||
+                      selectedRecord.extract ||
+                      selectedRecord.description ||
+                      selectedRecord.record ||
+                      selectedRecord.title
+                  )}
+                </p>
+              </div>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-xs font-black uppercase tracking-widest text-slate-400">
+                    Source index
+                  </div>
+                  <div className="mt-2 text-sm font-black text-slate-800">
+                    {cleanText(selectedRecord.source)}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-xs font-black uppercase tracking-widest text-slate-400">
+                    Category
+                  </div>
+                  <div className="mt-2 text-sm font-black text-slate-800">
+                    {cleanText(selectedRecord.category || selectedRecord.type)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
+                <button
+                  onClick={() => setSelectedRecord(null)}
+                  className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
+                >
+                  Close
+                </button>
+
+                {selectedRecord.url || selectedRecord.wikiUrl || selectedRecord.articleUrl ? (
+                  <a
+                    href={selectedRecord.url || selectedRecord.wikiUrl || selectedRecord.articleUrl || "#"}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-xl bg-violet-600 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-violet-700"
+                  >
+                    Open Wikipedia ↗
+                  </a>
+                ) : null}
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+</main>
+  );
+}
+

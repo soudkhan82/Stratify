@@ -1,43 +1,59 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
-import {
-  ArrowUpRight,
-  Loader2,
-  X,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ExternalLink, Loader2, X } from "lucide-react";
 
-type WikiSection = {
-  title: string;
-  paragraphs: string[];
+type DetailSection = {
+  title?: string;
+  heading?: string;
+  content?: string;
+  body?: string;
+  text?: string;
 };
 
 type DetailPayload = {
   ok?: boolean;
-  qid?: string | null;
   title?: string;
-  description?: string | null;
-  extract?: string | null;
-  sections?: WikiSection[];
-  imageUrl?: string | null;
-  articleUrl?: string | null;
-  wikidataUrl?: string | null;
+  displayTitle?: string;
   source?: string;
-  warning?: string;
+  description?: string;
+  overviewTitle?: string;
+  summary?: string;
+  extract?: string;
+  overview?: string;
+  imageUrl?: string | null;
+  thumbnailUrl?: string | null;
+  articleUrl?: string | null;
+  wikiUrl?: string | null;
+  url?: string | null;
+  sections?: DetailSection[];
+  details?: DetailSection[];
+  articleDetails?: DetailSection[];
   error?: string;
+};
+
+type Props = {
+  qid?: string | null;
+  articleUrl?: string | null;
+  fallbackTitle?: string | null;
+  onClose: () => void;
 };
 
 function cleanText(value: unknown) {
   return String(value ?? "")
-    .normalize("NFKC")
-    .replace(/\uFEFF/g, "")
-    .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function hasText(value: unknown) {
-  return cleanText(value).length > 0;
+function getSectionTitle(section: DetailSection) {
+  return cleanText(section.title || section.heading || "Article detail");
+}
+
+function getSectionBody(section: DetailSection) {
+  return cleanText(section.content || section.body || section.text || "");
 }
 
 export default function EventDetailDialog({
@@ -45,32 +61,29 @@ export default function EventDetailDialog({
   articleUrl,
   fallbackTitle,
   onClose,
-}: {
-  qid: string | null;
-  articleUrl?: string | null;
-  fallbackTitle?: string | null;
-  onClose: () => void;
-}) {
-  const [payload, setPayload] = useState<DetailPayload | null>(null);
+}: Props) {
   const [loading, setLoading] = useState(false);
+  const [detail, setDetail] = useState<DetailPayload | null>(null);
+  const [error, setError] = useState("");
 
-  const canOpen = Boolean(qid || articleUrl || fallbackTitle);
+  const open = Boolean(qid || articleUrl || fallbackTitle);
 
   useEffect(() => {
-    if (!canOpen) return;
+    if (!open) return;
 
     const controller = new AbortController();
 
     async function loadDetail() {
-      try {
-        setLoading(true);
-        setPayload(null);
+      setLoading(true);
+      setError("");
+      setDetail(null);
 
+      try {
         const qs = new URLSearchParams();
 
         if (qid) qs.set("qid", qid);
-        if (articleUrl) qs.set("url", articleUrl);
-        if (fallbackTitle) qs.set("title", fallbackTitle);
+        if (articleUrl) qs.set("articleUrl", articleUrl);
+        if (fallbackTitle) qs.set("fallbackTitle", fallbackTitle);
 
         const response = await fetch(`/api/history/event-detail?${qs.toString()}`, {
           cache: "no-store",
@@ -79,192 +92,176 @@ export default function EventDetailDialog({
 
         const json = (await response.json()) as DetailPayload;
 
-        if (!controller.signal.aborted) {
-          setPayload(json);
+        if (!response.ok || json?.ok === false) {
+          throw new Error(json?.error || "Unable to load event detail.");
         }
-      } catch (error) {
+
         if (!controller.signal.aborted) {
-          setPayload({
-            ok: true,
-            title: fallbackTitle || qid || "Historical event",
-            extract:
-              "Details could not be fetched right now. Please try again.",
-            warning:
-              error instanceof Error ? error.message : "Detail fetch failed",
-          });
+          setDetail(json);
         }
+      } catch (err: any) {
+        if (controller.signal.aborted || err?.name === "AbortError") return;
+        setError(err instanceof Error ? err.message : "Unable to load event detail.");
       } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
+        if (!controller.signal.aborted) setLoading(false);
       }
     }
 
     loadDetail();
 
     return () => controller.abort();
-  }, [qid, articleUrl, fallbackTitle, canOpen]);
+  }, [open, qid, articleUrl, fallbackTitle]);
 
-  if (!canOpen) return null;
+  useEffect(() => {
+    if (!open) return;
 
-  const sections = (payload?.sections || []).filter(
-    (section) =>
-      hasText(section.title) &&
-      (section.paragraphs || []).some((paragraph) => hasText(paragraph)),
-  );
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
+  const title = cleanText(detail?.displayTitle || detail?.title || fallbackTitle || "Historical event");
+  const source = cleanText(detail?.source || "Wikipedia");
+  const overview = cleanText(detail?.summary || detail?.extract || detail?.overview || "");
+  const overviewTitle = cleanText(detail?.overviewTitle || detail?.description || "");
+  const article = detail?.articleUrl || detail?.wikiUrl || detail?.url || articleUrl || "";
+  const image = detail?.imageUrl || detail?.thumbnailUrl || "";
+
+  const sections = useMemo(() => {
+    const raw = detail?.sections || detail?.details || detail?.articleDetails || [];
+    return raw
+      .map((section) => ({
+        title: getSectionTitle(section),
+        body: getSectionBody(section),
+      }))
+      .filter((section) => section.title && section.body)
+      .slice(0, 5);
+  }, [detail]);
+
+  if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4">
-          <div>
-            <div className="text-xs font-black uppercase tracking-[0.22em] text-violet-700">
-              Historical event detail
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
+      <section className="relative max-h-[88vh] w-full max-w-6xl overflow-hidden rounded-[30px] border border-white/20 bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div className="min-w-0">
+            <div className="text-xs font-black uppercase tracking-[0.35em] text-violet-700">
+              Historical Event Detail
             </div>
 
-            <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
-              {loading
-                ? "Loading event..."
-                : payload?.title || fallbackTitle || qid || "Historical event"}
+            <h2 className="mt-2 text-2xl font-black leading-tight text-slate-950">
+              {title}
             </h2>
 
-            <div className="mt-1 text-sm font-semibold text-slate-500">
-              {payload?.source || "Wikipedia"}
-              {payload?.qid ? ` · ${payload.qid}` : ""}
-            </div>
+            <p className="mt-1 text-sm font-bold text-slate-500">
+              {source}
+            </p>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition hover:bg-slate-100"
-            aria-label="Close event detail"
+            className="rounded-full border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-rose-600"
           >
-            <X className="h-4 w-4" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="max-h-[calc(88vh-92px)] overflow-y-auto p-4">
           {loading ? (
-            <div className="flex min-h-[320px] items-center justify-center">
-              <div className="flex flex-col items-center">
-                <Loader2 className="h-9 w-9 animate-spin text-slate-950" />
-                <div className="mt-3 text-sm font-black text-slate-900">
-                  Fetching event details...
-                </div>
+            <div className="flex min-h-[260px] items-center justify-center">
+              <div className="inline-flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm font-black text-slate-600">
+                <Loader2 className="h-5 w-5 animate-spin text-violet-700" />
+                Loading event details...
               </div>
             </div>
+          ) : error ? (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-bold text-rose-700">
+              {error}
+            </div>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-              <div className="space-y-4">
-                <section className="rounded-[24px] border border-slate-200 bg-white p-4">
-                  <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+              <div className="space-y-5">
+                <section className="rounded-[24px] border border-slate-200 bg-white p-5">
+                  <h3 className="text-xl font-black uppercase text-slate-800">
                     Overview
                   </h3>
 
-                  {payload?.description ? (
-                    <div className="mt-1 text-xs font-black uppercase tracking-wide text-violet-700">
-                      {payload.description}
+                  {overviewTitle ? (
+                    <div className="mt-2 text-xs font-black uppercase tracking-wide text-violet-700">
+                      {overviewTitle}
                     </div>
                   ) : null}
 
-                  <p className="mt-3 text-sm font-medium leading-7 text-slate-600">
-                    {payload?.extract ||
-                      "No readable summary was returned for this event."}
+                  <p className="mt-4 text-sm font-semibold leading-7 text-slate-600">
+                    {overview || "No readable summary was returned for this event."}
                   </p>
                 </section>
 
                 {sections.length ? (
-                  <section className="rounded-[24px] border border-slate-200 bg-white p-4">
-                    <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">
-                      Article details
+                  <section className="rounded-[24px] border border-slate-200 bg-white p-5">
+                    <h3 className="text-xl font-black uppercase text-slate-800">
+                      Article Details
                     </h3>
 
-                    <div className="mt-3 space-y-4">
-                      {sections.map((section) => (
-                        <div
-                          key={section.title}
-                          className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                    <div className="mt-4 space-y-4">
+                      {sections.map((section, index) => (
+                        <article
+                          key={`${section.title}-${index}`}
+                          className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
                         >
                           <div className="text-xs font-black uppercase tracking-wide text-violet-700">
                             {section.title}
                           </div>
 
-                          <div className="mt-2 space-y-2">
-                            {section.paragraphs.map((paragraph, index) => (
-                              <p
-                                key={index}
-                                className="text-sm font-medium leading-7 text-slate-600"
-                              >
-                                {paragraph}
-                              </p>
-                            ))}
-                          </div>
-                        </div>
+                          <p className="mt-3 whitespace-pre-line text-sm font-semibold leading-7 text-slate-600">
+                            {section.body}
+                          </p>
+                        </article>
                       ))}
                     </div>
                   </section>
                 ) : null}
-
-                {payload?.warning || payload?.error ? (
-                  <section className="rounded-[20px] border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
-                    {payload.warning || payload.error}
-                  </section>
-                ) : null}
               </div>
 
-              <aside className="space-y-4">
-                {payload?.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
+              <aside className="space-y-5">
+                {image ? (
                   <img
-                    src={payload.imageUrl}
-                    alt={payload.title || "Historical event"}
-                    className="h-[220px] w-full rounded-[24px] border border-slate-200 object-cover shadow-sm"
+                    src={image}
+                    alt={title}
+                    className="h-64 w-full rounded-[24px] border border-slate-200 object-cover shadow-sm"
                   />
                 ) : null}
 
-                <section className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
-                  <h3 className="text-sm font-black uppercase tracking-wide text-slate-900">
-                    Source links
+                <section className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
+                  <h3 className="text-xl font-black uppercase text-slate-800">
+                    Source Links
                   </h3>
 
-                  <div className="mt-3 flex flex-col gap-2">
-                    {payload?.articleUrl || articleUrl ? (
-                      <a
-                        href={payload?.articleUrl || articleUrl || "#"}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-2 text-sm font-black text-white"
-                      >
-                        Open Wikipedia
-                        <ArrowUpRight className="h-4 w-4" />
-                      </a>
-                    ) : null}
-
-                    {payload?.wikidataUrl ? (
-                      <a
-                        href={payload.wikidataUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700"
-                      >
-                        Open Wikidata
-                        <ArrowUpRight className="h-4 w-4" />
-                      </a>
-                    ) : null}
-                  </div>
+                  {article ? (
+                    <a
+                      href={article}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-violet-700"
+                    >
+                      Open Wikipedia
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  ) : (
+                    <div className="mt-4 text-sm font-semibold text-slate-500">
+                      No article link available.
+                    </div>
+                  )}
                 </section>
               </aside>
             </div>
           )}
         </div>
-      </div>
+      </section>
     </div>
   );
 }
