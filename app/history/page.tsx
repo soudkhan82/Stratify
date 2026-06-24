@@ -21,9 +21,9 @@ import EventDetailDialog from "@/app/history/components/EventDetailDialog";
 
 type SegmentKey =
   | "wars"
-  | "battles"
+  | "leaders"
   | "revolutions"
-  | "empires"
+  | "disasters"
   | "civilizations";
 
 type SourceItem = {
@@ -103,18 +103,25 @@ const SEGMENTS: Array<{
     ],
   },
   {
-    key: "battles",
-    label: "Battles & Sieges",
-    helper: "Battle and siege records by era",
+    key: "leaders",
+    label: "Leaders, Rulers & Heads of State",
+    helper: "State leaders, rulers, monarchs and heads of government",
     icon: ShieldAlert,
     sources: [
-      { key: "battles-before-301", label: "Before 301" },
-      { key: "battles-301-1300", label: "301–1300" },
-      { key: "battles-1301-1600", label: "1301–1600" },
-      { key: "battles-1601-1800", label: "1601–1800" },
-      { key: "battles-1801-1900", label: "1801–1900" },
-      { key: "battles-1901-2000", label: "1901–2000" },
-      { key: "battles-since-2001", label: "Since 2001" },
+      { key: "leaders-before-1000-bc", label: "Before 1000 BC" },
+      { key: "leaders-1000-501-bc", label: "1000–501 BC leaders" },
+      { key: "leaders-500-1-bc", label: "500–1 BC leaders" },
+      { key: "leaders-1st-5th-century", label: "1st–5th century leaders" },
+      { key: "leaders-6th-century", label: "6th century leaders" },
+      { key: "leaders-7th-century", label: "7th century leaders" },
+      { key: "leaders-8th-century", label: "8th century leaders" },
+      { key: "leaders-9th-century", label: "9th century leaders" },
+      { key: "leaders-10th-century", label: "10th century leaders" },
+      { key: "leaders-15th-century", label: "15th century leaders" },
+      { key: "leaders-18th-century", label: "18th century leaders" },
+      { key: "leaders-19th-century", label: "19th century leaders" },
+      { key: "leaders-20th-century", label: "20th century leaders" },
+      { key: "leaders-21st-century", label: "21st century leaders" },
     ],
   },
   {
@@ -129,13 +136,17 @@ const SEGMENTS: Array<{
     ],
   },
   {
-    key: "empires",
-    label: "Empires & Kingdoms",
-    helper: "Empire and kingdom reference indexes",
+    key: "disasters",
+    label: "Historical Disasters & Pandemics",
+    helper: "Natural disasters, pandemics, famines, earthquakes, floods and eruptions",
     icon: Building2,
     sources: [
-      { key: "empires-list", label: "Empires" },
-      { key: "largest-empires", label: "Largest empires" },
+      { key: "natural-disasters", label: "Natural disasters" },
+      { key: "pandemics", label: "Pandemics & epidemics" },
+      { key: "famines", label: "Famines" },
+      { key: "earthquakes", label: "Earthquakes" },
+      { key: "floods", label: "Floods" },
+      { key: "volcanic-eruptions", label: "Volcanic eruptions" },
     ],
   },
   {
@@ -173,6 +184,19 @@ function fmtTimeline(record: HistoryRecord) {
   return fmtYear(start);
 }
 
+function isDisasterSegment(segment: SegmentKey) {
+  return segment === "disasters";
+}
+
+function fmtRecordTimeline(record: HistoryRecord, segment: SegmentKey) {
+  if (isDisasterSegment(segment)) {
+    const pointYear = record.year ?? record.startYear ?? record.endYear;
+    return fmtYear(pointYear);
+  }
+
+  return fmtTimeline(record);
+}
+
 function normalizeDash(value: string) {
   return value.replace(/[–—]/g, "-");
 }
@@ -189,8 +213,39 @@ function makeRange(from: number, to: number, label?: string): ActiveRange {
 }
 
 function getSourceYearRange(sourceKey: string, sourceLabel: string): ActiveRange {
-  const combined = normalizeDash(`${sourceKey} ${sourceLabel}`.toLowerCase());
   const currentYear = new Date().getFullYear();
+
+  const leaderRanges: Record<string, ActiveRange> = {
+    "leaders-before-1000-bc": makeRange(-5000, -1001, "Before 1000 BC"),
+    "leaders-1000-501-bc": makeRange(-1000, -501, "1000–501 BC leaders"),
+    "leaders-500-1-bc": makeRange(-500, -1, "500–1 BC leaders"),
+    "leaders-1st-5th-century": makeRange(1, 500, "1st–5th century leaders"),
+    "leaders-6th-century": makeRange(501, 600, "6th century leaders"),
+    "leaders-7th-century": makeRange(601, 700, "7th century leaders"),
+    "leaders-8th-century": makeRange(701, 800, "8th century leaders"),
+    "leaders-9th-century": makeRange(801, 900, "9th century leaders"),
+    "leaders-10th-century": makeRange(901, 1000, "10th century leaders"),
+    "leaders-15th-century": makeRange(1401, 1500, "15th century"),
+    "leaders-18th-century": makeRange(1701, 1800, "18th century"),
+    "leaders-19th-century": makeRange(1801, 1900, "19th century"),
+    "leaders-20th-century": makeRange(1901, 2000, "20th century"),
+    "leaders-21st-century": makeRange(2001, currentYear, "21st century"),
+  };
+
+  if (leaderRanges[sourceKey]) return leaderRanges[sourceKey];
+
+  if (
+    sourceKey === "natural-disasters" ||
+    sourceKey === "pandemics" ||
+    sourceKey === "famines" ||
+    sourceKey === "earthquakes" ||
+    sourceKey === "floods" ||
+    sourceKey === "volcanic-eruptions"
+  ) {
+    return null;
+  }
+
+  const combined = normalizeDash(`${sourceKey} ${sourceLabel}`.toLowerCase());
 
   const beforeMatch = combined.match(/before[-\s]*(\d{1,4})/);
   if (beforeMatch) {
@@ -217,57 +272,13 @@ function getSourceYearRange(sourceKey: string, sourceLabel: string): ActiveRange
 
   return null;
 }
+
 function normalizeFrequencyDash(value: string) {
   return value.replace(/[–—]/g, "-");
 }
 
 function getFrequencySourceRange10(sourceKey: string, sourceLabel: string): ActiveRange {
-  const combined = normalizeFrequencyDash(`${sourceKey} ${sourceLabel}`.toLowerCase());
-  const currentYear = new Date().getFullYear();
-
-  const beforeMatch = combined.match(/before[-\s]*(\d{1,4})/);
-  if (beforeMatch) {
-    const limit = Number(beforeMatch[1]);
-    return {
-      from: -5000,
-      to: limit - 1,
-      label: `Before ${fmtYear(limit)}`,
-    };
-  }
-
-  const sinceMatch = combined.match(/since[-\s]*(\d{3,4})/);
-  if (sinceMatch) {
-    const from = Number(sinceMatch[1]);
-    return {
-      from,
-      to: currentYear,
-      label: `${fmtYear(from)}-${fmtYear(currentYear)}`,
-    };
-  }
-
-  const presentMatch = combined.match(/(\d{3,4})\s*-\s*present/);
-  if (presentMatch) {
-    const from = Number(presentMatch[1]);
-    return {
-      from,
-      to: currentYear,
-      label: `${fmtYear(from)}-${fmtYear(currentYear)}`,
-    };
-  }
-
-  const rangeMatch = combined.match(/(\d{3,4})\s*-\s*(\d{3,4})/);
-  if (rangeMatch) {
-    const from = Number(rangeMatch[1]);
-    const to = Number(rangeMatch[2]);
-
-    return {
-      from: Math.min(from, to),
-      to: Math.max(from, to),
-      label: `${fmtYear(Math.min(from, to))}-${fmtYear(Math.max(from, to))}`,
-    };
-  }
-
-  return null;
+  return getSourceYearRange(sourceKey, sourceLabel);
 }
 
 function getRecordMainYear10(record: HistoryRecord) {
@@ -362,6 +373,7 @@ function FrequencyPanel({
   onBucketClick,
   canClearRange,
   onClearRange,
+  timeLabel = "Time-period",
 }: {
   loading: boolean;
   buckets: Bucket[];
@@ -370,6 +382,7 @@ function FrequencyPanel({
   onBucketClick: (bucket: Bucket) => void;
   canClearRange: boolean;
   onClearRange: () => void;
+  timeLabel?: string;
 }) {
   const sortedBuckets = buckets;
 
@@ -418,7 +431,7 @@ function FrequencyPanel({
 
       <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="grid grid-cols-[120px_minmax(0,1fr)_56px] gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-          <div>Time-period</div>
+          <div>{timeLabel}</div>
           <div>Event count</div>
           <div className="text-right">Count</div>
         </div>
@@ -669,13 +682,28 @@ export default function HistoryPage() {
         if (!controller.signal.aborted) {
           setPayload(json);
         }
+      } catch (error: any) {
+        if (controller.signal.aborted || error?.name === "AbortError") return;
+        console.error("History records fetch failed:", error);
+        setPayload({
+          ok: false,
+          events: [],
+          total: 0,
+          hasMore: false,
+          buckets: [],
+          warning: "Unable to load history records.",
+        });
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
     }
 
     loadRecords();
-  return () => controller.abort();
+  return () => {
+      if (!controller.signal.aborted) {
+        controller.abort();
+      }
+    };
   }, [activeSegment, activeSource.key, page, pageSize, searchText, activeRange]);
 
   useEffect(() => {
@@ -740,6 +768,10 @@ export default function HistoryPage() {
         if (!controller.signal.aborted) {
           setFrequencyRecords(collected);
         }
+      } catch (error: any) {
+        if (controller.signal.aborted || error?.name === "AbortError") return;
+        console.error("History frequency fetch failed:", error);
+        setFrequencyRecords([]);
       } finally {
         if (!controller.signal.aborted) {
           setFrequencyLoading(false);
@@ -749,7 +781,11 @@ export default function HistoryPage() {
 
     loadFrequencyRecords();
 
-    return () => controller.abort();
+    return () => {
+      if (!controller.signal.aborted) {
+        controller.abort();
+      }
+    };
   }, [activeSegment, activeSource.key, searchText, activeRange, frequencyBaseRange]);
 
 
@@ -1008,7 +1044,7 @@ return (
 
                 <thead className="sticky top-0 z-10 bg-slate-950 text-white">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide">Timeline</th>
+                    <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide">{isDisasterSegment(activeSegment) ? "Year" : "Timeline"}</th>
                     <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide">Record</th>
                     <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide">Action</th>
                   </tr>
@@ -1029,7 +1065,7 @@ return (
                       <tr key={`${record.title}-${record.startYear}-${index}`} className="border-t bg-white transition hover:bg-slate-50">
                         <td className="px-4 py-3 align-top">
                           <span className="inline-flex whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-700">
-                            {fmtTimeline(record)}
+                            {fmtRecordTimeline(record, activeSegment)}
                           </span>
                         </td>
 
@@ -1101,6 +1137,7 @@ return (
             onBucketClick={applyBucket}
             canClearRange={hasCustomRange}
             onClearRange={clearRange}
+            timeLabel={isDisasterSegment(activeSegment) ? "Year window" : "Time-period"}
           />
         </section>
 
@@ -1118,6 +1155,11 @@ return (
     </main>
   );
 }
+
+
+
+
+
 
 
 

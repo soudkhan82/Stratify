@@ -38,7 +38,7 @@ const TAB_CONFIG: Record<HistoryTab, { label: string; classes: string[] }> = {
     classes: ["Q198", "Q8465", "Q180684", "Q350604"],
   },
   battles: {
-    label: "Battles & Sieges",
+    label: "Leaders, Rulers & Heads of State",
     classes: ["Q178561", "Q188055", "Q645883"],
   },
   revolutions: {
@@ -46,7 +46,7 @@ const TAB_CONFIG: Record<HistoryTab, { label: string; classes: string[] }> = {
     classes: ["Q10931", "Q45382", "Q124734"],
   },
   empires: {
-    label: "Empires & Kingdoms",
+    label: "Historical Disasters & Pandemics",
     classes: ["Q48349", "Q3024240", "Q1790360"],
   },
   civilizations: {
@@ -566,3 +566,5 @@ export async function GET(req: Request) {
     );
   }
 }
+
+
