@@ -1252,74 +1252,6 @@ async function civFetchRecords(sourceKey: string) {
   });
 }
 
-
-/* STRATIFY_CIV_BUCKET_SYNC_FIX
-   Civilizations only: table + frequency both use period-overlap logic.
-*/
-function civBucketSyncOverlaps(record: HistoryRecord, from: number, to: number) {
-  const rangeStart = Math.min(from, to);
-  const rangeEnd = Math.max(from, to);
-
-  const start = Number(record.startYear ?? record.year);
-  const end = Number(record.endYear ?? record.startYear ?? record.year);
-
-  if (!Number.isFinite(start)) return false;
-
-  const safeEnd = Number.isFinite(end) ? end : start;
-
-  return start <= rangeEnd && safeEnd >= rangeStart;
-}
-
-function civBucketSyncFilter(records: HistoryRecord[], from: number | null, to: number | null) {
-  if (from === null || to === null) return records;
-  return records.filter((record) => civBucketSyncOverlaps(record, from, to));
-}
-
-function civBucketSyncBuildBuckets(records: HistoryRecord[], from: number | null, to: number | null): Bucket[] {
-  if (from === null || to === null) {
-    return buildBuckets(records, from, to);
-  }
-
-  const start = Math.min(from, to);
-  const end = Math.max(from, to);
-  const span = Math.max(1, end - start + 1);
-  const bucketCount = Math.min(10, span);
-  const buckets: Bucket[] = [];
-
-  for (let i = 0; i < bucketCount; i += 1) {
-    const bucketFrom = start + Math.floor((i * span) / bucketCount);
-    const bucketTo = start + Math.floor(((i + 1) * span) / bucketCount) - 1;
-
-    buckets.push({
-      bucket: bucketFrom,
-      from: bucketFrom,
-      to: Math.max(bucketFrom, bucketTo),
-      label:
-        bucketFrom === bucketTo
-          ? fmtYear(bucketFrom)
-          : `${fmtYear(bucketFrom)}-${fmtYear(Math.max(bucketFrom, bucketTo))}`,
-      count: 0,
-      pct: 0,
-    });
-  }
-
-  for (const record of records) {
-    for (const bucket of buckets) {
-      if (civBucketSyncOverlaps(record, bucket.from, bucket.to)) {
-        bucket.count += 1;
-      }
-    }
-  }
-
-  const maxCount = Math.max(0, ...buckets.map((bucket) => bucket.count));
-
-  return buckets.map((bucket) => ({
-    ...bucket,
-    pct: maxCount
-      ? Math.max(bucket.count > 0 ? 7 : 0, Math.round((bucket.count / maxCount) * 100))
-      : 0,
-  }));
-}
 async function handleCivilizationsOnly(req: Request, segment: SegmentKey, sourceKey: string) {
   const { searchParams } = new URL(req.url);
 
@@ -1379,14 +1311,14 @@ async function handleCivilizationsOnly(req: Request, segment: SegmentKey, source
     );
   }
 
-  const rangedRecords = civBucketSyncFilter(allRecords, from, to);
+  const rangedRecords = civFilterByOverlap(allRecords, from, to);
   const searchedRecords = filterBySearch(rangedRecords, query);
 
   const total = searchedRecords.length;
   const start = (page - 1) * pageSize;
   const events = searchedRecords.slice(start, start + pageSize);
   const hasMore = start + pageSize < total;
-  const buckets = civBucketSyncBuildBuckets(rangedRecords, from, to);
+  const buckets = civBuildBuckets(rangedRecords, from, to);
 
   return NextResponse.json(
     {
@@ -1460,26 +1392,12 @@ function disSources(sourceKey: string): SourcePage[] {
   }
 
   if (sourceKey === "earthquakes") {
-    return [
-      {
-        key: "earthquakes",
-        label: "Earthquakes",
-        page: "List_of_historical_earthquakes",
-        type: "DISASTER / PANDEMIC",
-      },
-      {
-        key: "earthquakes",
-        label: "Earthquakes",
-        page: "Lists_of_20th-century_earthquakes",
-        type: "DISASTER / PANDEMIC",
-      },
-      {
-        key: "earthquakes",
-        label: "Earthquakes",
-        page: "Lists_of_21st-century_earthquakes",
-        type: "DISASTER / PANDEMIC",
-      },
-    ];
+    return [{
+      key: "earthquakes",
+      label: "Earthquakes",
+      page: "List_of_earthquakes_by_death_toll",
+      type: "DISASTER / PANDEMIC",
+    }];
   }
 
   if (sourceKey === "floods") {
@@ -1541,15 +1459,54 @@ function disParseYearFromDateCell(value: unknown) {
     return null;
   }
 
-  const bestYear = disExtractBestYear(raw);
+  const text = raw
+    .replace(/,/g, "")
+    .replace(/[−‐-‒–—]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  if (bestYear === null) return null;
+  const monthLike = /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i.test(text);
+  const eraLike = /\b(BC|BCE|AD|CE)\b/i.test(text);
+  const dateRangeLike = /[-]|to|until|through|present|ongoing/i.test(text);
+
+  const matches = [...text.matchAll(/(?:c\.?\s*)?(\d{1,4})\s*(BC|BCE|AD|CE)?/gi)];
+
+  const years = matches
+    .map((match) => {
+      const n = Number(match[1]);
+      if (!Number.isFinite(n)) return null;
+
+      const era = String(match[2] || "").toUpperCase();
+      const year = era === "BC" || era === "BCE" ? -Math.abs(n) : n;
+
+      if (year > new Date().getUTCFullYear() + 10) return null;
+      if (year === 0) return null;
+
+      return year;
+    })
+    .filter((year): year is number => typeof year === "number");
+
+  if (!years.length) return null;
+
+  if (!monthLike && !eraLike && !dateRangeLike && disIsNumericOnly(raw)) {
+    const only = years[0];
+
+    if (only > 0 && only <= new Date().getUTCFullYear() + 10) {
+      return {
+        startYear: only,
+        endYear: only,
+      };
+    }
+
+    return null;
+  }
 
   return {
-    startYear: bestYear,
-    endYear: bestYear,
+    startYear: years[0],
+    endYear: years[1] ?? years[0],
   };
 }
+
 function disFindDateCell(cells: { raw: string; text: string }[]) {
   // Search from right to left because date/year columns are usually near the end.
   for (let index = cells.length - 1; index >= 0; index -= 1) {
@@ -1680,9 +1637,6 @@ function parseDisasterTableRows(html: string, source: SourcePage) {
       !titleKey ||
       /^\d+$/.test(titleKey) ||
       disIsDeathCountCell(title) ||
-      titleKey === "lists of earthquakes" ||
-      titleKey === "earthquakes" ||
-      // STRATIFY_EARTHQUAKE_TITLE_FILTER
       ["rank", "event", "name", "date", "year", "location", "country"].includes(titleKey)
     ) {
       continue;
@@ -1750,151 +1704,12 @@ function parseDisasterListItems(html: string, source: SourcePage) {
   return output;
 }
 
-
-/* STRATIFY_DISASTER_YEAR_NORMALIZER_FIX
-   Disasters-only: fixes dates like "November 1, 1755" where day number was parsed as year.
-*/
-const DIS_HTML_CACHE = new Map<string, string>();
-
-function disExtractBestYear(value: unknown) {
-  const text = cleanHtml(value)
-    .replace(/,/g, "")
-    .replace(/[−‐-‒–—]/g, "-")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!text) return null;
-
-  const currentYear = new Date().getUTCFullYear() + 10;
-
-  const monthLike =
-    /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i.test(text);
-
-  // Month-style dates: "November 1 1755" => choose 1755, never 1.
-  if (monthLike) {
-    const fullYears = [...text.matchAll(/\b(\d{3,4})\s*(BC|BCE|AD|CE)?\b/gi)]
-      .map((match) => {
-        const n = Number(match[1]);
-        if (!Number.isFinite(n)) return null;
-
-        const era = String(match[2] || "").toUpperCase();
-        const year = era === "BC" || era === "BCE" ? -Math.abs(n) : n;
-
-        if (year === 0) return null;
-        if (year > currentYear) return null;
-
-        return year;
-      })
-      .filter((year): year is number => typeof year === "number");
-
-    return fullYears[0] ?? null;
-  }
-
-  // Prefer explicit 3/4 digit years for disaster records.
-  const explicitYears = [...text.matchAll(/\b(\d{3,4})\s*(BC|BCE|AD|CE)?\b/gi)]
-    .map((match) => {
-      const n = Number(match[1]);
-      if (!Number.isFinite(n)) return null;
-
-      const era = String(match[2] || "").toUpperCase();
-      const year = era === "BC" || era === "BCE" ? -Math.abs(n) : n;
-
-      if (year === 0) return null;
-      if (year > currentYear) return null;
-
-      return year;
-    })
-    .filter((year): year is number => typeof year === "number");
-
-  if (explicitYears.length) return explicitYears[0];
-
-  // Allow ancient dates only if an era is clearly present.
-  const ancient = text.match(/\b(\d{1,4})\s*(BC|BCE)\b/i);
-
-  if (ancient) {
-    const n = Number(ancient[1]);
-    if (Number.isFinite(n) && n > 0) return -Math.abs(n);
-  }
-
-  return null;
-}
-
-function disNormalizeRecordYear(record: HistoryRecord): HistoryRecord | null {
-  const title = cleanHtml(record.title);
-  const description = cleanHtml(record.description);
-
-  const titleKey = keyOf(title);
-
-  // Remove citation/reference garbage from pandemic/disaster pages.
-  if (
-    !titleKey ||
-    titleKey === "doi" ||
-    titleKey === "local" ||
-    titleKey.includes("journal") ||
-    titleKey.includes("university") ||
-    titleKey.includes("retrieved") ||
-    titleKey.includes("archived") ||
-    title.startsWith("^") ||
-    title.startsWith("[")
-  ) {
-    return null;
-  }
-
-  let bestYear = disExtractBestYear(title);
-
-  if (bestYear === null) {
-    bestYear = disExtractBestYear(description);
-  }
-
-  if (bestYear === null) {
-    const current = Number(record.startYear ?? record.year);
-    if (Number.isFinite(current) && Math.abs(current) > 31) {
-      bestYear = Math.trunc(current);
-    }
-  }
-
-  if (bestYear === null) return null;
-
-  return {
-    ...record,
-    year: bestYear,
-    startYear: bestYear,
-    endYear: bestYear,
-  };
-}
-
-async function disFetchWikiHtml(page: string) {
-  const cacheKey = page;
-
-  const cached = DIS_HTML_CACHE.get(cacheKey);
-  if (cached) return cached;
-
-  try {
-    const html = await fetchWikiHtml(page);
-    DIS_HTML_CACHE.set(cacheKey, html);
-    return html;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-
-    // Wikipedia sometimes returns 429 during rapid dev refreshes.
-    // Wait briefly and retry once for disaster sources only.
-    if (message.includes("429")) {
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-
-      const html = await fetchWikiHtml(page);
-      DIS_HTML_CACHE.set(cacheKey, html);
-      return html;
-    }
-
-    throw error;
-  }
-}
 async function disFetchRecords(sourceKey: string) {
   const sources = disSources(sourceKey);
 
   const groups = await Promise.all(
     sources.map(async (source) => {
-      const html = await disFetchWikiHtml(source.page);
+      const html = await fetchWikiHtml(source.page);
 
       return [
         ...parseDisasterTableRows(html, source),
@@ -1903,12 +1718,7 @@ async function disFetchRecords(sourceKey: string) {
     })
   );
 
-  return dedupe(
-    groups
-      .flat()
-      .map(disNormalizeRecordYear)
-      .filter((record): record is HistoryRecord => Boolean(record))
-  ).sort((a, b) => {
+  return dedupe(groups.flat()).sort((a, b) => {
     const ay = getRecordYear(a) ?? 999999;
     const by = getRecordYear(b) ?? 999999;
 
@@ -2049,7 +1859,7 @@ export async function GET(req: Request) {
 
     const groups = await Promise.all(
       sources.map(async (source) => {
-        const html = await disFetchWikiHtml(source.page);
+        const html = await fetchWikiHtml(source.page);
         return [...parseTableRows(html, source), ...parseListItems(html, source)];
       })
     );
@@ -2128,10 +1938,6 @@ export async function GET(req: Request) {
     );
   }
 }
-
-
-
-
 
 
 

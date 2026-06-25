@@ -1252,74 +1252,6 @@ async function civFetchRecords(sourceKey: string) {
   });
 }
 
-
-/* STRATIFY_CIV_BUCKET_SYNC_FIX
-   Civilizations only: table + frequency both use period-overlap logic.
-*/
-function civBucketSyncOverlaps(record: HistoryRecord, from: number, to: number) {
-  const rangeStart = Math.min(from, to);
-  const rangeEnd = Math.max(from, to);
-
-  const start = Number(record.startYear ?? record.year);
-  const end = Number(record.endYear ?? record.startYear ?? record.year);
-
-  if (!Number.isFinite(start)) return false;
-
-  const safeEnd = Number.isFinite(end) ? end : start;
-
-  return start <= rangeEnd && safeEnd >= rangeStart;
-}
-
-function civBucketSyncFilter(records: HistoryRecord[], from: number | null, to: number | null) {
-  if (from === null || to === null) return records;
-  return records.filter((record) => civBucketSyncOverlaps(record, from, to));
-}
-
-function civBucketSyncBuildBuckets(records: HistoryRecord[], from: number | null, to: number | null): Bucket[] {
-  if (from === null || to === null) {
-    return buildBuckets(records, from, to);
-  }
-
-  const start = Math.min(from, to);
-  const end = Math.max(from, to);
-  const span = Math.max(1, end - start + 1);
-  const bucketCount = Math.min(10, span);
-  const buckets: Bucket[] = [];
-
-  for (let i = 0; i < bucketCount; i += 1) {
-    const bucketFrom = start + Math.floor((i * span) / bucketCount);
-    const bucketTo = start + Math.floor(((i + 1) * span) / bucketCount) - 1;
-
-    buckets.push({
-      bucket: bucketFrom,
-      from: bucketFrom,
-      to: Math.max(bucketFrom, bucketTo),
-      label:
-        bucketFrom === bucketTo
-          ? fmtYear(bucketFrom)
-          : `${fmtYear(bucketFrom)}-${fmtYear(Math.max(bucketFrom, bucketTo))}`,
-      count: 0,
-      pct: 0,
-    });
-  }
-
-  for (const record of records) {
-    for (const bucket of buckets) {
-      if (civBucketSyncOverlaps(record, bucket.from, bucket.to)) {
-        bucket.count += 1;
-      }
-    }
-  }
-
-  const maxCount = Math.max(0, ...buckets.map((bucket) => bucket.count));
-
-  return buckets.map((bucket) => ({
-    ...bucket,
-    pct: maxCount
-      ? Math.max(bucket.count > 0 ? 7 : 0, Math.round((bucket.count / maxCount) * 100))
-      : 0,
-  }));
-}
 async function handleCivilizationsOnly(req: Request, segment: SegmentKey, sourceKey: string) {
   const { searchParams } = new URL(req.url);
 
@@ -1379,14 +1311,14 @@ async function handleCivilizationsOnly(req: Request, segment: SegmentKey, source
     );
   }
 
-  const rangedRecords = civBucketSyncFilter(allRecords, from, to);
+  const rangedRecords = civFilterByOverlap(allRecords, from, to);
   const searchedRecords = filterBySearch(rangedRecords, query);
 
   const total = searchedRecords.length;
   const start = (page - 1) * pageSize;
   const events = searchedRecords.slice(start, start + pageSize);
   const hasMore = start + pageSize < total;
-  const buckets = civBucketSyncBuildBuckets(rangedRecords, from, to);
+  const buckets = civBuildBuckets(rangedRecords, from, to);
 
   return NextResponse.json(
     {
@@ -1460,26 +1392,12 @@ function disSources(sourceKey: string): SourcePage[] {
   }
 
   if (sourceKey === "earthquakes") {
-    return [
-      {
-        key: "earthquakes",
-        label: "Earthquakes",
-        page: "List_of_historical_earthquakes",
-        type: "DISASTER / PANDEMIC",
-      },
-      {
-        key: "earthquakes",
-        label: "Earthquakes",
-        page: "Lists_of_20th-century_earthquakes",
-        type: "DISASTER / PANDEMIC",
-      },
-      {
-        key: "earthquakes",
-        label: "Earthquakes",
-        page: "Lists_of_21st-century_earthquakes",
-        type: "DISASTER / PANDEMIC",
-      },
-    ];
+    return [{
+      key: "earthquakes",
+      label: "Earthquakes",
+      page: "List_of_earthquakes_by_death_toll",
+      type: "DISASTER / PANDEMIC",
+    }];
   }
 
   if (sourceKey === "floods") {
@@ -1680,9 +1598,6 @@ function parseDisasterTableRows(html: string, source: SourcePage) {
       !titleKey ||
       /^\d+$/.test(titleKey) ||
       disIsDeathCountCell(title) ||
-      titleKey === "lists of earthquakes" ||
-      titleKey === "earthquakes" ||
-      // STRATIFY_EARTHQUAKE_TITLE_FILTER
       ["rank", "event", "name", "date", "year", "location", "country"].includes(titleKey)
     ) {
       continue;
@@ -2128,8 +2043,6 @@ export async function GET(req: Request) {
     );
   }
 }
-
-
 
 
 

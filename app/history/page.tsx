@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -542,6 +542,7 @@ export default function HistoryPage() {
   const [payload, setPayload] = useState<RecordsPayload | null>(null);
   const [frequencyLoading, setFrequencyLoading] = useState(false);
   const [frequencyRecords, setFrequencyRecords] = useState<HistoryRecord[]>([]);
+  const sourceFailureResetRef = useRef(false);
 
   const [detailQid, setDetailQid] = useState<string | null>(null);
   const [detailArticleUrl, setDetailArticleUrl] = useState<string | null>(null);
@@ -599,6 +600,48 @@ export default function HistoryPage() {
 
   function resetPaging() {
     setPage(1);
+  }
+
+  function isRecoverableSourceFailure(json: RecordsPayload | null | undefined, responseOk = true) {
+    const warning = String(json?.warning || "").toLowerCase();
+
+    return (
+      !responseOk ||
+      json?.ok === false ||
+      warning.includes("failed") ||
+      warning.includes("429") ||
+      warning.includes("invalid response") ||
+      warning.includes("unable to load")
+    );
+  }
+
+  function resetHistoryToDefaultSettings(reason?: string) {
+    const fallbackSegment: SegmentKey = "wars";
+    const fallbackSourceKey = "wars-1900-1944";
+    const fallbackSourceLabel = "1900-1944";
+    const fallbackRange = getSourceYearRange(fallbackSourceKey, fallbackSourceLabel);
+
+    setActiveSegment(fallbackSegment);
+    setActiveSourceKey(fallbackSourceKey);
+    setSearchText("");
+    setPage(1);
+    setPageSize(25);
+    setFrequencyRecords([]);
+
+    setActiveRange(fallbackRange);
+    setFromYearText(fallbackRange ? String(fallbackRange.from) : "");
+    setToYearText(fallbackRange ? String(fallbackRange.to) : "");
+
+    setPayload({
+      ok: true,
+      events: [],
+      total: 0,
+      hasMore: false,
+      buckets: [],
+      warning: reason
+        ? `${reason} Resetting to default History view.`
+        : "Source failed. Resetting to default History view.",
+    });
   }
 
   function syncRangeWithSource(sourceKey: string, sourceLabel: string) {
@@ -696,11 +739,33 @@ export default function HistoryPage() {
         }
 
         if (!controller.signal.aborted) {
+          if (isRecoverableSourceFailure(json, response.ok)) {
+            const alreadyDefault =
+              activeSegment === "wars" && activeSource.key === "wars-1900-1944";
+
+            if (!alreadyDefault || !sourceFailureResetRef.current) {
+              sourceFailureResetRef.current = true;
+              resetHistoryToDefaultSettings(json.warning || "Source fetch failed.");
+              return;
+            }
+          }
+
+          sourceFailureResetRef.current = false;
           setPayload(json);
         }
       } catch (error: any) {
         if (controller.signal.aborted || error?.name === "AbortError") return;
         console.error("History records fetch failed:", error);
+
+        const alreadyDefault =
+          activeSegment === "wars" && activeSource.key === "wars-1900-1944";
+
+        if (!alreadyDefault || !sourceFailureResetRef.current) {
+          sourceFailureResetRef.current = true;
+          resetHistoryToDefaultSettings("Unable to load history records.");
+          return;
+        }
+
         setPayload({
           ok: false,
           events: [],
@@ -1171,6 +1236,7 @@ return (
     </main>
   );
 }
+
 
 
 
