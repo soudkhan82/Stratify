@@ -834,19 +834,23 @@ function getSources(segment: SegmentKey, sourceKey: string) {
 }
 
 
-
-
-/* STRATIFY_CIVILIZATIONS_WIKIPEDIA_FIX_START
-   Empires & Civilizations only.
-   Uses Wikipedia list tables and period-overlap filtering.
-   Does not affect wars, leaders, revolutions, or disasters.
+/* STRATIFY_CIVILIZATIONS_WIKIDATA_FIX_START
+   Civilizations-only fallback. This does not affect wars, leaders, revolutions, or disasters.
 */
+type CivBinding = {
+  item?: { value?: string };
+  itemLabel?: { value?: string };
+  itemDescription?: { value?: string };
+  article?: { value?: string };
+  startYear?: { value?: string };
+  endYear?: { value?: string };
+};
+
 function civDefaultRange(sourceKey: string) {
   if (sourceKey === "bronze-age-states") return { from: -3300, to: -1200 };
   if (sourceKey === "iron-age-states") return { from: -1200, to: -500 };
-  if (sourceKey === "classical-age-states") return { from: 1, to: 500 };
-
-  return { from: 1, to: 500 };
+  if (sourceKey === "classical-age-states") return { from: -800, to: 700 };
+  return { from: -3500, to: 700 };
 }
 
 function civSourceLabel(sourceKey: string) {
@@ -856,398 +860,110 @@ function civSourceLabel(sourceKey: string) {
   return "Ancient civilizations";
 }
 
-function civSources(sourceKey: string): SourcePage[] {
-  if (sourceKey === "bronze-age-states") {
-    return [
-      {
-        key: "bronze-age-states",
-        label: "Bronze Age states",
-        page: "List_of_Bronze_Age_states",
-        type: "EMPIRE / CIVILIZATION",
-      },
-    ];
-  }
+function civToYear(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
 
-  if (sourceKey === "iron-age-states") {
-    return [
-      {
-        key: "iron-age-states",
-        label: "Iron Age states",
-        page: "List_of_Iron_Age_states",
-        type: "EMPIRE / CIVILIZATION",
-      },
-    ];
-  }
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
 
-  if (sourceKey === "classical-age-states") {
-    return [
-      {
-        key: "classical-age-states",
-        label: "Classical Age states",
-        page: "List_of_Classical_Age_states",
-        type: "EMPIRE / CIVILIZATION",
-      },
-    ];
-  }
-
-  return [
-    {
-      key: "ancient-civilizations",
-      label: "Ancient civilizations",
-      page: "List_of_Bronze_Age_states",
-      type: "EMPIRE / CIVILIZATION",
-    },
-    {
-      key: "ancient-civilizations",
-      label: "Ancient civilizations",
-      page: "List_of_Iron_Age_states",
-      type: "EMPIRE / CIVILIZATION",
-    },
-    {
-      key: "ancient-civilizations",
-      label: "Ancient civilizations",
-      page: "List_of_Classical_Age_states",
-      type: "EMPIRE / CIVILIZATION",
-    },
-  ];
+  return Math.trunc(n);
 }
 
-type CivToken = {
-  raw: string;
-  value: number;
-  isCentury: boolean;
-  era: string;
-};
+function civQidFromItem(itemUrl: string | undefined) {
+  if (!itemUrl) return null;
+  const match = itemUrl.match(/\/entity\/(Q\d+)$/i);
+  return match?.[1] || null;
+}
 
-function civNormalizeDateText(value: unknown) {
-  return cleanHtml(value)
-    .replace(/,/g, "")
-    .replace(/[−‐-‒–—]/g, "-")
+function civBuildTitle(title: string) {
+  return cleanHtml(title)
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function civEra(value: string | undefined, fallback = "AD") {
-  const era = String(value || fallback || "AD").toUpperCase();
-  if (era === "BCE") return "BC";
-  if (era === "CE") return "AD";
-  if (era === "BC" || era === "AD") return era;
-  return fallback;
-}
+function civRecordFromBinding(binding: CivBinding, sourceKey: string): HistoryRecord | null {
+  const title = civBuildTitle(binding.itemLabel?.value || "");
+  if (!title) return null;
 
-function civCenturyToYear(century: number, era: string, position: "start" | "end") {
-  if (era === "BC") {
-    return position === "start"
-      ? -(century * 100)
-      : -((century - 1) * 100 + 1);
-  }
+  const startYear = civToYear(binding.startYear?.value);
+  const endYear = civToYear(binding.endYear?.value) ?? startYear;
 
-  return position === "start"
-    ? (century - 1) * 100 + 1
-    : century * 100;
-}
+  if (startYear === null) return null;
 
-function civTokenToYear(token: CivToken, position: "start" | "end", fallbackEra: string) {
-  const era = civEra(token.era, fallbackEra);
-
-  if (token.isCentury) {
-    return civCenturyToYear(token.value, era, position);
-  }
-
-  return era === "BC" ? -Math.abs(token.value) : token.value;
-}
-
-function civParseYearRange(value: unknown) {
-  const text = civNormalizeDateText(value);
-
-  if (!text || !/\d|present|ongoing/i.test(text)) return null;
-
-  const tokenRegex =
-    /(?:c\.?\s*)?(?:(\d{1,2})(?:st|nd|rd|th)\s*centur(?:y|ies)|(\d{1,4}))\s*(BC|BCE|AD|CE)?|present|ongoing/gi;
-
-  const tokens: CivToken[] = [];
-  let match: RegExpExecArray | null;
-
-  while ((match = tokenRegex.exec(text))) {
-    const raw = match[0] || "";
-
-    if (/present|ongoing/i.test(raw)) {
-      tokens.push({
-        raw,
-        value: new Date().getUTCFullYear(),
-        isCentury: false,
-        era: "AD",
-      });
-      continue;
-    }
-
-    const century = match[1];
-    const year = match[2];
-    const era = match[3] || "";
-
-    if (century) {
-      tokens.push({
-        raw,
-        value: Number(century),
-        isCentury: true,
-        era,
-      });
-    } else if (year) {
-      tokens.push({
-        raw,
-        value: Number(year),
-        isCentury: false,
-        era,
-      });
-    }
-  }
-
-  if (!tokens.length) return null;
-
-  const first = tokens[0];
-  const second = tokens[1] || tokens[0];
-
-  const laterEra =
-    second.era ||
-    first.era ||
-    tokens.find((token) => token.era)?.era ||
-    "AD";
-
-  const startYear = civTokenToYear(first, "start", civEra(laterEra));
-  const endYear = civTokenToYear(second, "end", civEra(laterEra));
-
-  if (!Number.isFinite(startYear) || !Number.isFinite(endYear)) return null;
+  const qid = civQidFromItem(binding.item?.value);
+  const description = cleanHtml(binding.itemDescription?.value || "");
 
   return {
-    startYear: Math.min(startYear, endYear),
-    endYear: Math.max(startYear, endYear),
+    qid,
+    title,
+    description: description || `${title} historical civilization or state.`,
+    type: "EMPIRE / CIVILIZATION",
+    year: startYear,
+    startYear,
+    endYear,
+    articleUrl: binding.article?.value || (qid ? `https://www.wikidata.org/wiki/${qid}` : null),
+    source: `Wikidata - ${civSourceLabel(sourceKey)}`,
   };
 }
 
-function civFindYearCell(cells: { raw: string; text: string }[]) {
-  for (let index = 0; index < cells.length; index += 1) {
-    const text = civNormalizeDateText(cells[index]?.text ?? "");
-    const years = civParseYearRange(text);
-
-    if (!years) continue;
-
-    const looksLikeDateCell =
-      /\d/.test(text) &&
-      (
-        /bc|bce|ad|ce|century|centuries|present|ongoing/i.test(text) ||
-        /[-]|to|until|through/i.test(text)
-      );
-
-    if (looksLikeDateCell || index >= 2) {
-      return {
-        index,
-        years,
-      };
-    }
-  }
-
-  return null;
-}
-
-function civPickTitleCell(cells: { raw: string; text: string }[], yearIndex: number) {
-  const preferredIndexes = [0, 1, 2, 3].filter(
-    (index, pos, arr) =>
-      index >= 0 &&
-      index < cells.length &&
-      index !== yearIndex &&
-      arr.indexOf(index) === pos
-  );
-
-  for (const index of preferredIndexes) {
-    const text = cleanHtml(cells[index]?.text ?? "");
-    const key = keyOf(text);
-
-    if (
-      text &&
-      key &&
-      !["date", "period", "existed", "capital", "type", "state", "notes"].includes(key) &&
-      !civParseYearRange(text)
-    ) {
-      return {
-        index,
-        cell: cells[index],
-      };
-    }
-  }
-
-  return null;
-}
-
-function civRecordOverlaps(record: HistoryRecord, from: number, to: number) {
-  const rangeStart = Math.min(from, to);
-  const rangeEnd = Math.max(from, to);
-
-  const start = Number(record.startYear ?? record.year);
-  const end = Number(record.endYear ?? record.startYear ?? record.year);
-
-  if (!Number.isFinite(start)) return false;
-
-  const safeEnd = Number.isFinite(end) ? end : start;
-
-  return start <= rangeEnd && safeEnd >= rangeStart;
-}
-
-function civFilterByOverlap(records: HistoryRecord[], from: number | null, to: number | null) {
-  if (from === null || to === null) return records;
-  return records.filter((record) => civRecordOverlaps(record, from, to));
-}
-
-function civBuildBuckets(records: HistoryRecord[], from: number | null, to: number | null): Bucket[] {
-  if (from === null || to === null) {
-    return buildBuckets(records, from, to);
-  }
-
-  const start = Math.min(from, to);
-  const end = Math.max(from, to);
-  const span = Math.max(1, end - start + 1);
-  const bucketCount = Math.min(10, span);
-  const buckets: Bucket[] = [];
-
-  for (let i = 0; i < bucketCount; i += 1) {
-    const bucketFrom = start + Math.floor((i * span) / bucketCount);
-    const bucketTo = start + Math.floor(((i + 1) * span) / bucketCount) - 1;
-
-    buckets.push({
-      bucket: bucketFrom,
-      from: bucketFrom,
-      to: Math.max(bucketFrom, bucketTo),
-      label:
-        bucketFrom === bucketTo
-          ? fmtYear(bucketFrom)
-          : `${fmtYear(bucketFrom)}-${fmtYear(Math.max(bucketFrom, bucketTo))}`,
-      count: 0,
-      pct: 0,
-    });
-  }
-
-  for (const record of records) {
-    for (const bucket of buckets) {
-      if (civRecordOverlaps(record, bucket.from, bucket.to)) {
-        bucket.count += 1;
-      }
-    }
-  }
-
-  const maxCount = Math.max(0, ...buckets.map((bucket) => bucket.count));
-
-  return buckets.map((bucket) => ({
-    ...bucket,
-    pct: maxCount
-      ? Math.max(bucket.count > 0 ? 7 : 0, Math.round((bucket.count / maxCount) * 100))
-      : 0,
-  }));
-}
-
-function parseCivilizationTableRows(html: string, source: SourcePage) {
-  const output: HistoryRecord[] = [];
-  const rows = html.match(/<tr\b[\s\S]*?<\/tr>/gi) ?? [];
-
-  for (const rowHtml of rows) {
-    const cells = extractCells(rowHtml);
-    if (cells.length < 2) continue;
-
-    const yearCell = civFindYearCell(cells);
-    if (!yearCell) continue;
-
-    const titlePick = civPickTitleCell(cells, yearCell.index);
-    if (!titlePick) continue;
-
-    const article = firstArticle(titlePick.cell.raw);
-    const title = article?.title || titlePick.cell.text;
-    const titleKey = keyOf(title);
-
-    if (
-      !titleKey ||
-      ["name", "state", "civilization", "empire", "kingdom", "period", "region"].includes(titleKey)
-    ) {
-      continue;
-    }
-
-    const description = cells
-      .map((cell) => cell.text)
-      .filter(Boolean)
-      .slice(0, 8)
-      .join(" | ");
-
-    output.push(
-      makeRecord({
-        source,
-        title,
-        startYear: yearCell.years.startYear,
-        endYear: yearCell.years.endYear,
-        description,
-        articleUrl: article?.url ?? null,
-      })
-    );
-  }
-
-  return output;
-}
-
-function parseCivilizationListItems(html: string, source: SourcePage) {
-  const output: HistoryRecord[] = [];
-  const items = html.match(/<li\b[^>]*>[\s\S]*?<\/li>/gi) ?? [];
-
-  for (const raw of items) {
-    const text = cleanHtml(raw);
-    if (!text || text.length < 8) continue;
-
-    const years = civParseYearRange(text);
-    if (!years) continue;
-
-    const article = firstArticle(raw);
-    const title = article?.title || fallbackTitleFromListText(text);
-    const titleKey = keyOf(title);
-
-    if (
-      !titleKey ||
-      titleKey.includes("isbn") ||
-      titleKey.includes("citation needed") ||
-      ["edit", "main article", "see also", "references", "external links"].includes(titleKey)
-    ) {
-      continue;
-    }
-
-    output.push(
-      makeRecord({
-        source,
-        title,
-        startYear: years.startYear,
-        endYear: years.endYear,
-        description: text,
-        articleUrl: article?.url ?? null,
-      })
-    );
-  }
-
-  return output;
-}
-
 async function civFetchRecords(sourceKey: string) {
-  const sources = civSources(sourceKey);
+  const sparql = `
+SELECT ?item ?itemLabel ?itemDescription ?article ?startYear ?endYear WHERE {
+  VALUES ?root { wd:Q8432 wd:Q48349 wd:Q3024240 }
+  ?item wdt:P31/wdt:P279* ?root.
 
-  const groups = await Promise.all(
-    sources.map(async (source) => {
-      const html = await fetchWikiHtml(source.page);
+  OPTIONAL { ?item wdt:P571 ?inception. }
+  OPTIONAL { ?item wdt:P580 ?periodStart. }
+  OPTIONAL { ?item wdt:P576 ?dissolved. }
+  OPTIONAL { ?item wdt:P582 ?periodEnd. }
 
-      return [
-        ...parseCivilizationTableRows(html, source),
-        ...parseCivilizationListItems(html, source),
-      ];
-    })
-  );
+  BIND(COALESCE(?inception, ?periodStart) AS ?startDate)
+  BIND(COALESCE(?dissolved, ?periodEnd) AS ?endDate)
+  BIND(YEAR(?startDate) AS ?startYear)
+  BIND(YEAR(?endDate) AS ?endYear)
 
-  return dedupe(groups.flat()).sort((a, b) => {
+  OPTIONAL {
+    ?article schema:about ?item;
+             schema:isPartOf <https://en.wikipedia.org/>.
+  }
+
+  SERVICE wikibase:label {
+    bd:serviceParam wikibase:language "en".
+  }
+}
+ORDER BY ?startYear ?itemLabel
+LIMIT 1500
+`;
+
+  const url = new URL("https://query.wikidata.org/sparql");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("query", sparql);
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      Accept: "application/sparql-results+json",
+      "User-Agent": "Stratify-History-Module/1.0",
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Wikidata civilization fetch failed: ${response.status}`);
+  }
+
+  const json = await response.json();
+  const bindings = Array.isArray(json?.results?.bindings)
+    ? (json.results.bindings as CivBinding[])
+    : [];
+
+  return dedupe(
+    bindings
+      .map((binding) => civRecordFromBinding(binding, sourceKey))
+      .filter((record): record is HistoryRecord => Boolean(record))
+  ).sort((a, b) => {
     const ay = getRecordYear(a) ?? 999999;
     const by = getRecordYear(b) ?? 999999;
-
     if (ay !== by) return ay - by;
-
     return a.title.localeCompare(b.title);
   });
 }
@@ -1271,54 +987,15 @@ async function handleCivilizationsOnly(req: Request, segment: SegmentKey, source
 
   const query = searchParams.get("q") || searchParams.get("search") || "";
 
-  let allRecords: HistoryRecord[] = [];
-
-  try {
-    allRecords = await civFetchRecords(sourceKey);
-  } catch (error) {
-    console.error("Civilizations Wikipedia parser failed:", error);
-
-    return NextResponse.json(
-      {
-        ok: true,
-        segment,
-        sourceKey,
-        sourceLabel: civSourceLabel(sourceKey),
-        sourceTitle: civSourceLabel(sourceKey),
-        page,
-        pageSize,
-        events: [],
-        records: [],
-        data: [],
-        items: [],
-        total: 0,
-        hasMore: false,
-        buckets: [],
-        activeRange: {
-          from: Math.min(from, to),
-          to: Math.max(from, to),
-        },
-        warning:
-          error instanceof Error
-            ? `Civilizations source failed: ${error.message}`
-            : "Civilizations source failed.",
-      },
-      {
-        headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate",
-        },
-      }
-    );
-  }
-
-  const rangedRecords = civFilterByOverlap(allRecords, from, to);
+  const allRecords = await civFetchRecords(sourceKey);
+  const rangedRecords = filterByRange(allRecords, from, to);
   const searchedRecords = filterBySearch(rangedRecords, query);
 
   const total = searchedRecords.length;
   const start = (page - 1) * pageSize;
   const events = searchedRecords.slice(start, start + pageSize);
   const hasMore = start + pageSize < total;
-  const buckets = civBuildBuckets(rangedRecords, from, to);
+  const buckets = buildBuckets(rangedRecords, from, to);
 
   return NextResponse.json(
     {
@@ -1340,10 +1017,10 @@ async function handleCivilizationsOnly(req: Request, segment: SegmentKey, source
         from: Math.min(from, to),
         to: Math.max(from, to),
       },
-      warning: total ? null : "No civilization records found for the selected timeframe.",
+      warning: null,
       meta: {
         route: "source-records",
-        branch: "civilizations-wikipedia-overlap-parser",
+        branch: "civilizations-wikidata-only",
         hardcodedEvents: false,
         fetchedRecords: allRecords.length,
         rangedRecords: rangedRecords.length,
@@ -1356,7 +1033,7 @@ async function handleCivilizationsOnly(req: Request, segment: SegmentKey, source
     }
   );
 }
-/* STRATIFY_CIVILIZATIONS_WIKIPEDIA_FIX_END */
+/* STRATIFY_CIVILIZATIONS_WIKIDATA_FIX_END */
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -1365,7 +1042,7 @@ export async function GET(req: Request) {
     const sourceKey = searchParams.get("sourceKey") || "revolutions-rebellions";
 
     if (segment === "civilizations") {
-      return await handleCivilizationsOnly(req, segment, sourceKey);
+      return handleCivilizationsOnly(req, segment, sourceKey);
     }
 
     // IMPORTANT:
@@ -1463,12 +1140,6 @@ export async function GET(req: Request) {
     );
   }
 }
-
-
-
-
-
-
 
 
 

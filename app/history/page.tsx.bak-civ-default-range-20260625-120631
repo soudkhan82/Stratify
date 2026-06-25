@@ -234,22 +234,6 @@ function getSourceYearRange(sourceKey: string, sourceLabel: string): ActiveRange
 
   if (leaderRanges[sourceKey]) return leaderRanges[sourceKey];
 
-  // STRATIFY_CIVILIZATION_UI_DEFAULT_RANGE
-  if (
-    sourceKey === "ancient-civilizations" ||
-    sourceKey === "classical-age-states"
-  ) {
-    return makeRange(1, 500, "1st-5th century");
-  }
-
-  if (sourceKey === "bronze-age-states") {
-    return makeRange(-3300, -1200, "Bronze Age");
-  }
-
-  if (sourceKey === "iron-age-states") {
-    return makeRange(-1200, -500, "Iron Age");
-  }
-
   if (
     sourceKey === "natural-disasters" ||
     sourceKey === "pandemics" ||
@@ -1171,7 +1155,6 @@ return (
     </main>
   );
 }
-
 
 
 
