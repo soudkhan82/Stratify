@@ -1,0 +1,1487 @@
+
+
+// ================================
+// FILE: app/api/wiki/country/route.ts
+// ================================
+import { NextResponse } from "next/server";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+type SourcePage = {
+  label: string;
+  page: string;
+  category: string;
+};
+
+type HistoryRecord = {
+  id: string;
+  timeline: string;
+  year: number;
+  startYear: number;
+  endYear: number;
+  fromYear: number;
+  toYear: number;
+  title: string;
+  record: string;
+  type: string;
+  category: string;
+  source: string;
+  description: string;
+  summary: string;
+  extract: string;
+  url: string | null;
+  wikiUrl: string | null;
+  articleUrl: string | null;
+};
+
+const WIKI_ORIGIN = "https://en.wikipedia.org";
+
+const REVOLUTION_SOURCES: SourcePage[] = [
+  {
+    label: "List of revolutions and rebellions",
+    page: "List_of_revolutions_and_rebellions",
+    category: "INDEPENDENCE / REVOLUTION",
+  },
+];
+
+const WAR_SOURCES: SourcePage[] = [
+  {
+    label: "List of wars: before 1000",
+    page: "List_of_wars:_before_1000",
+    category: "WAR / CONFLICT",
+  },
+  {
+    label: "List of wars: 1000–1499",
+    page: "List_of_wars:_1000%E2%80%931499",
+    category: "WAR / CONFLICT",
+  },
+  {
+    label: "List of wars: 1500–1799",
+    page: "List_of_wars:_1500%E2%80%931799",
+    category: "WAR / CONFLICT",
+  },
+  {
+    label: "List of wars: 1800–1899",
+    page: "List_of_wars:_1800%E2%80%931899",
+    category: "WAR / CONFLICT",
+  },
+  {
+    label: "List of wars: 1900–1944",
+    page: "List_of_wars:_1900%E2%80%931944",
+    category: "WAR / CONFLICT",
+  },
+  {
+    label: "List of wars: 1945–1989",
+    page: "List_of_wars:_1945%E2%80%931989",
+    category: "WAR / CONFLICT",
+  },
+  {
+    label: "List of wars: 1990–2002",
+    page: "List_of_wars:_1990%E2%80%932002",
+    category: "WAR / CONFLICT",
+  },
+  {
+    label: "List of wars: 2003–2019",
+    page: "List_of_wars:_2003%E2%80%932019",
+    category: "WAR / CONFLICT",
+  },
+  {
+    label: "List of wars: 2020–present",
+    page: "List_of_wars:_2020%E2%80%93present",
+    category: "WAR / CONFLICT",
+  },
+];
+
+function decodeEntities(value: string) {
+  return String(value ?? "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
+function cleanHtml(value: string) {
+  return decodeEntities(String(value ?? ""))
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<sup[\s\S]*?<\/sup>/gi, " ")
+    .replace(/<span[^>]*class="mw-editsection"[\s\S]*?<\/span>/gi, " ")
+    .replace(/<br\s*\/?>/gi, " | ")
+    .replace(/<\/li>/gi, " | ")
+    .replace(/<\/p>/gi, " | ")
+    .replace(/<\/div>/gi, " | ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\[\s*\d+\s*\]/g, " ")
+    .replace(/\s*\|\s*/g, " | ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeText(value: unknown) {
+  return cleanHtml(String(value ?? ""))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function keyOf(value: unknown) {
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function expandShortEndYear(start: number, endRaw: string) {
+  const end = Number(endRaw);
+  if (!Number.isFinite(end)) return start;
+
+  const startAbs = Math.abs(start);
+  const endDigits = endRaw.length;
+  const startDigits = String(startAbs).length;
+
+  if (start > 0 && endDigits < startDigits) {
+    const factor = Math.pow(10, endDigits);
+    let expanded = Math.floor(start / factor) * factor + end;
+
+    if (expanded < start) expanded += factor;
+
+    return expanded;
+  }
+
+  return end;
+}
+
+function applyEra(year: number, era?: string | null) {
+  const e = String(era ?? "").toUpperCase();
+  if (e === "BC" || e === "BCE") return -Math.abs(year);
+  return year;
+}
+
+function parseYearRange(textValue: string) {
+  const text = normalizeText(textValue)
+    .replace(/,/g, "")
+    .replace(/[---?–—]/g, "-");
+
+  const range = text.match(
+    /(?:c\.?\s*)?(\d{1,4})\s*(BC|BCE|AD|CE)?\s*(?:-|to|until|through)\s*(?:c\.?\s*)?(\d{1,4}|present|ongoing)\s*(BC|BCE|AD|CE)?/i
+  );
+
+  if (range) {
+    const startRaw = range[1];
+    const startEra = range[2];
+    const endRaw = range[3];
+    const endEra = range[4] || startEra;
+
+    let startYear = Number(startRaw);
+    if (!Number.isFinite(startYear)) return null;
+
+    startYear = applyEra(startYear, startEra);
+
+    let endYear: number;
+
+    if (/present|ongoing/i.test(endRaw)) {
+      endYear = new Date().getUTCFullYear();
+    } else {
+      endYear = expandShortEndYear(startYear, endRaw);
+      endYear = applyEra(endYear, endEra);
+    }
+
+    if (!Number.isFinite(endYear)) endYear = startYear;
+
+    return {
+      startYear,
+      endYear,
+    };
+  }
+
+  const single = text.match(/(?:^|[^\d])(?:c\.?\s*)?(\d{1,4})\s*(BC|BCE|AD|CE)?(?:$|[^\d])/i);
+
+  if (!single) return null;
+
+  const year = applyEra(Number(single[1]), single[2]);
+
+  if (!Number.isFinite(year)) return null;
+
+  return {
+    startYear: year,
+    endYear: year,
+  };
+}
+
+function startsWithYear(text: string) {
+  return /^\s*(?:c\.?\s*)?\d{1,4}\s*(?:BC|BCE|AD|CE)?/i.test(normalizeText(text));
+}
+
+function extractCells(rowHtml: string) {
+  const cells: { raw: string; text: string }[] = [];
+  const re = /<(td|th)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(rowHtml))) {
+    const raw = match[2] ?? "";
+    const text = cleanHtml(raw);
+
+    if (text) {
+      cells.push({ raw, text });
+    }
+  }
+
+  return cells;
+}
+
+function firstArticle(rawHtml: string) {
+  const re = /<a\b[^>]*href="\/wiki\/([^"#?:]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(rawHtml))) {
+    const href = decodeURIComponent(match[1] ?? "");
+    const title = cleanHtml(match[2] ?? "");
+
+    if (!href || !title) continue;
+
+    const bad =
+      href.startsWith("File:") ||
+      href.startsWith("Help:") ||
+      href.startsWith("Special:") ||
+      href.startsWith("Category:") ||
+      href.startsWith("Template:") ||
+      href.startsWith("Wikipedia:") ||
+      href.startsWith("Portal:");
+
+    if (bad) continue;
+
+    return {
+      title,
+      url: `${WIKI_ORIGIN}/wiki/${encodeURIComponent(href).replace(/%2F/g, "/")}`,
+    };
+  }
+
+  return null;
+}
+
+function timelineLabel(startYear: number, endYear: number) {
+  if (startYear === endYear) return String(startYear);
+  return `${startYear}-${endYear}`;
+}
+
+function makeRecord(args: {
+  source: SourcePage;
+  title: string;
+  startYear: number;
+  endYear: number;
+  summary: string;
+  url: string | null;
+}) {
+  const title = normalizeText(args.title);
+  const summary = normalizeText(args.summary || title);
+
+  const record: HistoryRecord = {
+    id: `${args.source.page}-${args.startYear}-${args.endYear}-${keyOf(title)}`,
+    timeline: timelineLabel(args.startYear, args.endYear),
+    year: args.startYear,
+    startYear: args.startYear,
+    endYear: args.endYear,
+    fromYear: args.startYear,
+    toYear: args.endYear,
+    title,
+    record: title,
+    type: args.source.category,
+    category: args.source.category,
+    source: args.source.label,
+    description: summary,
+    summary,
+    extract: summary,
+    url: args.url,
+    wikiUrl: args.url,
+    articleUrl: args.url,
+  };
+
+  return record;
+}
+
+function parseTableRows(html: string, source: SourcePage) {
+  const records: HistoryRecord[] = [];
+  const rows = html.match(/<tr\b[\s\S]*?<\/tr>/gi) ?? [];
+
+  for (const rowHtml of rows) {
+    const cells = extractCells(rowHtml);
+    if (cells.length < 2) continue;
+
+    let startYear: number | null = null;
+    let endYear: number | null = null;
+    let titleIndex = -1;
+
+    const firstYears = parseYearRange(cells[0]?.text ?? "");
+    const secondYears = parseYearRange(cells[1]?.text ?? "");
+
+    // War tables commonly use: Start | Finish | Conflict
+    if (
+      cells.length >= 3 &&
+      firstYears &&
+      secondYears &&
+      startsWithYear(cells[0].text) &&
+      startsWithYear(cells[1].text)
+    ) {
+      startYear = firstYears.startYear;
+      endYear = secondYears.startYear;
+      titleIndex = 2;
+    }
+    // Revolution lists/tables commonly use: Date | Event
+    else if (firstYears && startsWithYear(cells[0].text)) {
+      startYear = firstYears.startYear;
+      endYear = firstYears.endYear;
+      titleIndex = 1;
+    }
+    // Some tables use: Event | Date
+    else if (secondYears && startsWithYear(cells[1].text)) {
+      startYear = secondYears.startYear;
+      endYear = secondYears.endYear;
+      titleIndex = 0;
+    }
+
+    if (startYear === null || endYear === null || titleIndex < 0) continue;
+
+    const titleCell = cells[titleIndex];
+    if (!titleCell) continue;
+
+    const article = firstArticle(titleCell.raw);
+    const title = article?.title || titleCell.text;
+
+    const titleKey = keyOf(title);
+
+    if (
+      !titleKey ||
+      titleKey === "event" ||
+      titleKey === "conflict" ||
+      titleKey === "name of conflict" ||
+      titleKey === "date" ||
+      titleKey === "result"
+    ) {
+      continue;
+    }
+
+    const summary = cells
+      .filter((_, i) => i !== titleIndex)
+      .map((c) => c.text)
+      .filter(Boolean)
+      .slice(0, 6)
+      .join(" | ");
+
+    records.push(
+      makeRecord({
+        source,
+        title,
+        startYear,
+        endYear,
+        summary,
+        url: article?.url ?? null,
+      })
+    );
+  }
+
+  return records;
+}
+
+function fallbackTitleFromListText(text: string) {
+  const cleaned = normalizeText(text)
+    .replace(/^\*?\s*(?:c\.?\s*)?\d{1,4}\s*(?:BC|BCE|AD|CE)?\s*(?:[-–—]\s*(?:c\.?\s*)?\d{1,4}\s*(?:BC|BCE|AD|CE)?)?\s*[:;,-]?\s*/i, "")
+    .replace(/^the\s+/i, "")
+    .trim();
+
+  const beforeStop = cleaned.split(/[.;|]/)[0]?.trim();
+
+  return beforeStop || cleaned.slice(0, 90);
+}
+
+function parseListItems(html: string, source: SourcePage) {
+  const records: HistoryRecord[] = [];
+  const items = html.match(/<li\b[^>]*>[\s\S]*?<\/li>/gi) ?? [];
+
+  for (const raw of items) {
+    const text = cleanHtml(raw);
+
+    if (!text || text.length < 8) continue;
+
+    const years = parseYearRange(text);
+
+    if (!years) continue;
+
+    const article = firstArticle(raw);
+    const title = article?.title || fallbackTitleFromListText(text);
+
+    const titleKey = keyOf(title);
+
+    if (
+      !titleKey ||
+      titleKey.includes("isbn") ||
+      titleKey.includes("citation needed") ||
+      titleKey === "edit" ||
+      titleKey === "main article" ||
+      titleKey === "see also" ||
+      titleKey === "references" ||
+      titleKey === "external links"
+    ) {
+      continue;
+    }
+
+    records.push(
+      makeRecord({
+        source,
+        title,
+        startYear: years.startYear,
+        endYear: years.endYear,
+        summary: text,
+        url: article?.url ?? null,
+      })
+    );
+  }
+
+  return records;
+}
+
+function dedupe(records: HistoryRecord[]) {
+  const seen = new Set<string>();
+  const output: HistoryRecord[] = [];
+
+  for (const r of records) {
+    const key = `${r.startYear}|${r.endYear}|${keyOf(r.title)}`;
+
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    output.push(r);
+  }
+
+  return output;
+}
+
+async function fetchWikiHtml(page: string) {
+  const url = new URL(`${WIKI_ORIGIN}/w/api.php`);
+  url.searchParams.set("action", "parse");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("origin", "*");
+  url.searchParams.set("prop", "text");
+  url.searchParams.set("page", decodeURIComponent(page));
+
+  const res = await fetch(url.toString(), {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "Stratify-History-Module/1.0",
+    },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error(`Wikipedia fetch failed for ${page}: ${res.status}`);
+  }
+
+  const json = await res.json();
+
+  return String(json?.parse?.text?.["*"] ?? "");
+}
+
+function getSources(sourceValue: string, fromYear: number | null, toYear: number | null) {
+  const key = keyOf(sourceValue);
+
+  const isWar =
+    key.includes("war") ||
+    key.includes("conflict") ||
+    key.includes("battle") ||
+    key.includes("military");
+
+  if (!isWar) return REVOLUTION_SOURCES;
+
+  if (fromYear === null || toYear === null) return WAR_SOURCES;
+
+  return WAR_SOURCES.filter((src) => {
+    const label = keyOf(src.label);
+
+    if (label.includes("before 1000")) return fromYear <= 999;
+    if (label.includes("1000 1499")) return fromYear <= 1499 && toYear >= 1000;
+    if (label.includes("1500 1799")) return fromYear <= 1799 && toYear >= 1500;
+    if (label.includes("1800 1899")) return fromYear <= 1899 && toYear >= 1800;
+    if (label.includes("1900 1944")) return fromYear <= 1944 && toYear >= 1900;
+    if (label.includes("1945 1989")) return fromYear <= 1989 && toYear >= 1945;
+    if (label.includes("1990 2002")) return fromYear <= 2002 && toYear >= 1990;
+    if (label.includes("2003 2019")) return fromYear <= 2019 && toYear >= 2003;
+    if (label.includes("2020 present")) return toYear >= 2020;
+
+    return true;
+  });
+}
+
+function toInt(value: string | null, fallback: number | null) {
+  if (value === null || value === "") return fallback;
+
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) return fallback;
+
+  return Math.trunc(parsed);
+}
+
+function filterByRange(records: HistoryRecord[], fromYear: number | null, toYear: number | null) {
+  if (fromYear === null || toYear === null) return records;
+
+  // Start-year bucketing/filtering matches your frequency chart behavior.
+  return records.filter((r) => r.startYear >= fromYear && r.startYear <= toYear);
+}
+
+function filterBySearch(records: HistoryRecord[], search: string) {
+  const q = keyOf(search);
+
+  if (!q) return records;
+
+  const tokens = q.split(" ").filter(Boolean);
+
+  return records.filter((r) => {
+    const haystack = keyOf(
+      [
+        r.timeline,
+        r.title,
+        r.record,
+        r.category,
+        r.type,
+        r.source,
+        r.description,
+        r.summary,
+        r.extract,
+        r.url,
+      ].join(" ")
+    );
+
+    if (haystack.includes(q)) return true;
+
+    return tokens.every((t) => haystack.includes(t));
+  });
+}
+
+function buildFrequency(records: HistoryRecord[], fromYear: number | null, toYear: number | null) {
+  if (fromYear === null || toYear === null) return [];
+
+  const bucketCount = 10;
+  const span = Math.max(1, toYear - fromYear + 1);
+  const step = Math.max(1, Math.ceil(span / bucketCount));
+
+  const buckets = [];
+
+  for (let start = fromYear; start <= toYear; start += step) {
+    const end = Math.min(toYear, start + step - 1);
+    const count = records.filter((r) => r.startYear >= start && r.startYear <= end).length;
+
+    buckets.push({
+      label: `${start}-${end}`,
+      period: `${start}-${end}`,
+      timePeriod: `${start}-${end}`,
+      fromYear: start,
+      toYear: end,
+      eventCount: count,
+      count,
+    });
+  }
+
+  return buckets;
+}
+
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+
+    const source =
+      searchParams.get("source") ||
+      searchParams.get("sourceIndex") ||
+      searchParams.get("sourceTitle") ||
+      searchParams.get("tab") ||
+      "Revolutions & rebellions";
+
+    const fromYear = toInt(searchParams.get("fromYear"), null);
+    const toYear = toInt(searchParams.get("toYear"), null);
+
+    const search = searchParams.get("search") || searchParams.get("q") || "";
+
+    const page = Math.max(1, toInt(searchParams.get("page"), 1) ?? 1);
+    const rows = Math.max(1, Math.min(500, toInt(searchParams.get("rows"), 25) ?? 25));
+
+    const sources = getSources(source, fromYear, toYear);
+
+    const parsedGroups = await Promise.all(
+      sources.map(async (src) => {
+        const html = await fetchWikiHtml(src.page);
+
+        return [
+          ...parseTableRows(html, src),
+          ...parseListItems(html, src),
+        ];
+      })
+    );
+
+    const all = dedupe(parsedGroups.flat()).sort((a, b) => {
+      if (a.startYear !== b.startYear) return a.startYear - b.startYear;
+      if (a.endYear !== b.endYear) return a.endYear - b.endYear;
+      return a.title.localeCompare(b.title);
+    });
+
+    const ranged = filterByRange(all, fromYear, toYear);
+    const searched = filterBySearch(ranged, search);
+
+    const total = searched.length;
+    const start = (page - 1) * rows;
+    const paged = searched.slice(start, start + rows);
+
+    const frequency = buildFrequency(ranged, fromYear, toYear);
+
+    return NextResponse.json(
+      {
+        ok: true,
+        source,
+        sourcePages: sources.map((s) => s.label),
+        fromYear,
+        toYear,
+        page,
+        rows,
+        total,
+        totalRecords: total,
+        pageCount: Math.max(1, Math.ceil(total / rows)),
+        records: paged,
+        events: paged,
+        items: paged,
+        data: paged,
+        frequency,
+        frequencyCounts: frequency,
+        meta: {
+          parser: "generic-wikipedia-table-and-list-parser",
+          hardcodedEvents: false,
+          rangeMode: "startYear",
+        },
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      }
+    );
+  } catch (error) {
+    console.error("History API error:", error);
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "Unknown history API error",
+        records: [],
+        events: [],
+        items: [],
+        data: [],
+        frequency: [],
+        frequencyCounts: [],
+      },
+      { status: 500 }
+    );
+  }
+}
+
+
+
+// ================================
+// FILE: app/world/components/CountryWikiCard.tsx
+// ================================
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  BriefcaseBusiness,
+  ExternalLink,
+  Globe2,
+  Info,
+  Loader2,
+  Sparkles,
+  X,
+} from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+
+type WikiFact = {
+  group?: string | null;
+  label?: string | null;
+  value?: string | null;
+};
+
+type WikiSection = {
+  title?: string;
+  paragraphs?: string[];
+};
+
+type EconomyPayload = {
+  ok?: boolean;
+  title?: string;
+  displayTitle?: string;
+  description?: string;
+  extract?: string;
+  pageUrl?: string | null;
+  thumbnailUrl?: string | null;
+  facts?: WikiFact[];
+  highlights?: WikiFact[];
+  sections?: WikiSection[];
+  error?: string;
+};
+
+type WikiPayload = {
+  ok?: boolean;
+  iso3?: string;
+  country?: string;
+  title?: string;
+  displayTitle?: string;
+  description?: string;
+  extract?: string;
+  pageUrl?: string | null;
+  thumbnailUrl?: string | null;
+  facts?: WikiFact[];
+  highlights?: WikiFact[];
+  demographics?: {
+    title?: string;
+    paragraphs?: string[];
+  } | null;
+  economics?: EconomyPayload | null;
+  source?: string;
+  license?: string;
+  fetchedAt?: string;
+  error?: string;
+};
+
+type Props = {
+  iso3: string;
+  countryName?: string | null;
+  region?: string | null;
+};
+
+function cleanText(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFKC")
+    .replace(/\uFEFF/g, "")
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function shortText(value: unknown, limit = 480) {
+  const text = cleanText(value);
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit).trim()}...`;
+}
+
+function normalizeFacts(facts: WikiFact[] | undefined | null): WikiFact[] {
+  return (facts || [])
+    .map((fact) => ({
+      group: cleanText(fact.group || "General") || "General",
+      label: cleanText(fact.label),
+      value: cleanText(fact.value),
+    }))
+    .filter((fact) => fact.label && fact.value);
+}
+
+function groupFacts(facts: WikiFact[]) {
+  const map = new Map<string, WikiFact[]>();
+
+  for (const fact of facts) {
+    const group = cleanText(fact.group || "General") || "General";
+    if (!map.has(group)) map.set(group, []);
+    map.get(group)!.push(fact);
+  }
+
+  return Array.from(map.entries()).map(([group, rows]) => ({
+    group,
+    rows,
+  }));
+}
+
+function formatFetchedAt(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+}
+
+function FactGrid({ facts, max = 6 }: { facts: WikiFact[]; max?: number }) {
+  if (!facts.length) return null;
+
+  return (
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      {facts.slice(0, max).map((fact, index) => (
+        <div
+          key={`${fact.label}-${index}`}
+          className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2"
+        >
+          <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+            {fact.label}
+          </div>
+          <div className="mt-1 text-xs font-bold leading-5 text-slate-800">
+            {shortText(fact.value, 110)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FactsTable({
+  groups,
+}: {
+  groups: { group: string; rows: WikiFact[] }[];
+}) {
+  if (!groups.length) return null;
+
+  return (
+    <>
+      {groups.map((group) => (
+        <section
+          key={group.group}
+          className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4"
+        >
+          <h4 className="text-sm font-black uppercase tracking-wide text-slate-900">
+            {group.group}
+          </h4>
+
+          <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200">
+            <table className="w-full text-sm">
+              <tbody>
+                {group.rows.map((fact, index) => (
+                  <tr
+                    key={`${group.group}-${fact.label}-${index}`}
+                    className="border-t first:border-t-0"
+                  >
+                    <td className="w-[34%] bg-slate-50 px-3 py-2.5 align-top text-xs font-black uppercase tracking-wide text-slate-500">
+                      {fact.label}
+                    </td>
+                    <td className="px-3 py-2.5 align-top text-sm font-semibold leading-6 text-slate-800">
+                      {fact.value}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ))}
+    </>
+  );
+}
+
+export default function CountryWikiCard({ iso3, countryName, region }: Props) {
+  const [payload, setPayload] = useState<WikiPayload | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const normalizedIso3 = cleanText(iso3).toUpperCase();
+    if (!normalizedIso3) return;
+
+    const controller = new AbortController();
+
+    async function loadWikiProfile() {
+      try {
+        setLoading(true);
+        setPayload(null);
+
+        const qs = new URLSearchParams();
+        qs.set("iso3", normalizedIso3);
+
+        const name = cleanText(countryName);
+        if (name && name !== normalizedIso3) {
+          qs.set("country", name);
+        }
+
+        const response = await fetch(`/api/wiki/country?${qs.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        const json = (await response.json()) as WikiPayload;
+
+        if (!controller.signal.aborted) {
+          setPayload(json);
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setPayload({
+            ok: false,
+            error: "Wikipedia profile unavailable",
+          });
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadWikiProfile();
+
+    return () => controller.abort();
+  }, [iso3, countryName]);
+
+  const countryFacts = useMemo(
+    () => normalizeFacts(payload?.facts),
+    [payload?.facts],
+  );
+
+  const countryHighlights = useMemo(
+    () => normalizeFacts(payload?.highlights),
+    [payload?.highlights],
+  );
+
+  const economyFacts = useMemo(
+    () => normalizeFacts(payload?.economics?.facts),
+    [payload?.economics?.facts],
+  );
+
+  const economyHighlights = useMemo(
+    () => normalizeFacts(payload?.economics?.highlights),
+    [payload?.economics?.highlights],
+  );
+
+  const countryFactGroups = useMemo(
+    () => groupFacts(countryFacts),
+    [countryFacts],
+  );
+
+  const economyFactGroups = useMemo(
+    () => groupFacts(economyFacts),
+    [economyFacts],
+  );
+
+  const demographicsParagraphs = useMemo(() => {
+    return (payload?.demographics?.paragraphs || [])
+      .map(cleanText)
+      .filter(Boolean);
+  }, [payload?.demographics?.paragraphs]);
+
+  const economySections = useMemo(() => {
+    return (payload?.economics?.sections || [])
+      .map((section) => ({
+        title: cleanText(section.title),
+        paragraphs: (section.paragraphs || []).map(cleanText).filter(Boolean),
+      }))
+      .filter((section) => section.title && section.paragraphs.length);
+  }, [payload?.economics?.sections]);
+
+  const displayName = cleanText(
+    payload?.displayTitle ||
+      payload?.title ||
+      payload?.country ||
+      countryName ||
+      "Country profile",
+  );
+
+  const economyTitle = cleanText(
+    payload?.economics?.displayTitle ||
+      payload?.economics?.title ||
+      `Economy of ${displayName}`,
+  );
+
+  const fetchedAt = formatFetchedAt(payload?.fetchedAt);
+
+  if (loading) {
+    return (
+      <Card className="overflow-hidden rounded-[24px] border-slate-200 bg-white shadow-sm">
+        <CardContent className="p-5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-white">
+              <Loader2 className="h-5 w-5 animate-spin" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-black text-slate-900">
+                Loading country and economy profile...
+              </div>
+              <div className="mt-1 text-xs font-semibold text-slate-500">
+                Fetching Wikipedia summary, demographics and dedicated economy
+                page
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!payload?.ok || !payload.extract) {
+    return null;
+  }
+
+  return (
+    <>
+      <Card className="overflow-hidden rounded-[24px] border-slate-200 bg-white shadow-sm">
+        <CardContent className="p-0">
+          <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_190px]">
+            <div className="p-5">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-950 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Country profile
+                </span>
+
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">
+                  <Globe2 className="h-3.5 w-3.5" />
+                  {cleanText(iso3).toUpperCase()}
+                </span>
+
+                {payload.economics?.ok ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-emerald-700">
+                    <BriefcaseBusiness className="h-3.5 w-3.5" />
+                    Economy page linked
+                  </span>
+                ) : null}
+
+                {region ? (
+                  <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-500">
+                    {cleanText(region)}
+                  </span>
+                ) : null}
+              </div>
+
+              <h2 className="text-xl font-black tracking-tight text-slate-950">
+                {displayName}
+              </h2>
+
+              {payload.description ? (
+                <div className="mt-1 text-xs font-bold uppercase tracking-wide text-violet-700">
+                  {cleanText(payload.description)}
+                </div>
+              ) : null}
+
+              <p className="mt-3 text-sm font-medium leading-6 text-slate-600">
+                {shortText(payload.extract, 430)}
+              </p>
+
+              {economyHighlights.length ? (
+                <div className="mt-4">
+                  <div className="mb-2 text-[11px] font-black uppercase tracking-wide text-emerald-700">
+                    Economy snapshot from dedicated economy page
+                  </div>
+                  <FactGrid facts={economyHighlights} max={6} />
+                </div>
+              ) : countryHighlights.length ? (
+                <div className="mt-4">
+                  <FactGrid facts={countryHighlights} max={6} />
+                </div>
+              ) : null}
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                <div className="text-[11px] font-medium text-slate-500">
+                  Source: {payload.source || "Wikipedia"} contributors
+                  {payload.license ? ` Â· License: ${payload.license}` : ""}
+                  {fetchedAt ? ` Â· Updated: ${fetchedAt}` : ""}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-slate-950 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                    View full profile
+                  </button>
+
+                  {payload.economics?.pageUrl ? (
+                    <a
+                      href={payload.economics.pageUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 shadow-sm transition hover:bg-emerald-100"
+                    >
+                      Economy page
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="hidden border-l border-slate-100 bg-slate-50 p-4 md:block">
+              {payload.thumbnailUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={payload.thumbnailUrl}
+                  alt={displayName}
+                  className="h-full min-h-[190px] w-full rounded-[22px] object-cover shadow-sm"
+                />
+              ) : (
+                <div className="flex h-full min-h-[190px] items-center justify-center rounded-[22px] border border-slate-200 bg-white">
+                  <Globe2 className="h-10 w-10 text-slate-300" />
+                </div>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {open ? (
+        <div
+          className="fixed inset-0 z-[99999] flex items-stretch justify-center bg-slate-950/55 p-0 backdrop-blur-sm"
+          onClick={() => setOpen(false)}
+        >
+          <div
+            className="flex h-[100dvh] w-full max-w-6xl flex-col overflow-hidden rounded-none border border-slate-200 bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="min-w-0">
+                <div className="text-xs font-black uppercase tracking-[0.22em] text-violet-700">
+                  Country intelligence profile
+                </div>
+                <h3 className="mt-1 text-xl font-black tracking-tight text-slate-950 sm:text-2xl">
+                  {displayName}
+                </h3>
+                <div className="mt-1 text-sm font-semibold text-slate-500">
+                  {cleanText(iso3).toUpperCase()}
+                  {region ? ` Â· ${cleanText(region)}` : ""}
+                  {payload.description
+                    ? ` Â· ${cleanText(payload.description)}`
+                    : ""}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded-full border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition hover:bg-slate-100"
+                aria-label="Close country profile"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+              <div className="space-y-3 sm:space-y-4">
+                <section className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+                  <h4 className="text-sm font-black uppercase tracking-wide text-slate-900">
+                    Country overview
+                  </h4>
+                  <p className="mt-2 text-sm font-medium leading-7 text-slate-600">
+                    {cleanText(payload.extract)}
+                  </p>
+                </section>
+
+                {payload.economics?.ok ? (
+                  <section className="rounded-[20px] border border-emerald-200 bg-emerald-50/40 p-3 sm:p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h4 className="text-sm font-black uppercase tracking-wide text-emerald-800">
+                          Economy overview
+                        </h4>
+                        <div className="mt-1 text-xs font-bold text-emerald-700">
+                          {economyTitle}
+                        </div>
+                      </div>
+
+                      {payload.economics.pageUrl ? (
+                        <a
+                          href={payload.economics.pageUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 rounded-full bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white"
+                        >
+                          Open economy page
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      ) : null}
+                    </div>
+
+                    {payload.economics.extract ? (
+                      <p className="mt-3 text-sm font-medium leading-7 text-slate-700">
+                        {cleanText(payload.economics.extract)}
+                      </p>
+                    ) : null}
+
+                    {economyHighlights.length ? (
+                      <div className="mt-4">
+                        <FactGrid facts={economyHighlights} max={10} />
+                      </div>
+                    ) : null}
+                  </section>
+                ) : null}
+
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {economyHighlights.length ? (
+                    <section className="rounded-[20px] border border-emerald-200 bg-emerald-50 p-3 sm:p-4">
+                      <h4 className="text-sm font-black uppercase tracking-wide text-emerald-800">
+                        Economy facts
+                      </h4>
+
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {economyHighlights.map((fact, index) => (
+                          <div
+                            key={`${fact.label}-${index}`}
+                            className="rounded-2xl border border-emerald-100 bg-white px-3 py-2"
+                          >
+                            <div className="text-[10px] font-black uppercase tracking-wide text-emerald-600">
+                              {fact.label}
+                            </div>
+                            <div className="mt-1 text-sm font-bold leading-6 text-slate-800">
+                              {fact.value}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {countryHighlights.length ? (
+                    <section className="rounded-[20px] border border-slate-200 bg-slate-50 p-3 sm:p-4">
+                      <h4 className="text-sm font-black uppercase tracking-wide text-slate-900">
+                        Country facts
+                      </h4>
+
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {countryHighlights.map((fact, index) => (
+                          <div
+                            key={`${fact.label}-${index}`}
+                            className="rounded-2xl border border-slate-200 bg-white px-3 py-2"
+                          >
+                            <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                              {fact.label}
+                            </div>
+                            <div className="mt-1 text-sm font-bold leading-6 text-slate-800">
+                              {fact.value}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  ) : null}
+                </div>
+
+                {economyFactGroups.length ? (
+                  <FactsTable groups={economyFactGroups} />
+                ) : null}
+
+                {economySections.map((section) => (
+                  <section
+                    key={section.title}
+                    className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4"
+                  >
+                    <h4 className="text-sm font-black uppercase tracking-wide text-slate-900">
+                      {section.title}
+                    </h4>
+
+                    <div className="mt-2 space-y-3">
+                      {section.paragraphs.map((paragraph, index) => (
+                        <p
+                          key={index}
+                          className="text-sm font-medium leading-7 text-slate-600"
+                        >
+                          {paragraph}
+                        </p>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+
+                {demographicsParagraphs.length ? (
+                  <section className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+                    <h4 className="text-sm font-black uppercase tracking-wide text-slate-900">
+                      {cleanText(payload.demographics?.title || "Demographics")}
+                    </h4>
+
+                    <div className="mt-2 space-y-3">
+                      {demographicsParagraphs.map((paragraph, index) => (
+                        <p
+                          key={index}
+                          className="text-sm font-medium leading-7 text-slate-600"
+                        >
+                          {paragraph}
+                        </p>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
+                {countryFactGroups.length ? (
+                  <FactsTable groups={countryFactGroups} />
+                ) : null}
+
+                <section className="rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+                  <h4 className="text-sm font-black uppercase tracking-wide text-slate-900">
+                    Source note
+                  </h4>
+
+                  <p className="mt-3 text-xs font-medium leading-5 text-slate-500">
+                    General country context comes from the country Wikipedia
+                    page. Economic indicators are pulled from the dedicated
+                    economy page where available. For analytical numbers, prefer
+                    WDI, IMF, FAOSTAT and official datasets.
+                  </p>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {payload.pageUrl ? (
+                      <a
+                        href={payload.pageUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+                      >
+                        Country page
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    ) : null}
+
+                    {payload.economics?.pageUrl ? (
+                      <a
+                        href={payload.economics.pageUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800"
+                      >
+                        Economy page
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    ) : null}
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+
+// ================================
+// FILE: app/world/country/[iso3]/page.tsx
+// ================================
+
+
+// ================================
+// FILE: app/world/components/CountryHeader.tsx
+// ================================
+// app/world/components/CountryHeader.tsx
+"use client";
+
+import React from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Bug } from "lucide-react";
+
+type Props = {
+  countryTitle: string;
+  region: string;
+
+  indicatorLabel: string;
+  indicatorCode: string;
+  indicatorUnit: string; // can be "â€”" or empty
+
+  wdiError: string | null;
+  faoError: string | null;
+
+  onBack: () => void;
+  onDebug: () => void;
+};
+
+function isRealUnit(u: any) {
+  const s = String(u ?? "").trim();
+  return (
+    !!s && s !== "â€”" && s.toLowerCase() !== "null" && s.toLowerCase() !== "none"
+  );
+}
+
+export default function CountryHeader({
+  countryTitle,
+  region,
+  indicatorLabel,
+  indicatorCode,
+  indicatorUnit,
+  wdiError,
+  faoError,
+  onBack,
+  onDebug,
+}: Props) {
+  const showUnit = isRealUnit(indicatorUnit);
+
+  return (
+    <div className="border-b bg-white">
+      <div className="mx-auto max-w-5xl px-3 py-3">
+        {/* Top row */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-slate-900 truncate">
+              {countryTitle}
+            </div>
+            <div className="text-xs text-slate-500 truncate">{region}</div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl"
+              onClick={onBack}
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl"
+              onClick={onDebug}
+            >
+              <Bug className="mr-2 h-4 w-4" />
+              Debug
+            </Button>
+          </div>
+        </div>
+
+        {/* Indicator row (label left, unit right, vertically centered) */}
+        <div className="mt-3 rounded-2xl border bg-white px-3 py-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[11px] tracking-widest text-slate-400">
+                INDICATOR â€¢ {indicatorCode}
+              </div>
+              <div className="text-sm font-semibold text-slate-900 truncate">
+                {indicatorLabel}
+              </div>
+            </div>
+
+            {showUnit ? (
+              <div className="flex items-center justify-center">
+                <Badge className="rounded-xl bg-slate-900 text-white px-3 py-1">
+                  {String(indicatorUnit).trim()}
+                </Badge>
+              </div>
+            ) : (
+              <div className="w-[1px]" />
+            )}
+          </div>
+
+          {wdiError || faoError ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {wdiError ? (
+                <Badge className="bg-rose-600 text-white">
+                  WDI: {wdiError}
+                </Badge>
+              ) : null}
+              {faoError ? (
+                <Badge className="bg-rose-600 text-white">
+                  FAOSTAT: {faoError}
+                </Badge>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+

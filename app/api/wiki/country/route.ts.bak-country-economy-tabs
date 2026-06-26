@@ -76,14 +76,10 @@ function decodeEntities(value: string) {
     .replace(/&apos;/gi, "'")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
-    .replace(/&#(\d+);/g, (_, n) => {
-      const code = Number(n);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : " ";
-    })
-    .replace(/&#x([0-9a-f]+);/gi, (_, n) => {
-      const code = parseInt(n, 16);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : " ";
-    });
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) =>
+      String.fromCharCode(parseInt(n, 16)),
+    );
 }
 
 function cleanHtml(value: unknown) {
@@ -92,14 +88,11 @@ function cleanHtml(value: unknown) {
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<sup[\s\S]*?<\/sup>/gi, " ")
     .replace(/<span[^>]*class="mw-editsection"[\s\S]*?<\/span>/gi, " ")
-    .replace(/<img[^>]*alt="([^"]*)"[^>]*>/gi, " $1 ")
     .replace(/<br\s*\/?>/gi, " | ")
     .replace(/<\/li>/gi, " | ")
-    .replace(/<\/p>/gi, " | ")
-    .replace(/<\/div>/gi, " | ")
+    .replace(/<\/p>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/\[\s*\d+\s*\]/g, " ")
-    .replace(/\[show\]|\[hide\]/gi, " ")
     .replace(/\s*\|\s*/g, " | ")
     .replace(/\s+/g, " ")
     .trim();
@@ -121,7 +114,7 @@ function wikiTitleForUrl(title: string) {
   );
 }
 
-async function fetchJson(url: string, timeoutMs = 12000): Promise<any> {
+async function fetchJson(url: string, timeoutMs = 9000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -131,7 +124,7 @@ async function fetchJson(url: string, timeoutMs = 12000): Promise<any> {
       signal: controller.signal,
       headers: {
         Accept: "application/json",
-        "User-Agent": "Stratify-Country-Economy-Profile/1.0",
+        "User-Agent": "Stratify-Country-Profile/1.0",
       },
     });
 
@@ -184,9 +177,7 @@ async function fetchSummary(title: string) {
       displayTitle,
       description: cleanText(json?.description),
       extract,
-      pageUrl:
-        json?.content_urls?.desktop?.page ||
-        `${WIKI_ORIGIN}/wiki/${wikiTitleForUrl(pageTitle)}`,
+      pageUrl: json?.content_urls?.desktop?.page || `${WIKI_ORIGIN}/wiki/${wikiTitleForUrl(pageTitle)}`,
       thumbnailUrl: json?.thumbnail?.source || json?.originalimage?.source || null,
     };
   } catch {
@@ -208,9 +199,7 @@ async function fetchSummary(title: string) {
       displayTitle,
       description: cleanText(json?.description),
       extract,
-      pageUrl:
-        json?.content_urls?.desktop?.page ||
-        `${WIKI_ORIGIN}/wiki/${wikiTitleForUrl(pageTitle)}`,
+      pageUrl: json?.content_urls?.desktop?.page || `${WIKI_ORIGIN}/wiki/${wikiTitleForUrl(pageTitle)}`,
       thumbnailUrl: json?.thumbnail?.source || json?.originalimage?.source || null,
     };
   }
@@ -234,107 +223,52 @@ async function fetchParsedHtml(title: string) {
   return String(json?.parse?.text?.["*"] ?? "");
 }
 
-function extractFirstTableByClass(html: string, className: string) {
-  const tableStartRe = /<table\b[^>]*>/gi;
-  let startMatch: RegExpExecArray | null;
-
-  while ((startMatch = tableStartRe.exec(html))) {
-    const openTag = startMatch[0] || "";
-    const classMatch = openTag.match(/class=["']([^"']+)["']/i)?.[1] || "";
-
-    const hasClass = classMatch
-      .split(/\s+/)
-      .some((c) => c.toLowerCase() === className.toLowerCase());
-
-    if (!hasClass) continue;
-
-    const start = startMatch.index;
-    const tableTokenRe = /<\/?table\b[^>]*>/gi;
-    tableTokenRe.lastIndex = start;
-
-    let depth = 0;
-    let token: RegExpExecArray | null;
-
-    while ((token = tableTokenRe.exec(html))) {
-      const tag = token[0] || "";
-
-      if (/^<table\b/i.test(tag)) depth++;
-      else if (/^<\/table/i.test(tag)) depth--;
-
-      if (depth === 0) {
-        return html.slice(start, tableTokenRe.lastIndex);
-      }
-    }
-
-    return html.slice(start);
-  }
-
-  return "";
-}
-
 function extractInfoboxFacts(html: string, group: string) {
   const facts: WikiFact[] = [];
-  const table = extractFirstTableByClass(html, "infobox");
+  const table =
+    html.match(/<table\b[^>]*class="[^"]*\binfobox\b[^"]*"[\s\S]*?<\/table>/i)?.[0] ||
+    "";
 
   if (!table) return facts;
 
   const rows = table.match(/<tr\b[\s\S]*?<\/tr>/gi) || [];
-  let currentGroup = cleanText(group || "Economy") || "Economy";
 
   for (const row of rows) {
-    const thMatch = row.match(/<th\b[^>]*>([\s\S]*?)<\/th>/i);
-    const tdMatch = row.match(/<td\b[^>]*>([\s\S]*?)<\/td>/i);
+    const th = row.match(/<th\b[^>]*>([\s\S]*?)<\/th>/i)?.[1];
+    const td = row.match(/<td\b[^>]*>([\s\S]*?)<\/td>/i)?.[1];
 
-    const thText = cleanText(thMatch?.[1] || "");
-    const tdText = cleanText(tdMatch?.[1] || "");
+    if (!th || !td) continue;
 
-    if (thText && !tdText) {
-      const heading = thText.replace(/\s+/g, " ").trim();
-
-      if (
-        heading &&
-        heading.length <= 90 &&
-        !/^image$/i.test(heading) &&
-        !/^further information$/i.test(heading)
-      ) {
-        currentGroup = heading;
-      }
-
-      continue;
-    }
-
-    if (!thText || !tdText) continue;
-
-    const label = thText.replace(/\s+/g, " ").trim();
-    const value = tdText
-      .replace(/\s+\|\s+/g, " | ")
+    const label = cleanText(th)
+      .replace(/^\W+/, "")
       .replace(/\s+/g, " ")
       .trim();
 
+    const value = cleanText(td)
+      .replace(/\s+/g, " ")
+      .replace(/\s+\|\s+/g, " | ")
+      .trim();
+
     if (!label || !value) continue;
+    if (label.length > 100 || value.length > 2500) continue;
 
-    const labelKey = label.toLowerCase();
-
+    const badLabel = label.toLowerCase();
     if (
-      labelKey.includes("wikimedia") ||
-      labelKey.includes("coordinates") ||
-      labelKey === "website" ||
-      labelKey === "image" ||
-      labelKey === "caption"
+      badLabel.includes("wikimedia") ||
+      badLabel.includes("coordinates") ||
+      badLabel === "website"
     ) {
       continue;
     }
 
-    if (label.length > 130 || value.length > 4500) continue;
-
     facts.push({
-      group: currentGroup || group || "Economy",
+      group,
       label,
       value,
     });
   }
 
-  return facts.slice(0, 180);
+  return facts.slice(0, 120);
 }
 
 function extractParagraphs(html: string, max = 4) {
@@ -346,6 +280,7 @@ function extractParagraphs(html: string, max = 4) {
 
     if (!text || text.length < 70) continue;
     if (/^This article/i.test(text)) continue;
+    if (/coordinates/i.test(text) && text.length < 160) continue;
 
     paragraphs.push(text);
 
@@ -357,6 +292,7 @@ function extractParagraphs(html: string, max = 4) {
 
 function extractSections(html: string) {
   const sections: WikiSection[] = [];
+
   const sectionRe =
     /<h([23])\b[^>]*>([\s\S]*?)<\/h\1>([\s\S]*?)(?=<h[23]\b|$)/gi;
 
@@ -365,6 +301,7 @@ function extractSections(html: string) {
   while ((match = sectionRe.exec(html))) {
     const title = cleanText(match[2]);
     const body = match[3] || "";
+
     const titleKey = title.toLowerCase();
 
     if (
@@ -381,10 +318,13 @@ function extractSections(html: string) {
     const paragraphs = extractParagraphs(body, 2);
 
     if (paragraphs.length) {
-      sections.push({ title, paragraphs });
+      sections.push({
+        title,
+        paragraphs,
+      });
     }
 
-    if (sections.length >= 10) break;
+    if (sections.length >= 6) break;
   }
 
   return sections;
@@ -392,16 +332,23 @@ function extractSections(html: string) {
 
 function pickHighlights(facts: WikiFact[]) {
   const priority = [
+    "capital",
+    "largest city",
+    "official language",
     "population",
-    "gdp",
-    "gdp rank",
+    "area",
     "currency",
+    "gdp",
+    "gross domestic product",
+    "gdp rank",
     "inflation",
     "unemployment",
     "exports",
     "imports",
-    "government debt",
-    "foreign reserves",
+    "revenue",
+    "debt",
+    "industries",
+    "fiscal year",
   ];
 
   const picked: WikiFact[] = [];
@@ -418,7 +365,7 @@ function pickHighlights(facts: WikiFact[]) {
       used.add(cleanText(found.label).toLowerCase());
     }
 
-    if (picked.length >= 9) break;
+    if (picked.length >= 8) break;
   }
 
   for (const fact of facts) {
@@ -428,7 +375,7 @@ function pickHighlights(facts: WikiFact[]) {
       used.add(label);
     }
 
-    if (picked.length >= 9) break;
+    if (picked.length >= 8) break;
   }
 
   return picked;
@@ -482,6 +429,10 @@ async function fetchDemographics(country: string) {
   };
 }
 
+async function fetchEconomics(country: string) {
+  return fetchFullWikiPage(`Economy of ${country}`, "Economy");
+}
+
 function responseHeaders() {
   return {
     "Cache-Control": "no-store, no-cache, must-revalidate",
@@ -507,7 +458,10 @@ export async function GET(req: Request) {
           ok: false,
           error: "Country name or ISO3 code is required.",
         },
-        { status: 400, headers: responseHeaders() },
+        {
+          status: 400,
+          headers: responseHeaders(),
+        },
       );
     }
 
@@ -515,7 +469,7 @@ export async function GET(req: Request) {
       await Promise.allSettled([
         fetchFullWikiPage(country, "General"),
         fetchDemographics(country),
-        fetchFullWikiPage(`Economy of ${country}`, "Economy"),
+        fetchEconomics(country),
       ]);
 
     if (countryResult.status === "rejected") {
@@ -534,7 +488,10 @@ export async function GET(req: Request) {
           license: "CC BY-SA 4.0",
           fetchedAt: new Date().toISOString(),
         },
-        { status: 200, headers: responseHeaders() },
+        {
+          status: 200,
+          headers: responseHeaders(),
+        },
       );
     }
 
@@ -570,8 +527,19 @@ export async function GET(req: Request) {
         source: "Wikipedia",
         license: "CC BY-SA 4.0",
         fetchedAt: new Date().toISOString(),
+        warnings: [
+          demographicsResult.status === "rejected"
+            ? "Demographics page unavailable"
+            : null,
+          economicsResult.status === "rejected"
+            ? "Economy page unavailable"
+            : null,
+        ].filter(Boolean),
       },
-      { status: 200, headers: responseHeaders() },
+      {
+        status: 200,
+        headers: responseHeaders(),
+      },
     );
   } catch (error) {
     console.error("Country Wiki API error:", error);
@@ -586,7 +554,10 @@ export async function GET(req: Request) {
         demographics: null,
         economics: null,
       },
-      { status: 500, headers: responseHeaders() },
+      {
+        status: 500,
+        headers: responseHeaders(),
+      },
     );
   }
 }

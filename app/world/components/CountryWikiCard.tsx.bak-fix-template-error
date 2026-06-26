@@ -1,7 +1,6 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
 import {
   BriefcaseBusiness,
   Globe2,
@@ -27,6 +26,11 @@ type WikiFact = {
   value?: string | null;
 };
 
+type WikiSection = {
+  title?: string;
+  paragraphs?: string[];
+};
+
 type EconomyPayload = {
   ok?: boolean;
   title?: string;
@@ -37,6 +41,7 @@ type EconomyPayload = {
   thumbnailUrl?: string | null;
   facts?: WikiFact[];
   highlights?: WikiFact[];
+  sections?: WikiSection[];
   error?: string;
 };
 
@@ -84,7 +89,7 @@ function cleanText(value: unknown) {
 function shortText(value: unknown, limit = 480) {
   const text = cleanText(value);
   if (text.length <= limit) return text;
-  return `${text.slice(0, limit).trim()}...`;
+  return ${text.slice(0, limit).trim()}...;
 }
 
 function normalizeFacts(facts: WikiFact[] | undefined | null): WikiFact[] {
@@ -151,7 +156,7 @@ function findFact(facts: WikiFact[], keys: string[]) {
 
 function parseMoneyToBillion(value: unknown) {
   const text = cleanText(value).replace(/,/g, "");
-  const match = text.match(/\$?\s*([\d.]+)\s*(trillion|billion|million)/i);
+  const match = text.match(/\True\s*([\d.]+)\s*(trillion|billion|million)/i);
 
   if (!match) return null;
 
@@ -190,7 +195,7 @@ function InfoCard({
         : "border-slate-200 bg-white";
 
   return (
-    <div className={`rounded-2xl border p-3 shadow-sm ${toneClass}`}>
+    <div className={ounded-2xl border p-3 shadow-sm }>
       <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">
         {label}
       </div>
@@ -208,7 +213,7 @@ function FactGrid({ facts, max = 6 }: { facts: WikiFact[]; max?: number }) {
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {facts.slice(0, max).map((fact, index) => (
         <InfoCard
-          key={`${fact.label}-${index}`}
+          key={${fact.label}-}
           label={cleanText(fact.label)}
           value={cleanText(fact.value)}
         />
@@ -240,7 +245,7 @@ function FactsTable({
               <tbody>
                 {group.rows.map((fact, index) => (
                   <tr
-                    key={`${group.group}-${fact.label}-${index}`}
+                    key={${group.group}--}
                     className="border-t first:border-t-0"
                   >
                     <td className="w-[34%] bg-slate-50 px-3 py-2.5 align-top text-xs font-black uppercase tracking-wide text-slate-500">
@@ -279,14 +284,8 @@ function SplitValueCard({
         <div className="mt-2 space-y-1.5">
           {lines.map((line, index) => (
             <div
-              key={`${fact.label}-${index}`}
-              className={`rounded-xl px-3 py-2 text-xs font-bold leading-5 ${
-                tone === "emerald"
-                  ? "bg-emerald-50 text-emerald-950"
-                  : tone === "indigo"
-                    ? "bg-indigo-50 text-indigo-950"
-                    : "bg-slate-50 text-slate-800"
-              }`}
+              key={${fact.label}-}
+              className={ounded-xl px-3 py-2 text-xs font-bold leading-5 }
             >
               {line}
             </div>
@@ -308,10 +307,18 @@ function MacroChart({ facts }: { facts: WikiFact[] }) {
   const youthUnemployment = findFact(facts, ["youth unemployment"]);
 
   const data = [
-    inflation ? { name: "Inflation", value: parsePercent(inflation.value) } : null,
-    unemployment ? { name: "Unemployment", value: parsePercent(unemployment.value) } : null,
-    gdpGrowth ? { name: "GDP growth", value: parsePercent(gdpGrowth.value) } : null,
-    youthUnemployment ? { name: "Youth unemployment", value: parsePercent(youthUnemployment.value) } : null,
+    inflation
+      ? { name: "Inflation", value: parsePercent(inflation.value) }
+      : null,
+    unemployment
+      ? { name: "Unemployment", value: parsePercent(unemployment.value) }
+      : null,
+    gdpGrowth
+      ? { name: "GDP growth", value: parsePercent(gdpGrowth.value) }
+      : null,
+    youthUnemployment
+      ? { name: "Youth unemployment", value: parsePercent(youthUnemployment.value) }
+      : null,
   ].filter((x): x is { name: string; value: number } => !!x && x.value !== null);
 
   if (!data.length) return null;
@@ -326,10 +333,10 @@ function MacroChart({ facts }: { facts: WikiFact[] }) {
           <BarChart data={data}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => ${v}%} />
             <Tooltip
               formatter={(value: any) => [
-                `${Number(value).toFixed(1)}%`,
+                ${Number(value).toFixed(1)}%,
                 "Rate",
               ]}
             />
@@ -365,10 +372,10 @@ function TradeChart({ facts }: { facts: WikiFact[] }) {
           <BarChart data={data}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}B`} />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => $B} />
             <Tooltip
               formatter={(value: any) => [
-                `$${Number(value).toFixed(2)}B`,
+                $B,
                 "Value",
               ]}
             />
@@ -468,7 +475,7 @@ function EconomyOverviewTab({
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {cards.map((fact, index) => (
             <InfoCard
-              key={`${fact.label}-${index}`}
+              key={${fact.label}-}
               label={cleanText(fact.label)}
               value={cleanText(fact.value)}
               tone="emerald"
@@ -540,7 +547,7 @@ function ExternalBusinessTab({ facts }: { facts: WikiFact[] }) {
         </div>
         <p className="mt-2 text-sm font-semibold leading-6 text-amber-900">
           The economy page loaded, but no External/Public finance rows were found in the parsed infobox.
-          Restart the dev server and test the API command again.
+          Restart the dev server after this patch and test the API command below.
         </p>
       </section>
     );
@@ -562,7 +569,7 @@ function ExternalBusinessTab({ facts }: { facts: WikiFact[] }) {
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {externalFacts.map((fact, index) => (
               <SplitValueCard
-                key={`external-${fact.label}-${index}`}
+                key={external--}
                 fact={fact}
                 tone="emerald"
               />
@@ -585,7 +592,7 @@ function ExternalBusinessTab({ facts }: { facts: WikiFact[] }) {
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {publicFinanceFacts.map((fact, index) => (
               <SplitValueCard
-                key={`finance-${fact.label}-${index}`}
+                key={inance--}
                 fact={fact}
                 tone="indigo"
               />
@@ -608,7 +615,7 @@ function ExternalBusinessTab({ facts }: { facts: WikiFact[] }) {
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {structuralFacts.map((fact, index) => (
               <SplitValueCard
-                key={`structure-${fact.label}-${index}`}
+                key={structure--}
                 fact={fact}
               />
             ))}
@@ -625,18 +632,14 @@ function TabButton({
   onClick,
 }: {
   active: boolean;
-  children: ReactNode;
+  children: React.ReactNode;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide transition ${
-        active
-          ? "bg-slate-950 text-white shadow-sm"
-          : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-      }`}
+      className={ounded-full px-4 py-2 text-xs font-black uppercase tracking-wide transition }
     >
       {children}
     </button>
@@ -668,7 +671,7 @@ export default function CountryWikiCard({ iso3, countryName, region }: Props) {
           qs.set("country", name);
         }
 
-        const response = await fetch(`/api/wiki/country?${qs.toString()}`, {
+        const response = await fetch(/api/wiki/country?, {
           cache: "no-store",
           signal: controller.signal,
         });
@@ -736,6 +739,12 @@ export default function CountryWikiCard({ iso3, countryName, region }: Props) {
       "Country profile",
   );
 
+  const economyTitle = cleanText(
+    payload?.economics?.displayTitle ||
+      payload?.economics?.title ||
+      Economy of ,
+  );
+
   const fetchedAt = formatFetchedAt(payload?.fetchedAt);
 
   if (loading) {
@@ -793,16 +802,6 @@ export default function CountryWikiCard({ iso3, countryName, region }: Props) {
             ) : null}
           </div>
 
-          <h2 className="mb-1 text-2xl font-black tracking-tight text-slate-950">
-            {displayName}
-          </h2>
-
-          {payload.description ? (
-            <div className="mb-4 text-xs font-bold uppercase tracking-wide text-violet-700">
-              {cleanText(payload.description)}
-            </div>
-          ) : null}
-
           <div className="mb-4 flex flex-wrap gap-2 border-b border-slate-100 pb-4">
             <TabButton active={activeTab === "profile"} onClick={() => setActiveTab("profile")}>
               Country overview
@@ -837,8 +836,8 @@ export default function CountryWikiCard({ iso3, countryName, region }: Props) {
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
             <div className="text-[11px] font-medium text-slate-500">
               Source: {payload.source || "Wikipedia"} contributors
-              {payload.license ? ` · License: ${payload.license}` : ""}
-              {fetchedAt ? ` · Updated: ${fetchedAt}` : ""}
+              {payload.license ?  · License:  : ""}
+              {fetchedAt ?  · Updated:  : ""}
             </div>
 
             <button
@@ -872,8 +871,8 @@ export default function CountryWikiCard({ iso3, countryName, region }: Props) {
                 </h3>
                 <div className="mt-1 text-sm font-semibold text-slate-500">
                   {cleanText(iso3).toUpperCase()}
-                  {region ? ` · ${cleanText(region)}` : ""}
-                  {payload.description ? ` · ${cleanText(payload.description)}` : ""}
+                  {region ?  ·  : ""}
+                  {payload.description ?  ·  : ""}
                 </div>
               </div>
 

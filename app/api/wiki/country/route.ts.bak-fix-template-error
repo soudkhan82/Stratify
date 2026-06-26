@@ -30,8 +30,8 @@ type WikiPagePayload = {
 };
 
 const WIKI_ORIGIN = "https://en.wikipedia.org";
-const WIKI_API = `${WIKI_ORIGIN}/w/api.php`;
-const WIKI_SUMMARY = `${WIKI_ORIGIN}/api/rest_v1/page/summary`;
+const WIKI_API = ${WIKI_ORIGIN}/w/api.php;
+const WIKI_SUMMARY = ${WIKI_ORIGIN}/api/rest_v1/page/summary;
 
 const ISO_TO_COUNTRY: Record<string, string> = {
   AFG: "Afghanistan",
@@ -76,14 +76,10 @@ function decodeEntities(value: string) {
     .replace(/&apos;/gi, "'")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
-    .replace(/&#(\d+);/g, (_, n) => {
-      const code = Number(n);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : " ";
-    })
-    .replace(/&#x([0-9a-f]+);/gi, (_, n) => {
-      const code = parseInt(n, 16);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : " ";
-    });
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) =>
+      String.fromCodePoint(parseInt(n, 16)),
+    );
 }
 
 function cleanHtml(value: unknown) {
@@ -92,11 +88,11 @@ function cleanHtml(value: unknown) {
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<sup[\s\S]*?<\/sup>/gi, " ")
     .replace(/<span[^>]*class="mw-editsection"[\s\S]*?<\/span>/gi, " ")
-    .replace(/<img[^>]*alt="([^"]*)"[^>]*>/gi, " $1 ")
     .replace(/<br\s*\/?>/gi, " | ")
     .replace(/<\/li>/gi, " | ")
     .replace(/<\/p>/gi, " | ")
     .replace(/<\/div>/gi, " | ")
+    .replace(/<img[^>]*alt="([^"]*)"[^>]*>/gi, "  ")
     .replace(/<[^>]+>/g, " ")
     .replace(/\[\s*\d+\s*\]/g, " ")
     .replace(/\[show\]|\[hide\]/gi, " ")
@@ -136,7 +132,7 @@ async function fetchJson(url: string, timeoutMs = 12000): Promise<any> {
     });
 
     if (!res.ok) {
-      throw new Error(`Wikipedia request failed: ${res.status}`);
+      throw new Error(Wikipedia request failed: );
     }
 
     return await res.json();
@@ -158,7 +154,7 @@ async function searchWikiTitle(query: string) {
   const title = cleanText(json?.query?.search?.[0]?.title);
 
   if (!title) {
-    throw new Error(`No Wikipedia page found for ${query}`);
+    throw new Error(No Wikipedia page found for );
   }
 
   return title;
@@ -166,7 +162,7 @@ async function searchWikiTitle(query: string) {
 
 async function fetchSummary(title: string) {
   const normalizedTitle = cleanText(title);
-  const directUrl = `${WIKI_SUMMARY}/${wikiTitleForUrl(normalizedTitle)}?redirect=true`;
+  const directUrl = ${WIKI_SUMMARY}/?redirect=true;
 
   try {
     const json = await fetchJson(directUrl);
@@ -176,7 +172,7 @@ async function fetchSummary(title: string) {
     const extract = cleanText(json?.extract);
 
     if (!extract) {
-      throw new Error(`No extract available for ${normalizedTitle}`);
+      throw new Error(No extract available for );
     }
 
     return {
@@ -186,13 +182,13 @@ async function fetchSummary(title: string) {
       extract,
       pageUrl:
         json?.content_urls?.desktop?.page ||
-        `${WIKI_ORIGIN}/wiki/${wikiTitleForUrl(pageTitle)}`,
+        ${WIKI_ORIGIN}/wiki/,
       thumbnailUrl: json?.thumbnail?.source || json?.originalimage?.source || null,
     };
   } catch {
     const searchedTitle = await searchWikiTitle(normalizedTitle);
     const json = await fetchJson(
-      `${WIKI_SUMMARY}/${wikiTitleForUrl(searchedTitle)}?redirect=true`,
+      ${WIKI_SUMMARY}/?redirect=true,
     );
 
     const pageTitle = cleanText(json?.title || searchedTitle);
@@ -200,7 +196,7 @@ async function fetchSummary(title: string) {
     const extract = cleanText(json?.extract);
 
     if (!extract) {
-      throw new Error(`No extract available for ${searchedTitle}`);
+      throw new Error(No extract available for );
     }
 
     return {
@@ -210,7 +206,7 @@ async function fetchSummary(title: string) {
       extract,
       pageUrl:
         json?.content_urls?.desktop?.page ||
-        `${WIKI_ORIGIN}/wiki/${wikiTitleForUrl(pageTitle)}`,
+        ${WIKI_ORIGIN}/wiki/,
       thumbnailUrl: json?.thumbnail?.source || json?.originalimage?.source || null,
     };
   }
@@ -464,7 +460,7 @@ async function fetchFullWikiPage(title: string, group: string): Promise<WikiPage
 }
 
 async function fetchDemographics(country: string) {
-  const pageTitle = `Demographics of ${country}`;
+  const pageTitle = Demographics of ;
   const summary = await fetchSummary(pageTitle);
 
   let paragraphs: string[] = [];
@@ -515,7 +511,7 @@ export async function GET(req: Request) {
       await Promise.allSettled([
         fetchFullWikiPage(country, "General"),
         fetchDemographics(country),
-        fetchFullWikiPage(`Economy of ${country}`, "Economy"),
+        fetchFullWikiPage(Economy of , "Economy"),
       ]);
 
     if (countryResult.status === "rejected") {
