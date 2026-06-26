@@ -863,26 +863,7 @@ export default function CountryWikiCard({ iso3, countryName, region }: Props) {
   }
 
   if (!payload?.ok || !payload.extract) {
-    return (
-      <Card className="overflow-hidden rounded-[24px] border-amber-200 bg-amber-50 shadow-sm">
-        <CardContent className="p-5">
-          <div className="text-sm font-black uppercase tracking-wide text-amber-800">
-            Country profile diagnostic
-          </div>
-          <div className="mt-2 text-lg font-black text-slate-950">
-            {cleanText(countryName || iso3 || "Selected country")}
-          </div>
-          <p className="mt-2 text-sm font-semibold leading-6 text-amber-900">
-            Wikipedia profile did not return a usable response for this country. This card is now visible so the issue can be diagnosed instead of silently disappearing.
-          </p>
-          {payload?.error ? (
-            <p className="mt-2 rounded-xl bg-white px-3 py-2 text-xs font-bold text-amber-900">
-              {payload.error}
-            </p>
-          ) : null}
-        </CardContent>
-      </Card>
-    );
+    return null;
   }
 
   return (
@@ -1054,4 +1035,3 @@ export default function CountryWikiCard({ iso3, countryName, region }: Props) {
     </>
   );
 }
-

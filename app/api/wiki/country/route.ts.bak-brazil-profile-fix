@@ -953,24 +953,30 @@ export async function GET(req: Request) {
         fetchEconomyPage(country, iso3),
       ]);
 
-    const profile =
-      countryResult.status === "fulfilled"
-        ? countryResult.value
-        : {
-            ok: true,
-            title: country,
-            displayTitle: country,
-            description: "country profile",
-            extract:
-              countryResult.reason instanceof Error
-                ? `Wikipedia country profile could not be loaded automatically: ${countryResult.reason.message}`
-                : "Wikipedia country profile could not be loaded automatically.",
-            pageUrl: `${WIKI_ORIGIN}/wiki/${wikiTitleForUrl(country)}`,
-            thumbnailUrl: null,
-            facts: [],
-            highlights: [],
-            sections: [],
-          };
+    if (countryResult.status === "rejected") {
+      return NextResponse.json(
+        {
+          ok: false,
+          iso3,
+          country,
+          error:
+            countryResult.reason instanceof Error
+              ? countryResult.reason.message
+              : "Wikipedia country profile unavailable.",
+          demographics: null,
+          economics: null,
+          source: "Wikipedia",
+          license: "CC BY-SA 4.0",
+          fetchedAt: new Date().toISOString(),
+        },
+        {
+          status: 200,
+          headers: responseHeaders(),
+        },
+      );
+    }
+
+    const profile = countryResult.value;
 
     return NextResponse.json(
       {
@@ -1028,4 +1034,3 @@ export async function GET(req: Request) {
     );
   }
 }
-
