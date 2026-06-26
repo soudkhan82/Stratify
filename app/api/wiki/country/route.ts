@@ -31,12 +31,12 @@ type WikiPagePayload = {
 
 const WIKI_ORIGIN = "https://en.wikipedia.org";
 const WIKI_API = `${WIKI_ORIGIN}/w/api.php`;
-const WIKI_SUMMARY = `${WIKI_ORIGIN}/api/rest_v1/page/summary`;
 
 const ISO_TO_COUNTRY: Record<string, string> = {
   AFG: "Afghanistan",
+  AGO: "Angola",
   ALB: "Albania",
-  DZA: "Algeria",
+  ARE: "United Arab Emirates",
   ARG: "Argentina",
   AUS: "Australia",
   AUT: "Austria",
@@ -44,26 +44,44 @@ const ISO_TO_COUNTRY: Record<string, string> = {
   BEL: "Belgium",
   BRA: "Brazil",
   CAN: "Canada",
+  CHE: "Switzerland",
+  CHL: "Chile",
   CHN: "China",
   DEU: "Germany",
+  DZA: "Algeria",
   EGY: "Egypt",
+  ESP: "Spain",
   FRA: "France",
   GBR: "United Kingdom",
-  IND: "India",
   IDN: "Indonesia",
+  IND: "India",
   IRN: "Iran",
   IRQ: "Iraq",
   ITA: "Italy",
   JPN: "Japan",
-  MYS: "Malaysia",
+  KOR: "South Korea",
   MEX: "Mexico",
+  MYS: "Malaysia",
+  NGA: "Nigeria",
   NLD: "Netherlands",
+  NER: "Niger",
   PAK: "Pakistan",
   RUS: "Russia",
   SAU: "Saudi Arabia",
+  TCD: "Chad",
   TUR: "Turkey",
   USA: "United States",
   ZAF: "South Africa",
+};
+
+const COUNTRY_ALIASES: Record<string, string[]> = {
+  TUR: ["Turkey", "Türkiye", "Turkiye", "Republic of Turkey", "Republic of Türkiye"],
+  CIV: ["Côte d'Ivoire", "Ivory Coast", "Cote d'Ivoire"],
+  CPV: ["Cape Verde", "Cabo Verde"],
+  CZE: ["Czech Republic", "Czechia"],
+  SWZ: ["Eswatini", "Swaziland"],
+  TLS: ["Timor-Leste", "East Timor"],
+  MKD: ["North Macedonia", "Macedonia"],
 };
 
 function decodeEntities(value: string) {
@@ -86,17 +104,15 @@ function decodeEntities(value: string) {
     });
 }
 
-function cleanHtml(value: unknown) {
+function cleanText(value: unknown) {
   return decodeEntities(String(value ?? ""))
+    .normalize("NFKC")
+    .replace(/\uFEFF/g, "")
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<sup[\s\S]*?<\/sup>/gi, " ")
-    .replace(/<span[^>]*class="mw-editsection"[\s\S]*?<\/span>/gi, " ")
-    .replace(/<img[^>]*alt="([^"]*)"[^>]*>/gi, " $1 ")
-    .replace(/<br\s*\/?>/gi, " | ")
-    .replace(/<\/li>/gi, " | ")
-    .replace(/<\/p>/gi, " | ")
-    .replace(/<\/div>/gi, " | ")
+    .replace(/<ref[\s\S]*?<\/ref>/gi, " ")
+    .replace(/<ref[^/>]*\/>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/\[\s*\d+\s*\]/g, " ")
     .replace(/\[show\]|\[hide\]/gi, " ")
@@ -105,23 +121,25 @@ function cleanHtml(value: unknown) {
     .trim();
 }
 
-function cleanText(value: unknown) {
-  return cleanHtml(value)
-    .normalize("NFKC")
-    .replace(/\uFEFF/g, "")
-    .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
+function keyOf(value: unknown) {
+  return cleanText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 function wikiTitleForUrl(title: string) {
-  return encodeURIComponent(cleanText(title).replace(/\s+/g, "_")).replace(
-    /%2F/g,
-    "/",
-  );
+  return encodeURIComponent(cleanText(title).replace(/\s+/g, "_")).replace(/%2F/g, "/");
 }
 
-async function fetchJson(url: string, timeoutMs = 12000): Promise<any> {
+function responseHeaders() {
+  return {
+    "Cache-Control": "no-store, no-cache, must-revalidate",
+  };
+}
+
+async function fetchJson(url: string, timeoutMs = 16000): Promise<any> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -131,7 +149,7 @@ async function fetchJson(url: string, timeoutMs = 12000): Promise<any> {
       signal: controller.signal,
       headers: {
         Accept: "application/json",
-        "User-Agent": "Stratify-Country-Economy-Profile/1.0",
+        "User-Agent": "Stratify-Wikipedia-Economy-Parser/2.0",
       },
     });
 
@@ -145,227 +163,394 @@ async function fetchJson(url: string, timeoutMs = 12000): Promise<any> {
   }
 }
 
-async function searchWikiTitle(query: string) {
+function aliasesFor(country: string, iso3: string) {
+  const values = [
+    country,
+    ISO_TO_COUNTRY[iso3],
+    ...(COUNTRY_ALIASES[iso3] || []),
+  ]
+    .map(cleanText)
+    .filter(Boolean);
+
+  const seen = new Set<string>();
+  const output: string[] = [];
+
+  for (const value of values) {
+    const key = keyOf(value);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(value);
+  }
+
+  return output;
+}
+
+async function fetchWikiPage(title: string) {
+  const url = new URL(WIKI_API);
+  url.searchParams.set("action", "query");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("formatversion", "2");
+  url.searchParams.set("origin", "*");
+  url.searchParams.set("redirects", "1");
+  url.searchParams.set("titles", cleanText(title));
+  url.searchParams.set("prop", "extracts|pageimages|info|revisions");
+  url.searchParams.set("explaintext", "1");
+  url.searchParams.set("exintro", "1");
+  url.searchParams.set("exsentences", "5");
+  url.searchParams.set("pithumbsize", "600");
+  url.searchParams.set("inprop", "url");
+  url.searchParams.set("rvprop", "content");
+  url.searchParams.set("rvslots", "main");
+
+  const json = await fetchJson(url.toString());
+  const page = json?.query?.pages?.[0];
+
+  if (!page || page.missing || !page.title) {
+    throw new Error(`Wikipedia page not found: ${title}`);
+  }
+
+  const revision = page?.revisions?.[0];
+  const wikitext =
+    revision?.slots?.main?.content ||
+    revision?.content ||
+    "";
+
+  return {
+    title: cleanText(page.title),
+    displayTitle: cleanText(page.title),
+    description: "",
+    extract: cleanText(page.extract),
+    pageUrl: page.fullurl || `${WIKI_ORIGIN}/wiki/${wikiTitleForUrl(page.title)}`,
+    thumbnailUrl: page.thumbnail?.source || null,
+    wikitext: String(wikitext || ""),
+  };
+}
+
+async function searchWikiTitle(query: string, economyOnly = false) {
   const url = new URL(WIKI_API);
   url.searchParams.set("action", "query");
   url.searchParams.set("format", "json");
   url.searchParams.set("origin", "*");
   url.searchParams.set("list", "search");
-  url.searchParams.set("srlimit", "1");
+  url.searchParams.set("srlimit", "8");
   url.searchParams.set("srsearch", cleanText(query));
 
   const json = await fetchJson(url.toString());
-  const title = cleanText(json?.query?.search?.[0]?.title);
+  const rows = (json?.query?.search || []) as any[];
+
+  const selected = economyOnly
+    ? rows.find((row) => keyOf(row?.title).includes("economy"))
+    : rows[0];
+
+  const title = cleanText(selected?.title);
 
   if (!title) {
-    throw new Error(`No Wikipedia page found for ${query}`);
+    throw new Error(`No Wikipedia search result for ${query}`);
   }
 
   return title;
 }
 
-async function fetchSummary(title: string) {
-  const normalizedTitle = cleanText(title);
-  const directUrl = `${WIKI_SUMMARY}/${wikiTitleForUrl(normalizedTitle)}?redirect=true`;
+function isValidEconomyTitle(title: string, aliases: string[]) {
+  const titleKey = keyOf(title);
 
-  try {
-    const json = await fetchJson(directUrl);
+  if (!titleKey.includes("economy")) return false;
 
-    const pageTitle = cleanText(json?.title || normalizedTitle);
-    const displayTitle = cleanText(json?.displaytitle || json?.title || pageTitle);
-    const extract = cleanText(json?.extract);
+  const aliasKeys = aliases.map(keyOf).filter(Boolean);
 
-    if (!extract) {
-      throw new Error(`No extract available for ${normalizedTitle}`);
-    }
+  if (aliasKeys.some((alias) => titleKey.includes(alias))) return true;
+  if (titleKey.startsWith("economy of")) return true;
 
-    return {
-      title: pageTitle,
-      displayTitle,
-      description: cleanText(json?.description),
-      extract,
-      pageUrl:
-        json?.content_urls?.desktop?.page ||
-        `${WIKI_ORIGIN}/wiki/${wikiTitleForUrl(pageTitle)}`,
-      thumbnailUrl: json?.thumbnail?.source || json?.originalimage?.source || null,
-    };
-  } catch {
-    const searchedTitle = await searchWikiTitle(normalizedTitle);
-    const json = await fetchJson(
-      `${WIKI_SUMMARY}/${wikiTitleForUrl(searchedTitle)}?redirect=true`,
-    );
-
-    const pageTitle = cleanText(json?.title || searchedTitle);
-    const displayTitle = cleanText(json?.displaytitle || json?.title || pageTitle);
-    const extract = cleanText(json?.extract);
-
-    if (!extract) {
-      throw new Error(`No extract available for ${searchedTitle}`);
-    }
-
-    return {
-      title: pageTitle,
-      displayTitle,
-      description: cleanText(json?.description),
-      extract,
-      pageUrl:
-        json?.content_urls?.desktop?.page ||
-        `${WIKI_ORIGIN}/wiki/${wikiTitleForUrl(pageTitle)}`,
-      thumbnailUrl: json?.thumbnail?.source || json?.originalimage?.source || null,
-    };
-  }
+  return false;
 }
 
-async function fetchParsedHtml(title: string) {
-  const url = new URL(WIKI_API);
-  url.searchParams.set("action", "parse");
-  url.searchParams.set("format", "json");
-  url.searchParams.set("origin", "*");
-  url.searchParams.set("redirects", "true");
-  url.searchParams.set("prop", "text");
-  url.searchParams.set("page", cleanText(title));
+function findTemplate(wikitext: string, namePattern: RegExp) {
+  const re = /\{\{\s*([^|\n{}]+)/g;
+  let match: RegExpExecArray | null;
 
-  const json = await fetchJson(url.toString());
+  while ((match = re.exec(wikitext))) {
+    const name = cleanText(match[1]);
 
-  if (json?.error) {
-    throw new Error(cleanText(json.error.info || "Wikipedia parse error"));
-  }
+    if (!namePattern.test(name)) continue;
 
-  return String(json?.parse?.text?.["*"] ?? "");
-}
-
-function extractFirstTableByClass(html: string, className: string) {
-  const tableStartRe = /<table\b[^>]*>/gi;
-  let startMatch: RegExpExecArray | null;
-
-  while ((startMatch = tableStartRe.exec(html))) {
-    const openTag = startMatch[0] || "";
-    const classMatch = openTag.match(/class=["']([^"']+)["']/i)?.[1] || "";
-
-    const hasClass = classMatch
-      .split(/\s+/)
-      .some((c) => c.toLowerCase() === className.toLowerCase());
-
-    if (!hasClass) continue;
-
-    const start = startMatch.index;
-    const tableTokenRe = /<\/?table\b[^>]*>/gi;
-    tableTokenRe.lastIndex = start;
-
+    const start = match.index;
     let depth = 0;
-    let token: RegExpExecArray | null;
 
-    while ((token = tableTokenRe.exec(html))) {
-      const tag = token[0] || "";
+    for (let i = start; i < wikitext.length - 1; i++) {
+      const two = wikitext.slice(i, i + 2);
 
-      if (/^<table\b/i.test(tag)) depth++;
-      else if (/^<\/table/i.test(tag)) depth--;
+      if (two === "{{") {
+        depth++;
+        i++;
+        continue;
+      }
 
-      if (depth === 0) {
-        return html.slice(start, tableTokenRe.lastIndex);
+      if (two === "}}") {
+        depth--;
+        i++;
+
+        if (depth === 0) {
+          return wikitext.slice(start, i + 1);
+        }
       }
     }
-
-    return html.slice(start);
   }
 
   return "";
 }
 
-function extractInfoboxFacts(html: string, group: string) {
-  const facts: WikiFact[] = [];
-  const table = extractFirstTableByClass(html, "infobox");
+function splitTopLevelPipes(template: string) {
+  const body = template.replace(/^\{\{/, "").replace(/\}\}$/, "");
+  const parts: string[] = [];
 
-  if (!table) return facts;
+  let current = "";
+  let braceDepth = 0;
+  let linkDepth = 0;
 
-  const rows = table.match(/<tr\b[\s\S]*?<\/tr>/gi) || [];
-  let currentGroup = cleanText(group || "Economy") || "Economy";
+  for (let i = 0; i < body.length; i++) {
+    const two = body.slice(i, i + 2);
 
-  for (const row of rows) {
-    const thMatch = row.match(/<th\b[^>]*>([\s\S]*?)<\/th>/i);
-    const tdMatch = row.match(/<td\b[^>]*>([\s\S]*?)<\/td>/i);
-
-    const thText = cleanText(thMatch?.[1] || "");
-    const tdText = cleanText(tdMatch?.[1] || "");
-
-    if (thText && !tdText) {
-      const heading = thText.replace(/\s+/g, " ").trim();
-
-      if (
-        heading &&
-        heading.length <= 90 &&
-        !/^image$/i.test(heading) &&
-        !/^further information$/i.test(heading)
-      ) {
-        currentGroup = heading;
-      }
-
+    if (two === "{{") {
+      braceDepth++;
+      current += two;
+      i++;
       continue;
     }
 
-    if (!thText || !tdText) continue;
+    if (two === "}}") {
+      braceDepth = Math.max(0, braceDepth - 1);
+      current += two;
+      i++;
+      continue;
+    }
 
-    const label = thText.replace(/\s+/g, " ").trim();
-    const value = tdText
-      .replace(/\s+\|\s+/g, " | ")
-      .replace(/\s+/g, " ")
-      .trim();
+    if (two === "[[") {
+      linkDepth++;
+      current += two;
+      i++;
+      continue;
+    }
 
-    if (!label || !value) continue;
+    if (two === "]]") {
+      linkDepth = Math.max(0, linkDepth - 1);
+      current += two;
+      i++;
+      continue;
+    }
 
-    const labelKey = label.toLowerCase();
+    if (body[i] === "|" && braceDepth === 0 && linkDepth === 0) {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+
+    current += body[i];
+  }
+
+  if (current) parts.push(current);
+
+  return parts;
+}
+
+function stripWikitext(value: unknown) {
+  let text = String(value ?? "");
+
+  text = text
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<ref[\s\S]*?<\/ref>/gi, " ")
+    .replace(/<ref[^/>]*\/>/gi, " ")
+    .replace(/<br\s*\/?>/gi, " | ")
+    .replace(/'''/g, "")
+    .replace(/''/g, "");
+
+  text = text.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2");
+  text = text.replace(/\[\[([^\]]+)\]\]/g, "$1");
+
+  let previous = "";
+
+  while (previous !== text) {
+    previous = text;
+
+    text = text.replace(/\{\{([^{}]*)\}\}/g, (_, raw) => {
+      const parts = String(raw)
+        .split("|")
+        .map((x) => x.trim())
+        .filter(Boolean);
+
+      const name = (parts[0] || "").toLowerCase();
+
+      if (!parts.length) return " ";
+      if (name.includes("increase")) return "▲";
+      if (name.includes("decrease")) return "▼";
+      if (name.includes("steady")) return "▬";
+
+      if (name === "flag" || name === "flagcountry" || name === "flagicon") {
+        return parts[1] || " ";
+      }
+
+      if (
+        name === "nowrap" ||
+        name === "small" ||
+        name === "ubl" ||
+        name === "plainlist" ||
+        name === "unbulleted list"
+      ) {
+        return parts.slice(1).join(" | ");
+      }
+
+      const useful = parts
+        .slice(1)
+        .filter((p) => !/^[a-z0-9 _-]+\s*=/.test(p.toLowerCase()))
+        .join(" | ");
+
+      return useful || " ";
+    });
+  }
+
+  return cleanText(text)
+    .replace(/\[\s*\d+\s*\]/g, " ")
+    .replace(/\s*\|\s*/g, " | ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function labelFromKey(key: string) {
+  const normalized = cleanText(key)
+    .replace(/_/g, " ")
+    .replace(/-/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const lower = normalized.toLowerCase();
+
+  const labels: Record<string, string> = {
+    gdp: "GDP",
+    "gdp rank": "GDP rank",
+    "gdp growth": "GDP growth",
+    "gdp per capita": "GDP per capita",
+    "gdp per capita rank": "GDP per capita rank",
+    "gdp by sector": "GDP by sector",
+    "gdp by component": "GDP by component",
+    currency: "Currency",
+    inflation: "Inflation",
+    unemployment: "Unemployment",
+    population: "Population",
+    exports: "Exports",
+    imports: "Imports",
+    "export goods": "Export goods",
+    "import goods": "Import goods",
+    "export partners": "Main export partners",
+    "import partners": "Main import partners",
+    "gross external debt": "Gross external debt",
+    debt: "Government debt",
+    revenue: "Revenue",
+    expenses: "Spending",
+    balance: "Budget balance",
+    reserves: "Foreign reserves",
+    credit: "Credit rating",
+    aid: "Economic aid",
+    industries: "Main industries",
+    "labour force": "Labour force",
+    "labor force": "Labor force",
+  };
+
+  return labels[lower] || normalized.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function groupFromFact(label: string, value: string) {
+  const k = keyOf(`${label} ${value}`);
+
+  if (
+    /export|import|trade|partner|external debt|current account|fdi|foreign investment|investment|remittance|port|logistics|commodity|customs|tariff/.test(k)
+  ) {
+    return "External";
+  }
+
+  if (
+    /government debt|public finance|budget|revenue|spending|expenses|reserves|credit rating|aid|tax|fiscal|deficit|surplus/.test(k)
+  ) {
+    return "Public finance";
+  }
+
+  if (
+    /sector|industry|industries|tourism|agriculture|manufacturing|services|oil|gas|mining|labour|labor|employment|poverty|gini|human development/.test(k)
+  ) {
+    return "Business structure";
+  }
+
+  return "Economy";
+}
+
+function extractEconomyFactsFromWikitext(wikitext: string) {
+  const template =
+    findTemplate(wikitext, /^infobox\s+economy/i) ||
+    findTemplate(wikitext, /^infobox/i);
+
+  if (!template) return [];
+
+  const facts: WikiFact[] = [];
+
+  for (const part of splitTopLevelPipes(template).slice(1)) {
+    const eq = part.indexOf("=");
+    if (eq < 0) continue;
+
+    const rawKey = part.slice(0, eq).trim();
+    const rawValue = part.slice(eq + 1).trim();
+
+    if (!rawKey || !rawValue) continue;
+
+    const key = keyOf(rawKey);
 
     if (
-      labelKey.includes("wikimedia") ||
-      labelKey.includes("coordinates") ||
-      labelKey === "website" ||
-      labelKey === "image" ||
-      labelKey === "caption"
+      !key ||
+      key.includes("image") ||
+      key.includes("caption") ||
+      key.includes("website") ||
+      key.includes("logo") ||
+      key.includes("country group") ||
+      key.includes("organs")
     ) {
       continue;
     }
 
-    if (label.length > 130 || value.length > 4500) continue;
+    const label = labelFromKey(rawKey);
+    const value = stripWikitext(rawValue);
+
+    if (!label || !value) continue;
+    if (value.length > 5000) continue;
 
     facts.push({
-      group: currentGroup || group || "Economy",
+      group: groupFromFact(label, value),
       label,
       value,
     });
   }
 
-  return facts.slice(0, 180);
+  return facts;
 }
 
-function extractParagraphs(html: string, max = 4) {
-  const paragraphs: string[] = [];
-  const matches = html.match(/<p\b[^>]*>[\s\S]*?<\/p>/gi) || [];
-
-  for (const p of matches) {
-    const text = cleanText(p);
-
-    if (!text || text.length < 70) continue;
-    if (/^This article/i.test(text)) continue;
-
-    paragraphs.push(text);
-
-    if (paragraphs.length >= max) break;
-  }
-
-  return paragraphs;
-}
-
-function extractSections(html: string) {
+function extractSectionsFromWikitext(wikitext: string) {
   const sections: WikiSection[] = [];
-  const sectionRe =
-    /<h([23])\b[^>]*>([\s\S]*?)<\/h\1>([\s\S]*?)(?=<h[23]\b|$)/gi;
+  const headingRe = /^(={2,4})\s*([^=\n][^\n]*?)\s*\1\s*$/gm;
+  const matches: { title: string; start: number; end: number }[] = [];
 
   let match: RegExpExecArray | null;
 
-  while ((match = sectionRe.exec(html))) {
-    const title = cleanText(match[2]);
-    const body = match[3] || "";
-    const titleKey = title.toLowerCase();
+  while ((match = headingRe.exec(wikitext))) {
+    matches.push({
+      title: cleanText(match[2]),
+      start: match.index,
+      end: headingRe.lastIndex,
+    });
+  }
+
+  for (let i = 0; i < matches.length; i++) {
+    const title = matches[i].title;
+    const contentStart = matches[i].end;
+    const contentEnd = matches[i + 1]?.start ?? wikitext.length;
+    const raw = wikitext.slice(contentStart, contentEnd);
+
+    const titleKey = keyOf(title);
 
     if (
       !title ||
@@ -378,16 +563,74 @@ function extractSections(html: string) {
       continue;
     }
 
-    const paragraphs = extractParagraphs(body, 2);
+    const paragraphs = raw
+      .split(/\n{2,}/)
+      .map(stripWikitext)
+      .map(cleanText)
+      .filter((p) => p.length >= 80)
+      .filter((p) => !p.startsWith("{|"))
+      .slice(0, 3);
 
     if (paragraphs.length) {
       sections.push({ title, paragraphs });
     }
 
-    if (sections.length >= 10) break;
+    if (sections.length >= 20) break;
   }
 
   return sections;
+}
+
+function isEconomySection(section: WikiSection, strict: boolean) {
+  if (!strict) return true;
+
+  const title = keyOf(section.title);
+
+  return /economy|economic|trade|export|import|finance|budget|debt|revenue|industry|industries|tourism|agriculture|manufacturing|services|energy|oil|gas|mining|labour|labor|employment|transport|infrastructure/.test(title);
+}
+
+function factsFromSections(sections: WikiSection[], strict: boolean) {
+  return sections
+    .filter((section) => isEconomySection(section, strict))
+    .map((section) => {
+      const title = cleanText(section.title);
+      const value = (section.paragraphs || [])
+        .map(cleanText)
+        .filter(Boolean)
+        .slice(0, 2)
+        .join(" | ");
+
+      if (!title || !value) return null;
+
+      return {
+        group: groupFromFact(title, value),
+        label: title,
+        value,
+      };
+    })
+    .filter(Boolean) as WikiFact[];
+}
+
+function dedupeFacts(facts: WikiFact[]) {
+  const seen = new Set<string>();
+  const output: WikiFact[] = [];
+
+  for (const fact of facts) {
+    const group = cleanText(fact.group || "Economy");
+    const label = cleanText(fact.label);
+    const value = cleanText(fact.value);
+
+    if (!label || !value) continue;
+
+    const key = `${keyOf(group)}|${keyOf(label)}|${keyOf(value).slice(0, 120)}`;
+
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    output.push({ group, label, value });
+  }
+
+  return output;
 }
 
 function pickHighlights(facts: WikiFact[]) {
@@ -395,6 +638,7 @@ function pickHighlights(facts: WikiFact[]) {
     "population",
     "gdp",
     "gdp rank",
+    "gdp growth",
     "currency",
     "inflation",
     "unemployment",
@@ -409,20 +653,21 @@ function pickHighlights(facts: WikiFact[]) {
 
   for (const key of priority) {
     const found = facts.find((fact) => {
-      const label = cleanText(fact.label).toLowerCase();
+      const label = keyOf(fact.label);
       return label.includes(key) && !used.has(label);
     });
 
     if (found) {
       picked.push(found);
-      used.add(cleanText(found.label).toLowerCase());
+      used.add(keyOf(found.label));
     }
 
     if (picked.length >= 9) break;
   }
 
   for (const fact of facts) {
-    const label = cleanText(fact.label).toLowerCase();
+    const label = keyOf(fact.label);
+
     if (!used.has(label)) {
       picked.push(fact);
       used.add(label);
@@ -434,58 +679,170 @@ function pickHighlights(facts: WikiFact[]) {
   return picked;
 }
 
-async function fetchFullWikiPage(title: string, group: string): Promise<WikiPagePayload> {
-  const summary = await fetchSummary(title);
+function economyCandidates(aliases: string[]) {
+  const values: string[] = [];
 
-  let facts: WikiFact[] = [];
-  let sections: WikiSection[] = [];
+  for (const alias of aliases) {
+    const cleaned = cleanText(alias);
+    const withoutThe = cleaned.replace(/^the\s+/i, "");
+
+    values.push(`Economy of ${cleaned}`);
+    values.push(`Economy of the ${withoutThe}`);
+    values.push(`${cleaned} economy`);
+    values.push(`${withoutThe} economy`);
+  }
+
+  return Array.from(new Set(values.map(cleanText).filter(Boolean)));
+}
+
+async function fetchEconomyPage(country: string, iso3: string): Promise<WikiPagePayload> {
+  const aliases = aliasesFor(country, iso3);
+  let lastError: unknown = null;
+
+  for (const candidate of economyCandidates(aliases)) {
+    try {
+      const page = await fetchWikiPage(candidate);
+
+      if (!isValidEconomyTitle(page.title, aliases)) continue;
+
+      const sections = extractSectionsFromWikitext(page.wikitext);
+
+      const facts = dedupeFacts([
+        ...extractEconomyFactsFromWikitext(page.wikitext),
+        ...factsFromSections(sections, false),
+        {
+          group: "Business structure",
+          label: "Economic overview",
+          value: page.extract,
+        },
+      ]);
+
+      return {
+        ok: true,
+        title: page.title,
+        displayTitle: page.displayTitle,
+        description: page.description,
+        extract: page.extract,
+        pageUrl: page.pageUrl,
+        thumbnailUrl: page.thumbnailUrl,
+        facts,
+        highlights: pickHighlights(facts),
+        sections,
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
 
   try {
-    const html = await fetchParsedHtml(summary.title || title);
-    facts = extractInfoboxFacts(html, group);
-    sections = extractSections(html);
-  } catch {
-    facts = [];
-    sections = [];
+    const searchedTitle = await searchWikiTitle(`Economy of ${aliases[0]}`, true);
+    const page = await fetchWikiPage(searchedTitle);
+
+    if (isValidEconomyTitle(page.title, aliases)) {
+      const sections = extractSectionsFromWikitext(page.wikitext);
+
+      const facts = dedupeFacts([
+        ...extractEconomyFactsFromWikitext(page.wikitext),
+        ...factsFromSections(sections, false),
+        {
+          group: "Business structure",
+          label: "Economic overview",
+          value: page.extract,
+        },
+      ]);
+
+      return {
+        ok: true,
+        title: page.title,
+        displayTitle: page.displayTitle,
+        description: page.description,
+        extract: page.extract,
+        pageUrl: page.pageUrl,
+        thumbnailUrl: page.thumbnailUrl,
+        facts,
+        highlights: pickHighlights(facts),
+        sections,
+      };
+    }
+  } catch (error) {
+    lastError = error;
+  }
+
+  const countryPage = await fetchWikiPage(aliases[0]);
+  const countrySections = extractSectionsFromWikitext(countryPage.wikitext);
+  const economySections = countrySections.filter((section) =>
+    isEconomySection(section, true),
+  );
+
+  const facts = dedupeFacts([
+    ...factsFromSections(economySections, true),
+    ...(economySections.length
+      ? []
+      : [
+          {
+            group: "Business structure",
+            label: "Country economic context",
+            value: countryPage.extract,
+          },
+        ]),
+  ]);
+
+  if (!facts.length && lastError instanceof Error) {
+    throw lastError;
   }
 
   return {
     ok: true,
-    title: summary.title,
-    displayTitle: summary.displayTitle,
-    description: summary.description,
-    extract: summary.extract,
-    pageUrl: summary.pageUrl,
-    thumbnailUrl: summary.thumbnailUrl,
+    title: `Economy context of ${aliases[0]}`,
+    displayTitle: `Economy context of ${aliases[0]}`,
+    description: "economy context from country article",
+    extract:
+      economySections[0]?.paragraphs?.[0] ||
+      countryPage.extract ||
+      `Economy context for ${aliases[0]}`,
+    pageUrl: countryPage.pageUrl,
+    thumbnailUrl: countryPage.thumbnailUrl,
     facts,
     highlights: pickHighlights(facts),
-    sections,
+    sections: economySections,
   };
 }
 
-async function fetchDemographics(country: string) {
-  const pageTitle = `Demographics of ${country}`;
-  const summary = await fetchSummary(pageTitle);
+async function fetchCountryPage(country: string, iso3: string): Promise<WikiPagePayload> {
+  const aliases = aliasesFor(country, iso3);
+  const page = await fetchWikiPage(aliases[0]);
 
-  let paragraphs: string[] = [];
+  return {
+    ok: true,
+    title: page.title,
+    displayTitle: page.displayTitle,
+    description: page.description,
+    extract: page.extract,
+    pageUrl: page.pageUrl,
+    thumbnailUrl: page.thumbnailUrl,
+    facts: [],
+    highlights: [],
+    sections: extractSectionsFromWikitext(page.wikitext),
+  };
+}
 
-  try {
-    const html = await fetchParsedHtml(summary.title || pageTitle);
-    paragraphs = extractParagraphs(html, 4);
-  } catch {
-    paragraphs = [];
+async function fetchDemographics(country: string, iso3: string) {
+  const aliases = aliasesFor(country, iso3);
+
+  for (const alias of aliases) {
+    try {
+      const page = await fetchWikiPage(`Demographics of ${alias}`);
+
+      return {
+        title: page.displayTitle || page.title || `Demographics of ${alias}`,
+        paragraphs: [page.extract].filter(Boolean),
+      };
+    } catch {
+      // Try next alias.
+    }
   }
 
-  return {
-    title: summary.displayTitle || summary.title || pageTitle,
-    paragraphs: paragraphs.length ? paragraphs : [summary.extract].filter(Boolean),
-  };
-}
-
-function responseHeaders() {
-  return {
-    "Cache-Control": "no-store, no-cache, must-revalidate",
-  };
+  return null;
 }
 
 export async function GET(req: Request) {
@@ -507,15 +864,18 @@ export async function GET(req: Request) {
           ok: false,
           error: "Country name or ISO3 code is required.",
         },
-        { status: 400, headers: responseHeaders() },
+        {
+          status: 400,
+          headers: responseHeaders(),
+        },
       );
     }
 
     const [countryResult, demographicsResult, economicsResult] =
       await Promise.allSettled([
-        fetchFullWikiPage(country, "General"),
-        fetchDemographics(country),
-        fetchFullWikiPage(`Economy of ${country}`, "Economy"),
+        fetchCountryPage(country, iso3),
+        fetchDemographics(country, iso3),
+        fetchEconomyPage(country, iso3),
       ]);
 
     if (countryResult.status === "rejected") {
@@ -534,7 +894,10 @@ export async function GET(req: Request) {
           license: "CC BY-SA 4.0",
           fetchedAt: new Date().toISOString(),
         },
-        { status: 200, headers: responseHeaders() },
+        {
+          status: 200,
+          headers: responseHeaders(),
+        },
       );
     }
 
@@ -571,7 +934,10 @@ export async function GET(req: Request) {
         license: "CC BY-SA 4.0",
         fetchedAt: new Date().toISOString(),
       },
-      { status: 200, headers: responseHeaders() },
+      {
+        status: 200,
+        headers: responseHeaders(),
+      },
     );
   } catch (error) {
     console.error("Country Wiki API error:", error);
@@ -586,7 +952,10 @@ export async function GET(req: Request) {
         demographics: null,
         economics: null,
       },
-      { status: 500, headers: responseHeaders() },
+      {
+        status: 500,
+        headers: responseHeaders(),
+      },
     );
   }
 }
