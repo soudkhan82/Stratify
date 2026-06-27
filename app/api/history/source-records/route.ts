@@ -1096,6 +1096,19 @@ async function leaderFetchRecords(sourceKey: string) {
   });
 }
 
+function leaderRecordSpan(record: HistoryRecord) {
+  const rawStart = record.startYear ?? record.year;
+  const rawEnd = record.endYear ?? record.year;
+
+  if (typeof rawStart !== "number" || !Number.isFinite(rawStart)) return null;
+  if (typeof rawEnd !== "number" || !Number.isFinite(rawEnd)) return null;
+
+  return {
+    start: Math.min(rawStart, rawEnd),
+    end: Math.max(rawStart, rawEnd),
+  };
+}
+
 function leaderFilterByRange(records: HistoryRecord[], from: number | null, to: number | null) {
   if (from === null || to === null) return records;
 
@@ -1103,10 +1116,10 @@ function leaderFilterByRange(records: HistoryRecord[], from: number | null, to: 
   const hi = Math.max(from, to);
 
   return records.filter((record) => {
-    const start = Math.min(record.startYear ?? record.year, record.endYear ?? record.year);
-    const end = Math.max(record.startYear ?? record.year, record.endYear ?? record.year);
+    const span = leaderRecordSpan(record);
+    if (!span) return false;
 
-    return end >= lo && start <= hi;
+    return span.end >= lo && span.start <= hi;
   });
 }
 
@@ -1124,9 +1137,10 @@ function leaderMakeFrequency(records: HistoryRecord[], from: number | null, to: 
     const bucketTo = index === bucketCount - 1 ? hi : Math.min(hi, bucketFrom + step - 1);
 
     const count = records.filter((record) => {
-      const start = Math.min(record.startYear ?? record.year, record.endYear ?? record.year);
-      const end = Math.max(record.startYear ?? record.year, record.endYear ?? record.year);
-      return end >= bucketFrom && start <= bucketTo;
+      const recordSpan = leaderRecordSpan(record);
+      if (!recordSpan) return false;
+
+      return recordSpan.end >= bucketFrom && recordSpan.start <= bucketTo;
     }).length;
 
     return {
@@ -1151,7 +1165,6 @@ function leaderMakeFrequency(records: HistoryRecord[], from: number | null, to: 
     percent: bucket.count ? Math.max(7, Math.round((bucket.count / maxCount) * 100)) : 0,
   }));
 }
-
 async function handleLeadersOnly(req: Request, segment: SegmentKey, sourceKey: string) {
   const { searchParams } = new URL(req.url);
 
@@ -2587,6 +2600,7 @@ export async function GET(req: Request) {
     );
   }
 }
+
 
 
 
