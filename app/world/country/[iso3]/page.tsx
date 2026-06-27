@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -48,7 +48,7 @@ async function fetchJsonOrThrow(url: string): Promise<unknown> {
   const ct = res.headers.get("content-type") || "";
   if (!ct.includes("application/json")) {
     throw new Error(
-      `Expected JSON got ${ct || "unknown"} — ${txt.slice(0, 200)}`,
+      `Expected JSON got ${ct || "unknown"} â€” ${txt.slice(0, 200)}`,
     );
   }
 
@@ -77,7 +77,7 @@ function LoaderCard({ label }: { label: string }) {
 
 function compactNumber(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) {
-    return "—";
+    return "â€”";
   }
 
   const abs = Math.abs(value);
@@ -105,7 +105,7 @@ function compactNumber(value: number | null | undefined) {
 
 function fullNumber(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) {
-    return "—";
+    return "â€”";
   }
 
   return value.toLocaleString(undefined, {
@@ -430,7 +430,7 @@ function WdiExtraAnalytics({
               Regional Benchmark
             </div>
             <div className="mt-1 text-xs text-slate-500">
-              {selectedIndicatorLabel} · {regionalRanking.region || "World"}
+              {selectedIndicatorLabel} Â· {regionalRanking.region || "World"}
             </div>
           </div>
 
@@ -444,7 +444,7 @@ function WdiExtraAnalytics({
                   ? "Loading..."
                   : regionalRanking.rank
                     ? `#${regionalRanking.rank} / ${regionalRanking.total}`
-                    : "—"}
+                    : "â€”"}
               </div>
             </div>
 
@@ -1083,6 +1083,7 @@ export default function CountryProfilePage() {
                   ) : (
                     <FaostatTab
                       iso3={iso3}
+                      showExternalEnrichment
                       faoModule={faoModule}
                       onPickModule={loadFao}
                       loading={faoLoading}
@@ -1109,3 +1110,4 @@ export default function CountryProfilePage() {
     </div>
   );
 }
+

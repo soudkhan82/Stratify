@@ -1,15 +1,16 @@
-// ✅ DROP-IN (FIXED) — FaostatTab.tsx
+﻿// âœ… DROP-IN (FIXED) â€” FaostatTab.tsx
 // File: app/world/country/[iso3]/components/FaostatTab.tsx
 //
 // Fixes: "yearly trend not showing" after modification
-// ✅ Normalizes API trend rows to numeric {year,value} (handles Year/Value keys + comma strings)
-// ✅ Uses explicit chart heights to avoid 0-height ResponsiveContainer edge cases
-// ✅ Keeps: no bottom 7 menu, no Area Code column, Main Menu button top-left
+// âœ… Normalizes API trend rows to numeric {year,value} (handles Year/Value keys + comma strings)
+// âœ… Uses explicit chart heights to avoid 0-height ResponsiveContainer edge cases
+// âœ… Keeps: no bottom 7 menu, no Area Code column, Main Menu button top-left
 
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import FaostatExternalEnrichment from "./FaostatExternalEnrichment";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -104,6 +105,7 @@ type Props = {
   prodTopN?: number;
   prodYears?: number;
   prodElement?: string;
+  showExternalEnrichment?: boolean;
   setProdTopN?: (n: number) => void;
   setProdYears?: (n: number) => void;
   setProdElement?: (s: string) => void;
@@ -115,7 +117,7 @@ type Props = {
 
 const MAIN_MENU_HREF = "/";
 
-// ✅ Safe fetch helper: prevents "Unexpected token '<'" crash and shows actual response preview
+// âœ… Safe fetch helper: prevents "Unexpected token '<'" crash and shows actual response preview
 async function fetchTrendJSON(url: string) {
   const res = await fetch(url, { cache: "no-store" });
   const txt = await res.text();
@@ -147,7 +149,7 @@ async function fetchTrendJSON(url: string) {
 
 function safeStr(v: any) {
   const s = String(v ?? "").trim();
-  return s.length ? s : "—";
+  return s.length ? s : "â€”";
 }
 
 function numFromAny(v: any): number | null {
@@ -278,7 +280,7 @@ function getUnitFromRow(r: AnyObj): string {
   return safeStr(r?.unit ?? r?.Unit ?? "");
 }
 
-/* ✅ Normalize trend rows for Recharts (prevents blank chart) */
+/* âœ… Normalize trend rows for Recharts (prevents blank chart) */
 function normalizeTrendRows(rows: AnyObj[]): ProductionTrendPoint[] {
   const out: ProductionTrendPoint[] = [];
 
@@ -309,7 +311,7 @@ function inferProdUnit(prod: ProductionInsights | null | undefined) {
     .map((x) => String(x.unit ?? "").trim())
     .filter(Boolean);
 
-  if (!units.length) return "—";
+  if (!units.length) return "â€”";
 
   const unique = Array.from(new Set(units));
   return unique.length === 1 ? unique[0] : "Mixed";
@@ -545,7 +547,7 @@ function ProductionInsightsView({ prod }: { prod: ProductionInsights | null }) {
         <div className="rounded-lg border bg-white p-3">
           <div className="text-xs text-slate-500">Total Latest</div>
           <div className="text-lg font-semibold">
-            {prod.total_latest === null ? "—" : fmtCompact(prod.total_latest)}
+            {prod.total_latest === null ? "â€”" : fmtCompact(prod.total_latest)}
           </div>
         </div>
 
@@ -557,7 +559,7 @@ function ProductionInsightsView({ prod }: { prod: ProductionInsights | null }) {
               (prod.yoy_pct ?? 0) >= 0 ? "text-emerald-600" : "text-rose-600",
             ].join(" ")}
           >
-            {prod.yoy_pct === null ? "—" : `${fmt(prod.yoy_pct, 2)}%`}
+            {prod.yoy_pct === null ? "â€”" : `${fmt(prod.yoy_pct, 2)}%`}
           </div>
         </div>
 
@@ -565,7 +567,7 @@ function ProductionInsightsView({ prod }: { prod: ProductionInsights | null }) {
           <div className="text-xs text-slate-500">Top-5 Share</div>
           <div className="text-lg font-semibold">
             {prod.top5_share_pct === null
-              ? "—"
+              ? "â€”"
               : `${fmt(prod.top5_share_pct, 2)}%`}
           </div>
         </div>
@@ -639,6 +641,7 @@ export default function FaostatTab(p: Props) {
     prodTopN = 10,
     prodYears = 10,
     prodElement = "Production",
+    showExternalEnrichment = false,
     setProdTopN,
     setProdYears,
     setProdElement,
@@ -685,7 +688,7 @@ export default function FaostatTab(p: Props) {
     (faoModule === "prod-insights" && prod && typeof prod === "object") ||
     (rows.length > 0 && cols.length > 0);
 
-  // ✅ Trend (Top modules)
+  // âœ… Trend (Top modules)
   const [selectedTopRow, setSelectedTopRow] = useState<AnyObj | null>(null);
   const [selectedTopKey, setSelectedTopKey] = useState<string | number | null>(
     null,
@@ -797,14 +800,14 @@ export default function FaostatTab(p: Props) {
 
                 <div className="space-y-0.5">
                   <CardTitle className="text-base">
-                    FAOSTAT • {moduleLabel[faoModule || "overview"]}{" "}
+                    FAOSTAT â€¢ {moduleLabel[faoModule || "overview"]}{" "}
                     <span className="text-slate-500">({iso3})</span>
                   </CardTitle>
 
                   <div className="flex flex-wrap items-center gap-2">
                     {loading ? (
                       <Badge className="bg-slate-900 text-white">
-                        Loading…
+                        Loadingâ€¦
                       </Badge>
                     ) : (
                       <Badge variant="secondary">Ready</Badge>
@@ -930,7 +933,7 @@ export default function FaostatTab(p: Props) {
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div className="text-sm text-slate-600">
                 Year-wise totals + YoY + concentration + top items.
-                {prodUnit !== "—" ? (
+                {prodUnit !== "â€”" ? (
                   <span className="ml-2 text-xs text-slate-500">
                     Unit: {prodUnit}
                   </span>
@@ -1049,6 +1052,9 @@ export default function FaostatTab(p: Props) {
         )}
       </Card>
 
+      {showExternalEnrichment ? (
+        <FaostatExternalEnrichment iso3={iso3} />
+      ) : null}
       {faoModule === "" || faoModule === "overview" ? (
         <Card>
           <CardHeader className="pb-2">
@@ -1071,7 +1077,7 @@ export default function FaostatTab(p: Props) {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-slate-800">
               Production Insights{" "}
-              {prodUnit !== "—" ? (
+              {prodUnit !== "â€”" ? (
                 <span className="ml-2 text-xs text-slate-500">
                   Unit: {prodUnit}
                 </span>
@@ -1141,7 +1147,7 @@ export default function FaostatTab(p: Props) {
                     </div>
                   ) : topTrendLoading ? (
                     <div className="rounded-md border bg-slate-50 p-3 text-sm text-slate-700">
-                      Loading trend…
+                      Loading trendâ€¦
                     </div>
                   ) : topTrendErr ? (
                     <div className="rounded-md border bg-rose-50 p-3 text-sm text-rose-700">
@@ -1162,7 +1168,7 @@ export default function FaostatTab(p: Props) {
                         </div>
                       </div>
 
-                      {/* ✅ Explicit heights (avoid blank chart) */}
+                      {/* âœ… Explicit heights (avoid blank chart) */}
                       <div style={{ height: 190, width: "100%" }}>
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart
@@ -1220,3 +1226,4 @@ export default function FaostatTab(p: Props) {
     </div>
   );
 }
+
