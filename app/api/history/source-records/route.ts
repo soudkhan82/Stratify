@@ -836,6 +836,461 @@ function getSources(segment: SegmentKey, sourceKey: string) {
 
 
 
+/* STRATIFY_LEADERS_SAFE_PARSER_START
+   Leaders/Rulers only.
+   Parses Wikipedia state-leader list pages.
+   Prevents century/navigation rows like "CE | 21st | 2020s" from becoming fake records.
+   Does not affect wars, revolutions, disasters, or civilizations.
+*/
+
+function leaderSources(sourceKey: string): SourcePage[] {
+  return SOURCE_MAP[sourceKey] || SOURCE_MAP["leaders-18th-century"] || SOURCE_MAP["leaders-21st-century"] || [];
+}
+
+function leaderSourceLabel(sourceKey: string) {
+  const sources = leaderSources(sourceKey);
+  return sources.map((s) => s.label).join(", ") || "Leaders, Rulers & Heads of State";
+}
+
+function leaderDefaultRange(sourceKey: string) {
+  if (sourceKey === "leaders-before-1000-bc") return { from: -2000, to: -1001 };
+  if (sourceKey === "leaders-1000-501-bc") return { from: -1000, to: -501 };
+  if (sourceKey === "leaders-500-1-bc") return { from: -500, to: -1 };
+  if (sourceKey === "leaders-1st-5th-century") return { from: 1, to: 500 };
+  if (sourceKey === "leaders-6th-century") return { from: 501, to: 600 };
+  if (sourceKey === "leaders-7th-century") return { from: 601, to: 700 };
+  if (sourceKey === "leaders-8th-century") return { from: 701, to: 800 };
+  if (sourceKey === "leaders-9th-century") return { from: 801, to: 900 };
+  if (sourceKey === "leaders-10th-century") return { from: 901, to: 1000 };
+  if (sourceKey === "leaders-15th-century") return { from: 1401, to: 1500 };
+  if (sourceKey === "leaders-18th-century") return { from: 1701, to: 1800 };
+  if (sourceKey === "leaders-19th-century") return { from: 1801, to: 1900 };
+  if (sourceKey === "leaders-20th-century") return { from: 1901, to: 2000 };
+  if (sourceKey === "leaders-21st-century") return { from: 2001, to: new Date().getFullYear() };
+
+  return { from: 1701, to: 1800 };
+}
+
+function leaderIsBcSource(source: SourcePage) {
+  return /\bbc\b/i.test(`${source.key} ${source.label} ${source.page}`);
+}
+
+function leaderCleanCell(value: string) {
+  return cleanHtml(value)
+    .replace(/\[[^\]]*\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function leaderLooksLikeNavigation(text: string) {
+  const k = keyOf(text);
+
+  if (!k) return true;
+
+  if (
+    k.includes("millennia") ||
+    k.includes("centuries") ||
+    k.includes("timelines") ||
+    k.includes("state leaders") ||
+    k.includes("births") ||
+    k.includes("deaths") ||
+    k.includes("establishments") ||
+    k.includes("disestablishments") ||
+    k.includes("v t e") ||
+    k.includes("edit links") ||
+    k.includes("this is a list of state leaders")
+  ) {
+    return true;
+  }
+
+  if (/^(ce|ad|bc|bce)$/i.test(text.trim())) return true;
+
+  if (/\b(2020s|2010s|2000s|21st|20th|19th|18th|17th|16th|15th|14th|13th|12th|11th|10th)\b/i.test(text)) {
+    if (text.includes("|") && text.length > 40) return true;
+  }
+
+  return false;
+}
+
+function leaderLeafListItems(html: string) {
+  // Leaf LI only. This avoids parent list containers with nested leaders.
+  return html.match(/<li\b[^>]*>(?:(?!<li\b)[\s\S])*?<\/li>/gi) ?? [];
+}
+
+function leaderPeriodFromText(text: string, source: SourcePage) {
+  const bcSource = leaderIsBcSource(source);
+  const cleaned = leaderCleanCell(text)
+    .replace(/[−–—]/g, "-")
+    .replace(/\bB\.C\.E?\b/gi, "BC")
+    .replace(/\bC\.E\.\b/gi, "AD");
+
+  const insideParentheses = [...cleaned.matchAll(/\(([^)]{1,120})\)/g)]
+    .map((m) => m[1])
+    .filter(Boolean);
+
+  const candidates = insideParentheses.length ? insideParentheses : [cleaned];
+
+  for (const candidate of candidates) {
+    const c = candidate
+      .replace(/\bc\.\s*/gi, "")
+      .replace(/\bca\.\s*/gi, "")
+      .replace(/\bcirca\s*/gi, "")
+      .replace(/\bpost-\s*/gi, "")
+      .replace(/\bfl\.\s*/gi, "")
+      .replace(/\?/g, "")
+      .trim();
+
+    let m = c.match(/(\d{1,4})\s*(BC|BCE|AD|CE)?\s*(?:s)?\s*-\s*(\d{1,4})\s*(BC|BCE|AD|CE)?\s*(?:s)?/i);
+
+    if (m) {
+      let a = Number(m[1]);
+      let b = Number(m[3]);
+
+      const eraA = String(m[2] || "").toUpperCase();
+      const eraB = String(m[4] || m[2] || "").toUpperCase();
+
+      if (eraA === "BC" || eraA === "BCE" || (!eraA && bcSource)) a = -Math.abs(a);
+      if (eraB === "BC" || eraB === "BCE" || (!eraB && bcSource)) b = -Math.abs(b);
+
+      return {
+        startYear: Math.min(a, b),
+        endYear: Math.max(a, b),
+      };
+    }
+
+    m = c.match(/(\d{1,4})\s*(BC|BCE|AD|CE)?\s*(?:s)?/i);
+
+    if (m && /\b(century|early|mid|late|\d{3,4}s|king|queen|emperor|ruler|sultan|caliph|pharaoh|monarch|president|duke|chief|mfon|manikongo|mbangi|kolak|nyim)\b/i.test(cleaned)) {
+      let y = Number(m[1]);
+      const era = String(m[2] || "").toUpperCase();
+
+      if (era === "BC" || era === "BCE" || (!era && bcSource)) y = -Math.abs(y);
+
+      if (/\d{3,4}s/.test(m[0])) {
+        return { startYear: y, endYear: y + 9 };
+      }
+
+      return { startYear: y, endYear: y };
+    }
+
+    m = c.match(/(\d{1,2})(?:st|nd|rd|th)\s+century\s*(BC|BCE|AD|CE)?/i);
+
+    if (m) {
+      const century = Number(m[1]);
+      const era = String(m[2] || "").toUpperCase();
+
+      if (era === "BC" || era === "BCE" || (!era && bcSource)) {
+        return {
+          startYear: -(century * 100),
+          endYear: -((century - 1) * 100 + 1),
+        };
+      }
+
+      return {
+        startYear: (century - 1) * 100 + 1,
+        endYear: century * 100,
+      };
+    }
+  }
+
+  return null;
+}
+
+function leaderTitleFromText(text: string) {
+  let cleaned = leaderCleanCell(text);
+
+  cleaned = cleaned
+    .replace(/^.*?\bcomplete list\b.*?[–-]\s*/i, "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const parts = cleaned
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  if (!parts.length) return "";
+
+  return parts[0]
+    .replace(/[–-]\s*$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function leaderArticleUrl(raw: string) {
+  const links = raw.match(/<a\b[^>]*href="[^"]+"[^>]*>/gi) ?? [];
+
+  for (const link of links) {
+    const href = link.match(/href="([^"]+)"/i)?.[1];
+    if (!href) continue;
+    if (!href.startsWith("/wiki/")) continue;
+    if (href.includes(":")) continue;
+
+    try {
+      return new URL(href, WIKI_ORIGIN).toString();
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+function parseLeaderListItems(html: string, source: SourcePage) {
+  const output: HistoryRecord[] = [];
+  const items = leaderLeafListItems(html);
+
+  for (const raw of items) {
+    const text = leaderCleanCell(raw);
+
+    if (!text || text.length < 8) continue;
+    if (leaderLooksLikeNavigation(text)) continue;
+
+    const period = leaderPeriodFromText(text, source);
+    if (!period) continue;
+
+    const title = leaderTitleFromText(text);
+    const titleKey = keyOf(title);
+
+    if (
+      !titleKey ||
+      ["ce", "ad", "bc", "bce", "state", "leader", "leaders", "ruler", "rulers", "title", "from", "until"].includes(titleKey)
+    ) {
+      continue;
+    }
+
+    if (leaderLooksLikeNavigation(title)) continue;
+
+    output.push(
+      makeRecord({
+        source,
+        title,
+        startYear: period.startYear,
+        endYear: period.endYear,
+        description: text,
+        articleUrl: leaderArticleUrl(raw),
+      })
+    );
+  }
+
+  return output;
+}
+
+async function leaderFetchRecords(sourceKey: string) {
+  const sources = leaderSources(sourceKey);
+
+  const groups = await Promise.all(
+    sources.map(async (source) => {
+      const html = await disFetchWikiHtml(source.page);
+      return parseLeaderListItems(html, source);
+    })
+  );
+
+  return dedupe(groups.flat()).sort((a, b) => {
+    const ay = Math.min(a.startYear ?? a.year ?? 999999, a.endYear ?? a.year ?? 999999);
+    const by = Math.min(b.startYear ?? b.year ?? 999999, b.endYear ?? b.year ?? 999999);
+
+    if (ay !== by) return ay - by;
+    return a.title.localeCompare(b.title);
+  });
+}
+
+function leaderFilterByRange(records: HistoryRecord[], from: number | null, to: number | null) {
+  if (from === null || to === null) return records;
+
+  const lo = Math.min(from, to);
+  const hi = Math.max(from, to);
+
+  return records.filter((record) => {
+    const start = Math.min(record.startYear ?? record.year, record.endYear ?? record.year);
+    const end = Math.max(record.startYear ?? record.year, record.endYear ?? record.year);
+
+    return end >= lo && start <= hi;
+  });
+}
+
+function leaderMakeFrequency(records: HistoryRecord[], from: number | null, to: number | null) {
+  if (from === null || to === null) return [];
+
+  const lo = Math.min(from, to);
+  const hi = Math.max(from, to);
+  const bucketCount = 10;
+  const span = Math.max(1, hi - lo + 1);
+  const step = Math.max(1, Math.ceil(span / bucketCount));
+
+  const buckets = Array.from({ length: bucketCount }, (_, index) => {
+    const bucketFrom = lo + index * step;
+    const bucketTo = index === bucketCount - 1 ? hi : Math.min(hi, bucketFrom + step - 1);
+
+    const count = records.filter((record) => {
+      const start = Math.min(record.startYear ?? record.year, record.endYear ?? record.year);
+      const end = Math.max(record.startYear ?? record.year, record.endYear ?? record.year);
+      return end >= bucketFrom && start <= bucketTo;
+    }).length;
+
+    return {
+      from: bucketFrom,
+      to: bucketTo,
+      label:
+        bucketFrom < 0 || bucketTo < 0
+          ? `${Math.abs(bucketFrom)} BC-${Math.abs(bucketTo)} BC`
+          : `${bucketFrom}-${bucketTo}`,
+      count,
+      value: count,
+      pct: 0,
+      percent: 0,
+    };
+  });
+
+  const maxCount = Math.max(1, ...buckets.map((bucket) => bucket.count));
+
+  return buckets.map((bucket) => ({
+    ...bucket,
+    pct: bucket.count ? Math.max(7, Math.round((bucket.count / maxCount) * 100)) : 0,
+    percent: bucket.count ? Math.max(7, Math.round((bucket.count / maxCount) * 100)) : 0,
+  }));
+}
+
+async function handleLeadersOnly(req: Request, segment: SegmentKey, sourceKey: string) {
+  const { searchParams } = new URL(req.url);
+
+  const requestedFrom = toInt(searchParams.get("from") || searchParams.get("fromYear"), null);
+  const requestedTo = toInt(searchParams.get("to") || searchParams.get("toYear"), null);
+
+  let effectiveSourceKey = sourceKey;
+
+  // Guard against stale/localStorage/default preload request:
+  // /leaders-before-1000-bc&from=-5000&to=-1001
+  // Use a reasonable working default instead of hammering ancient Wikipedia pages.
+  if (
+    sourceKey === "leaders-before-1000-bc" &&
+    requestedFrom !== null &&
+    requestedTo !== null &&
+    requestedFrom <= -5000 &&
+    requestedTo <= -1001
+  ) {
+    effectiveSourceKey = "leaders-18th-century";
+  }
+
+  const defaults = leaderDefaultRange(effectiveSourceKey);
+
+  const from =
+    effectiveSourceKey !== sourceKey
+      ? defaults.from
+      : requestedFrom ?? defaults.from;
+
+  const to =
+    effectiveSourceKey !== sourceKey
+      ? defaults.to
+      : requestedTo ?? defaults.to;
+
+  const page = Math.max(1, toInt(searchParams.get("page"), 1) ?? 1);
+  const pageSize = Math.max(
+    1,
+    Math.min(1000, toInt(searchParams.get("pageSize") || searchParams.get("rows"), 25) ?? 25)
+  );
+
+  const query = searchParams.get("q") || searchParams.get("search") || "";
+
+  let allRecords: HistoryRecord[] = [];
+
+  try {
+    allRecords = await leaderFetchRecords(effectiveSourceKey);
+  } catch (error) {
+    console.error("Leaders parser failed:", error);
+
+    const frequency = leaderMakeFrequency([], from, to);
+
+    return NextResponse.json(
+      {
+        ok: true,
+        segment,
+        sourceKey: effectiveSourceKey,
+        sourceLabel: leaderSourceLabel(effectiveSourceKey),
+        sourceTitle: leaderSourceLabel(effectiveSourceKey),
+        page,
+        pageSize,
+        events: [],
+        records: [],
+        data: [],
+        items: [],
+        total: 0,
+        hasMore: false,
+        frequency,
+        frequencyBuckets: frequency,
+        buckets: frequency,
+        activeRange:
+          from !== null && to !== null
+            ? { from: Math.min(from, to), to: Math.max(from, to) }
+            : null,
+        warning:
+          error instanceof Error
+            ? `Leaders source failed: ${error.message}`
+            : "Leaders source failed.",
+        meta: {
+          route: "source-records",
+          branch: "leaders-list-parser",
+          hardcodedEvents: false,
+          fetchedRecords: 0,
+          rangedRecords: 0,
+        },
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      }
+    );
+  }
+
+  const rangedRecords = filterBySearch(leaderFilterByRange(allRecords, from, to), query);
+  const total = rangedRecords.length;
+  const startIndex = (page - 1) * pageSize;
+  const events = rangedRecords.slice(startIndex, startIndex + pageSize);
+  const frequency = leaderMakeFrequency(rangedRecords, from, to);
+
+  return NextResponse.json(
+    {
+      ok: true,
+      segment,
+      sourceKey: effectiveSourceKey,
+      sourceLabel: leaderSourceLabel(effectiveSourceKey),
+      sourceTitle: leaderSourceLabel(effectiveSourceKey),
+      page,
+      pageSize,
+      events,
+      records: events,
+      data: events,
+      items: events,
+      total,
+      hasMore: startIndex + pageSize < total,
+      frequency,
+      frequencyBuckets: frequency,
+      buckets: frequency,
+      activeRange:
+        from !== null && to !== null
+          ? { from: Math.min(from, to), to: Math.max(from, to) }
+          : null,
+      warning: total ? null : "No leader records found for the selected timeframe.",
+      meta: {
+        route: "source-records",
+        branch: "leaders-list-parser",
+        hardcodedEvents: false,
+        fetchedRecords: allRecords.length,
+        rangedRecords: rangedRecords.length,
+      },
+    },
+    {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+      },
+    }
+  );
+}
+/* STRATIFY_LEADERS_SAFE_PARSER_END */
+
+
 /* STRATIFY_CIVILIZATIONS_WIKIPEDIA_FIX_START
    Empires & Civilizations only.
    Uses Wikipedia list tables and period-overlap filtering.
@@ -2033,6 +2488,10 @@ export async function GET(req: Request) {
       return await handleCivilizationsOnly(req, segment, sourceKey);
     }
 
+    if (segment === "leaders") {
+      return await handleLeadersOnly(req, segment, sourceKey);
+    }
+
     // IMPORTANT:
     // The page sends from/to and pageSize.
     // Previous broken route expected fromYear/toYear and rows.
@@ -2128,6 +2587,9 @@ export async function GET(req: Request) {
     );
   }
 }
+
+
+
 
 
 
