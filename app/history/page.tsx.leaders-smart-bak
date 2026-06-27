@@ -178,50 +178,6 @@ function getDefaultSourceForSegment(segment: (typeof SEGMENTS)[number]) {
   );
 }
 
-
-/* STRATIFY_SMART_LEADERS_UI_START */
-
-function smartLeaderUiOrdinal(value: number) {
-  const n = Math.abs(Math.trunc(value));
-  const suffix =
-    n % 10 === 1 && n % 100 !== 11
-      ? "st"
-      : n % 10 === 2 && n % 100 !== 12
-      ? "nd"
-      : n % 10 === 3 && n % 100 !== 13
-      ? "rd"
-      : "th";
-
-  return `${n}${suffix}`;
-}
-
-function smartLeaderUiCurrentCentury() {
-  return Math.max(21, Math.ceil(new Date().getFullYear() / 100));
-}
-
-const SMART_LEADER_SOURCE_ITEMS: SourceItem[] = [
-  { key: "leaders-before-1000-bc", label: "Before 1000 BC" },
-  { key: "leaders-1000-501-bc", label: "1000–501 BC leaders" },
-  { key: "leaders-500-1-bc", label: "500–1 BC leaders" },
-  ...Array.from({ length: smartLeaderUiCurrentCentury() }, (_, index) => {
-    const century = index + 1;
-    const ordinal = smartLeaderUiOrdinal(century);
-
-    return {
-      key: `leaders-${ordinal}-century`,
-      label: `${ordinal} century leaders`,
-    };
-  }),
-];
-
-const smartLeaderSegment = SEGMENTS.find((segment) => segment.key === "leaders");
-if (smartLeaderSegment) {
-  smartLeaderSegment.sources = SMART_LEADER_SOURCE_ITEMS;
-}
-
-/* STRATIFY_SMART_LEADERS_UI_END */
-
-
 function fmtNumber(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   return new Intl.NumberFormat("en-US").format(value);
@@ -273,20 +229,6 @@ function makeRange(from: number, to: number, label?: string): ActiveRange {
 
 function getSourceYearRange(sourceKey: string, sourceLabel: string): ActiveRange {
   const currentYear = new Date().getFullYear();
-
-  // STRATIFY_SMART_LEADERS_RANGE_FIX
-  const smartLeaderCenturyMatch = sourceKey.match(/^leaders-(\d+)(?:st|nd|rd|th)-century$/i);
-
-  if (smartLeaderCenturyMatch) {
-    const century = Number(smartLeaderCenturyMatch[1]);
-    const from = (century - 1) * 100 + 1;
-    const to =
-      century === smartLeaderUiCurrentCentury()
-        ? Math.min(century * 100, currentYear)
-        : century * 100;
-
-    return makeRange(from, to, `${smartLeaderUiOrdinal(century)} century`);
-  }
 
   const leaderRanges: Record<string, ActiveRange> = {
     "leaders-before-1000-bc": makeRange(-5000, -1001, "Before 1000 BC"),
@@ -521,7 +463,7 @@ function FrequencyPanel({
       <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="grid grid-cols-[120px_minmax(0,1fr)_56px] gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
           <div>{timeLabel}</div>
-          <div>{timeLabel === "Leadership period" ? "Active leaders" : "Event count"}</div>
+          <div>Event count</div>
           <div className="text-right">Count</div>
         </div>
 
@@ -787,7 +729,6 @@ export default function HistoryPage() {
         const qs = new URLSearchParams();
         qs.set("segment", activeSegment);
         qs.set("sourceKey", activeSource.key);
-        if (activeSegment === "leaders" && hasCustomRange) qs.set("manualRange", "1");
         qs.set("page", String(page));
         qs.set("pageSize", String(pageSize));
         if (searchText.trim()) qs.set("q", searchText.trim());
@@ -882,7 +823,6 @@ export default function HistoryPage() {
           const qs = new URLSearchParams();
           qs.set("segment", activeSegment);
           qs.set("sourceKey", activeSource.key);
-        if (activeSegment === "leaders" && hasCustomRange) qs.set("manualRange", "1");
           qs.set("page", String(nextPage));
           qs.set("pageSize", String(fetchPageSize));
 
@@ -1298,7 +1238,7 @@ return (
             onBucketClick={applyBucket}
             canClearRange={hasCustomRange}
             onClearRange={clearRange}
-            timeLabel={activeSegment === "leaders" ? "Leadership period" : isDisasterSegment(activeSegment) ? "Year window" : "Time-period"}
+            timeLabel={isDisasterSegment(activeSegment) ? "Year window" : "Time-period"}
           />
         </section>
 

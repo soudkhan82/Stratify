@@ -192,7 +192,7 @@ function smartLeaderUiOrdinal(value: number) {
       ? "rd"
       : "th";
 
-  return `${n}${suffix}`;
+  return \`\${n}\${suffix}\`;
 }
 
 function smartLeaderUiCurrentCentury() {
@@ -208,8 +208,8 @@ const SMART_LEADER_SOURCE_ITEMS: SourceItem[] = [
     const ordinal = smartLeaderUiOrdinal(century);
 
     return {
-      key: `leaders-${ordinal}-century`,
-      label: `${ordinal} century leaders`,
+      key: \`leaders-\${ordinal}-century\`,
+      label: \`\${ordinal} century leaders\`,
     };
   }),
 ];

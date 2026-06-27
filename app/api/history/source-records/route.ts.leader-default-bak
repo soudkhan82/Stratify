@@ -605,8 +605,6 @@ function parseTableRows(html: string, source: SourcePage) {
     const title = article?.title || titleCell.text;
     const titleKey = keyOf(title);
 
-    if (leaderFakeTitleFix(title)) continue;
-
     if (
       !titleKey ||
       ["date", "event", "result", "conflict", "name of conflict", "leader", "state"].includes(titleKey)
@@ -866,7 +864,51 @@ function leaderAutoAdCenturyFromYear(year: number) {
 }
 
 function leaderAutoCenturySources(century: number): SourcePage[] {
-  return leaderRealCenturySourcesFix(century);
+  const ordinal = leaderAutoOrdinal(century);
+
+  // 19th/20th pages are index pages, so fetch the real sub-pages directly.
+  if (century === 19) {
+    return [
+      {
+        key: "leaders-19th-century",
+        label: "19th century leaders",
+        page: "List_of_state_leaders_in_the_19th_century_(1801%E2%80%931850)",
+        type: "LEADER / RULER",
+      },
+      {
+        key: "leaders-19th-century",
+        label: "19th century leaders",
+        page: "List_of_state_leaders_in_the_19th_century_(1851%E2%80%931900)",
+        type: "LEADER / RULER",
+      },
+    ];
+  }
+
+  if (century === 20) {
+    return [
+      {
+        key: "leaders-20th-century",
+        label: "20th century leaders",
+        page: "List_of_state_leaders_in_the_20th_century_(1901%E2%80%931950)",
+        type: "LEADER / RULER",
+      },
+      {
+        key: "leaders-20th-century",
+        label: "20th century leaders",
+        page: "List_of_state_leaders_in_the_20th_century_(1951%E2%80%932000)",
+        type: "LEADER / RULER",
+      },
+    ];
+  }
+
+  return [
+    {
+      key: `leaders-${ordinal}-century`,
+      label: `${ordinal} century leaders`,
+      page: `List_of_state_leaders_in_the_${ordinal}_century`,
+      type: "LEADER / RULER",
+    },
+  ];
 }
 
 function leaderAutoSourcesForRange(from: number, to: number): SourcePage[] {
@@ -930,105 +972,7 @@ function leaderAutoFilterBySearch(records: HistoryRecord[], query: string) {
   });
 }
 
-
-/* STRATIFY_LEADER_REAL_SOURCE_PAGES_FIX */
-function leaderCenturyOrdinalFix(value: number) {
-  const n = Math.abs(value);
-  const suffix =
-    n % 10 === 1 && n % 100 !== 11
-      ? "st"
-      : n % 10 === 2 && n % 100 !== 12
-      ? "nd"
-      : n % 10 === 3 && n % 100 !== 13
-      ? "rd"
-      : "th";
-
-  return `${n}${suffix}`;
-}
-
-function leaderRealCenturySourcesFix(century: number): SourcePage[] {
-  const ordinal = leaderCenturyOrdinalFix(century);
-
-  if (century === 19) {
-    return [
-      {
-        key: "leaders-19th-century",
-        label: "19th century leaders",
-        page: "List_of_state_leaders_in_the_19th_century_(1801%E2%80%931850)",
-        type: "LEADER / RULER",
-      },
-      {
-        key: "leaders-19th-century",
-        label: "19th century leaders",
-        page: "List_of_state_leaders_in_the_19th_century_(1851%E2%80%931900)",
-        type: "LEADER / RULER",
-      },
-    ];
-  }
-
-  if (century === 20) {
-    return [
-      {
-        key: "leaders-20th-century",
-        label: "20th century leaders",
-        page: "List_of_state_leaders_in_the_20th_century_(1901%E2%80%931950)",
-        type: "LEADER / RULER",
-      },
-      {
-        key: "leaders-20th-century",
-        label: "20th century leaders",
-        page: "List_of_state_leaders_in_the_20th_century_(1951%E2%80%932000)",
-        type: "LEADER / RULER",
-      },
-    ];
-  }
-
-  return [
-    {
-      key: `leaders-${ordinal}-century`,
-      label: `${ordinal} century leaders`,
-      page: `List_of_state_leaders_in_the_${ordinal}_century`,
-      type: "LEADER / RULER",
-    },
-  ];
-}
-
-function leaderFakeTitleFix(value: unknown) {
-  const text = cleanHtml(value);
-  const key = keyOf(text);
-
-  if (!text || !key) return true;
-
-  // Blocks fake rows like "1801-1850", "1851-1900", "20th", "1900s", etc.
-  if (/^\d{1,4}\s*[-–—]\s*\d{1,4}$/.test(text)) return true;
-  if (/^\d{1,2}(st|nd|rd|th)$/i.test(text)) return true;
-  if (/^\d{3,4}s$/i.test(text)) return true;
-  if (/^(ce|ad|bc|bce)$/i.test(text)) return true;
-
-  if (
-    key === "state leaders" ||
-    key === "list of state leaders" ||
-    key === "lists of state leaders" ||
-    key === "complete list" ||
-    key === "timeline" ||
-    key === "century" ||
-    key === "centuries"
-  ) {
-    return true;
-  }
-
-  return false;
-}
-
 function leaderSources(sourceKey: string): SourcePage[] {
-  if (sourceKey === "leaders-19th-century") {
-    return leaderRealCenturySourcesFix(19);
-  }
-
-  if (sourceKey === "leaders-20th-century") {
-    return leaderRealCenturySourcesFix(20);
-  }
-
   return SOURCE_MAP[sourceKey] || SOURCE_MAP["leaders-18th-century"] || SOURCE_MAP["leaders-21st-century"] || [];
 }
 
@@ -1262,14 +1206,11 @@ function parseLeaderListItems(html: string, source: SourcePage) {
   return output;
 }
 
-async function leaderFetchRecords(
-  sourceKey: string,
-  from: number | null = null,
-  to: number | null = null,
-  forceAutoRange = false
-) {
+async function leaderFetchRecords(sourceKey: string, from: number | null = null, to: number | null = null) {
+  // Leaders must follow the selected/manual year range, not the stale dropdown source.
+  // Example: selected source = 6th century, range = 570-632 => fetch 6th + 7th century.
   const sources =
-    forceAutoRange && from !== null && to !== null
+    from !== null && to !== null
       ? leaderAutoSourcesForRange(from, to)
       : leaderSources(sourceKey);
 
@@ -1380,20 +1321,15 @@ async function handleLeadersOnly(req: Request, segment: SegmentKey, sourceKey: s
 
   const query = searchParams.get("q") || searchParams.get("search") || "";
 
-  const isManualLeaderRange =
-    searchParams.get("manualRange") === "1" ||
-    searchParams.get("manualMode") === "true" ||
-    searchParams.get("sourceKey") === "auto-leaders";
-
   const autoSourceLabel =
-    isManualLeaderRange
+    requestedFrom !== null && requestedTo !== null
       ? `Auto leader sources (${Math.min(from, to)}-${Math.max(from, to)})`
       : leaderSourceLabel(safeSourceKey);
 
   let allRecords: HistoryRecord[] = [];
 
   try {
-    allRecords = await leaderFetchRecords(safeSourceKey, from, to, isManualLeaderRange);
+    allRecords = await leaderFetchRecords(safeSourceKey, from, to);
   } catch (error) {
     console.error("Leaders parser failed:", error);
 
@@ -2664,681 +2600,6 @@ async function handleDisastersOnly(req: Request, segment: SegmentKey, sourceKey:
   );
 }
 /* STRATIFY_DISASTERS_SAFE_PARSER_END */
-
-/* STRATIFY_SMART_LEADERS_HANDLER_START */
-
-const SMART_LEADER_HTML_CACHE = new Map<string, string>();
-
-function smartLeaderOrdinal(value: number) {
-  const n = Math.abs(Math.trunc(value));
-  const suffix =
-    n % 10 === 1 && n % 100 !== 11
-      ? "st"
-      : n % 10 === 2 && n % 100 !== 12
-      ? "nd"
-      : n % 10 === 3 && n % 100 !== 13
-      ? "rd"
-      : "th";
-
-  return `${n}${suffix}`;
-}
-
-function smartLeaderCurrentCentury() {
-  return Math.max(21, Math.ceil(new Date().getFullYear() / 100));
-}
-
-function smartLeaderCenturyFromKey(sourceKey: string) {
-  const match = String(sourceKey || "").match(/^leaders-(\d+)(?:st|nd|rd|th)-century$/i);
-  if (!match) return null;
-
-  const century = Number(match[1]);
-  return Number.isFinite(century) ? Math.trunc(century) : null;
-}
-
-function smartLeaderCenturySources(century: number): SourcePage[] {
-  const ordinal = smartLeaderOrdinal(century);
-  const label = `${ordinal} century leaders`;
-
-  // 19th/20th Wikipedia pages are index pages.
-  // Use the detail sub-pages directly.
-  if (century === 19) {
-    return [
-      {
-        key: "leaders-19th-century",
-        label,
-        page: "List_of_state_leaders_in_the_19th_century_(1801%E2%80%931850)",
-        type: "LEADER / RULER",
-      },
-      {
-        key: "leaders-19th-century",
-        label,
-        page: "List_of_state_leaders_in_the_19th_century_(1851%E2%80%931900)",
-        type: "LEADER / RULER",
-      },
-    ];
-  }
-
-  if (century === 20) {
-    return [
-      {
-        key: "leaders-20th-century",
-        label,
-        page: "List_of_state_leaders_in_the_20th_century_(1901%E2%80%931950)",
-        type: "LEADER / RULER",
-      },
-      {
-        key: "leaders-20th-century",
-        label,
-        page: "List_of_state_leaders_in_the_20th_century_(1951%E2%80%932000)",
-        type: "LEADER / RULER",
-      },
-    ];
-  }
-
-  return [
-    {
-      key: `leaders-${ordinal}-century`,
-      label,
-      page: `List_of_state_leaders_in_the_${ordinal}_century`,
-      type: "LEADER / RULER",
-    },
-  ];
-}
-
-function smartLeaderSourcesForSourceKey(sourceKey: string): SourcePage[] {
-  if (sourceKey === "leaders-before-1000-bc") return SOURCE_MAP["leaders-before-1000-bc"] || [];
-  if (sourceKey === "leaders-1000-501-bc") return SOURCE_MAP["leaders-1000-501-bc"] || [];
-  if (sourceKey === "leaders-500-1-bc") return SOURCE_MAP["leaders-500-1-bc"] || [];
-
-  const century = smartLeaderCenturyFromKey(sourceKey);
-
-  if (century !== null) {
-    return smartLeaderCenturySources(century);
-  }
-
-  return smartLeaderCenturySources(20);
-}
-
-function smartLeaderSourcesForRange(from: number, to: number): SourcePage[] {
-  const lo = Math.min(from, to);
-  const hi = Math.max(from, to);
-  const sources: SourcePage[] = [];
-
-  if (lo <= -1001) sources.push(...(SOURCE_MAP["leaders-before-1000-bc"] || []));
-  if (lo <= -501 && hi >= -1000) sources.push(...(SOURCE_MAP["leaders-1000-501-bc"] || []));
-  if (lo <= -1 && hi >= -500) sources.push(...(SOURCE_MAP["leaders-500-1-bc"] || []));
-
-  if (hi >= 1) {
-    const startCentury = Math.max(1, Math.ceil(Math.max(1, lo) / 100));
-    const endCentury = Math.min(smartLeaderCurrentCentury(), Math.ceil(hi / 100));
-
-    for (let century = startCentury; century <= endCentury; century += 1) {
-      sources.push(...smartLeaderCenturySources(century));
-    }
-  }
-
-  const seen = new Set<string>();
-
-  return sources.filter((source) => {
-    if (seen.has(source.page)) return false;
-    seen.add(source.page);
-    return true;
-  });
-}
-
-function smartLeaderDefaultRange(sourceKey: string) {
-  const currentYear = new Date().getFullYear();
-
-  if (sourceKey === "leaders-before-1000-bc") return { from: -5000, to: -1001 };
-  if (sourceKey === "leaders-1000-501-bc") return { from: -1000, to: -501 };
-  if (sourceKey === "leaders-500-1-bc") return { from: -500, to: -1 };
-
-  const century = smartLeaderCenturyFromKey(sourceKey);
-
-  if (century !== null) {
-    const from = (century - 1) * 100 + 1;
-    const to =
-      century === smartLeaderCurrentCentury()
-        ? Math.min(century * 100, currentYear)
-        : century * 100;
-
-    return { from, to };
-  }
-
-  return { from: 1901, to: 2000 };
-}
-
-function smartLeaderClean(value: unknown) {
-  return cleanHtml(value)
-    .replace(/&#91;|&#93;/g, " ")
-    .replace(/\[[^\]]*\]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function smartLeaderIsCitationOrJunk(value: unknown) {
-  const text = smartLeaderClean(value);
-  const key = keyOf(text);
-
-  if (!text || !key) return true;
-
-  if (/^\^/.test(text)) return true;
-  if (/^\d{1,4}\s*[-–—]\s*\d{1,4}$/.test(text)) return true;
-  if (/^\d{1,2}(st|nd|rd|th)$/i.test(text)) return true;
-  if (/^\d{3,4}s$/i.test(text)) return true;
-  if (/^(ce|ad|bc|bce)$/i.test(text)) return true;
-
-  if (
-    /\b(retrieved|archived|archive|isbn|doi|journal|newspaper|magazine|accessed|original on|webarchive|www\.|https?:\/\/|\.com|\.net|\.org)\b/i.test(text)
-  ) {
-    return true;
-  }
-
-  if (
-    key.includes("references") ||
-    key.includes("external links") ||
-    key.includes("bibliography") ||
-    key.includes("further reading") ||
-    key.includes("state leaders by century") ||
-    key.includes("this is a list of state leaders") ||
-    key.includes("v t e")
-  ) {
-    return true;
-  }
-
-  return false;
-}
-
-function smartLeaderTrimHtml(html: string) {
-  const cut = html.search(
-    /<h[2-3][^>]*>\s*<span[^>]*id="(?:References|Notes|Sources|Bibliography|External_links|Further_reading)"/i
-  );
-
-  return cut > 0 ? html.slice(0, cut) : html;
-}
-
-function smartLeaderLeafItems(html: string) {
-  return smartLeaderTrimHtml(html).match(/<li\b[^>]*>(?:(?!<li\b)[\s\S])*?<\/li>/gi) ?? [];
-}
-
-function smartLeaderIsBcSource(source: SourcePage) {
-  return /\bbc\b/i.test(`${source.key} ${source.label} ${source.page}`);
-}
-
-function smartLeaderApplyEra(year: number, era: string, source: SourcePage) {
-  const e = String(era || "").toUpperCase();
-
-  if (e === "BC" || e === "BCE" || (!e && smartLeaderIsBcSource(source))) {
-    return -Math.abs(year);
-  }
-
-  return year;
-}
-
-function smartLeaderExpandShortYear(start: number, endRaw: string) {
-  const cleanEnd = String(endRaw || "").replace(/\D/g, "");
-  const end = Number(cleanEnd);
-
-  if (!Number.isFinite(end)) return start;
-
-  const startAbs = Math.abs(start);
-  const startDigits = String(startAbs).length;
-
-  if (start > 0 && cleanEnd.length < startDigits) {
-    const factor = Math.pow(10, cleanEnd.length);
-    let expanded = Math.floor(start / factor) * factor + end;
-
-    if (expanded < start) expanded += factor;
-
-    return expanded;
-  }
-
-  return end;
-}
-
-function smartLeaderCenturyRange(century: number, era: string, source: SourcePage) {
-  const isBc =
-    String(era || "").toUpperCase() === "BC" ||
-    String(era || "").toUpperCase() === "BCE" ||
-    (!era && smartLeaderIsBcSource(source));
-
-  if (isBc) {
-    return {
-      startYear: -(century * 100),
-      endYear: -((century - 1) * 100 + 1),
-    };
-  }
-
-  return {
-    startYear: (century - 1) * 100 + 1,
-    endYear: century * 100,
-  };
-}
-
-function smartLeaderPeriodFromText(value: string, source: SourcePage) {
-  const safe = smartLeaderClean(value)
-    .split(/\b(?:Retrieved|Archived|Archive|ISBN|doi|Accessed|References|External links)\b/i)[0]
-    .replace(/[−–—]/g, "-")
-    .replace(/\bB\.C\.E?\b/gi, "BC")
-    .replace(/\bC\.E\.\b/gi, "AD")
-    .replace(/\?/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const parentheses = [...safe.matchAll(/\(([^)]{1,180})\)/g)]
-    .map((match) => match[1])
-    .filter(Boolean);
-
-  const candidates = parentheses.length ? parentheses : [safe];
-
-  for (const rawCandidate of candidates) {
-    const candidate = rawCandidate
-      .replace(/\bc\.\s*/gi, "")
-      .replace(/\bca\.\s*/gi, "")
-      .replace(/\bcirca\s*/gi, "")
-      .replace(/\bfl\.\s*/gi, "")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    const century = candidate.match(/\b(\d{1,2})(?:st|nd|rd|th)\s+centur(?:y|ies)\s*(BC|BCE|AD|CE)?/i);
-
-    if (century) {
-      const range = smartLeaderCenturyRange(Number(century[1]), century[2] || "", source);
-
-      return {
-        startYear: Math.min(range.startYear, range.endYear),
-        endYear: Math.max(range.startYear, range.endYear),
-      };
-    }
-
-    const decade = candidate.match(/\b(\d{3,4})s\b\s*(BC|BCE|AD|CE)?/i);
-
-    if (decade) {
-      const start = smartLeaderApplyEra(Number(decade[1]), decade[2] || "", source);
-      const end = start < 0 ? start - 9 : start + 9;
-
-      return {
-        startYear: Math.min(start, end),
-        endYear: Math.max(start, end),
-      };
-    }
-
-    const range = candidate.match(
-      /\b(\d{3,4})(?:\s*\/\s*\d{1,4})?\s*(BC|BCE|AD|CE)?\s*(?:-|to|until|through)\s*(?:c\.\s*)?(\d{1,4})(?:\s*\/\s*\d{1,4})?\s*(BC|BCE|AD|CE)?\b/i
-    );
-
-    if (range) {
-      const startRaw = Number(range[1]);
-      const startEra = range[2] || "";
-      const endRaw = range[3];
-      const endEra = range[4] || startEra || "";
-
-      const start = smartLeaderApplyEra(startRaw, startEra, source);
-      let end = smartLeaderExpandShortYear(start, endRaw);
-      end = smartLeaderApplyEra(end, endEra, source);
-
-      return {
-        startYear: Math.min(start, end),
-        endYear: Math.max(start, end),
-      };
-    }
-
-    const single = candidate.match(/\b(\d{3,4})\s*(BC|BCE|AD|CE)?\b/i);
-
-    if (
-      single &&
-      /\b(king|queen|emperor|empress|ruler|sultan|caliph|prophet|pharaoh|monarch|president|duke|chief|qaghan|khan|shah|prince|regent|imam|emir|pope|doge|maharaja|rajah|tlatoani|oba)\b/i.test(safe)
-    ) {
-      const year = smartLeaderApplyEra(Number(single[1]), single[2] || "", source);
-
-      return {
-        startYear: year,
-        endYear: year,
-      };
-    }
-  }
-
-  return null;
-}
-
-function smartLeaderTitleFromText(value: string) {
-  const safe = smartLeaderClean(value)
-    .split(/\b(?:Retrieved|Archived|Archive|ISBN|doi|Accessed|References|External links)\b/i)[0]
-    .replace(/\([^)]*\)/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  let title = safe;
-
-  if (title.includes(":")) {
-    title = title.split(":").pop() || title;
-  }
-
-  title = title
-    .split(",")[0]
-    .replace(/^\*+/, "")
-    .replace(/^[-–—]+/, "")
-    .replace(/[|]+$/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return title;
-}
-
-function smartLeaderArticleUrl(raw: string) {
-  const links = raw.match(/<a\b[^>]*href="[^"]+"[^>]*>/gi) ?? [];
-
-  for (const link of links) {
-    const href = link.match(/href="([^"]+)"/i)?.[1];
-    if (!href) continue;
-    if (!href.startsWith("/wiki/")) continue;
-    if (href.includes(":")) continue;
-
-    try {
-      return new URL(href, WIKI_ORIGIN).toString();
-    } catch {
-      return null;
-    }
-  }
-
-  return null;
-}
-
-function smartLeaderRecordSpan(record: HistoryRecord) {
-  const rawStart = record.startYear ?? record.year;
-  const rawEnd = record.endYear ?? record.year;
-
-  if (typeof rawStart !== "number" || !Number.isFinite(rawStart)) return null;
-  if (typeof rawEnd !== "number" || !Number.isFinite(rawEnd)) return null;
-
-  return {
-    start: Math.min(rawStart, rawEnd),
-    end: Math.max(rawStart, rawEnd),
-  };
-}
-
-function smartLeaderRecordOverlaps(record: HistoryRecord, from: number, to: number) {
-  const span = smartLeaderRecordSpan(record);
-  if (!span) return false;
-
-  const lo = Math.min(from, to);
-  const hi = Math.max(from, to);
-
-  return span.end >= lo && span.start <= hi;
-}
-
-function smartLeaderNormalizeSearch(value: string) {
-  return keyOf(value)
-    .replace(/\bprophet\b/g, " ")
-    .replace(/\bpbuh\b/g, " ")
-    .replace(/\bpeace be upon him\b/g, " ")
-    .replace(/\bhazrat\b/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function smartLeaderFilterBySearch(records: HistoryRecord[], query: string) {
-  const q = smartLeaderNormalizeSearch(query);
-  if (!q) return records;
-
-  const tokens = q.split(" ").filter(Boolean);
-
-  return records.filter((record) => {
-    const haystack = keyOf(
-      [
-        record.title,
-        record.description,
-        record.type,
-        record.source,
-        record.startYear,
-        record.endYear,
-        record.articleUrl,
-      ].join(" ")
-    );
-
-    return haystack.includes(q) || tokens.every((token) => haystack.includes(token));
-  });
-}
-
-function smartLeaderParseRecords(html: string, source: SourcePage) {
-  const output: HistoryRecord[] = [];
-
-  for (const raw of smartLeaderLeafItems(html)) {
-    const text = smartLeaderClean(raw);
-
-    if (smartLeaderIsCitationOrJunk(text)) continue;
-
-    const period = smartLeaderPeriodFromText(text, source);
-    if (!period) continue;
-
-    const title = smartLeaderTitleFromText(text);
-
-    if (smartLeaderIsCitationOrJunk(title)) continue;
-
-    const key = keyOf(title);
-
-    if (
-      !key ||
-      key.length < 2 ||
-      ["state", "leader", "leaders", "ruler", "rulers", "title", "from", "until", "monarch"].includes(key)
-    ) {
-      continue;
-    }
-
-    output.push(
-      makeRecord({
-        source,
-        title,
-        startYear: period.startYear,
-        endYear: period.endYear,
-        description: text,
-        articleUrl: smartLeaderArticleUrl(raw),
-      })
-    );
-  }
-
-  return output;
-}
-
-async function smartLeaderFetchHtml(page: string) {
-  const cached = SMART_LEADER_HTML_CACHE.get(page);
-  if (cached) return cached;
-
-  const html = await fetchWikiHtml(page);
-  SMART_LEADER_HTML_CACHE.set(page, html);
-
-  return html;
-}
-
-async function smartLeaderFetchRecords(sourceKey: string, from: number, to: number, manualRange: boolean) {
-  const sources = manualRange
-    ? smartLeaderSourcesForRange(from, to)
-    : smartLeaderSourcesForSourceKey(sourceKey);
-
-  const groups = await Promise.all(
-    sources.map(async (source) => {
-      const html = await smartLeaderFetchHtml(source.page);
-      return smartLeaderParseRecords(html, source);
-    })
-  );
-
-  return dedupe(groups.flat()).sort((a, b) => {
-    const ay = smartLeaderRecordSpan(a)?.start ?? 999999;
-    const by = smartLeaderRecordSpan(b)?.start ?? 999999;
-
-    if (ay !== by) return ay - by;
-
-    return a.title.localeCompare(b.title);
-  });
-}
-
-function smartLeaderBuildBuckets(records: HistoryRecord[], from: number, to: number): Bucket[] {
-  const lo = Math.min(from, to);
-  const hi = Math.max(from, to);
-  const span = Math.max(1, hi - lo + 1);
-  const bucketCount = Math.min(10, span);
-
-  const buckets: Bucket[] = Array.from({ length: bucketCount }, (_, index) => {
-    const bucketFrom = lo + Math.floor((index * span) / bucketCount);
-    const bucketTo = lo + Math.floor(((index + 1) * span) / bucketCount) - 1;
-
-    return {
-      bucket: bucketFrom,
-      from: bucketFrom,
-      to: Math.max(bucketFrom, bucketTo),
-      label:
-        bucketFrom === bucketTo
-          ? fmtYear(bucketFrom)
-          : `${fmtYear(bucketFrom)}-${fmtYear(Math.max(bucketFrom, bucketTo))}`,
-      count: 0,
-      pct: 0,
-    };
-  });
-
-  for (const record of records) {
-    for (const bucket of buckets) {
-      if (smartLeaderRecordOverlaps(record, bucket.from, bucket.to)) {
-        bucket.count += 1;
-      }
-    }
-  }
-
-  const maxCount = Math.max(0, ...buckets.map((bucket) => bucket.count));
-
-  return buckets.map((bucket) => ({
-    ...bucket,
-    pct: maxCount
-      ? Math.max(bucket.count > 0 ? 7 : 0, Math.round((bucket.count / maxCount) * 100))
-      : 0,
-  }));
-}
-
-async function handleSmartLeadersOnly(req: Request, segment: SegmentKey, sourceKey: string) {
-  const { searchParams } = new URL(req.url);
-
-  const safeSourceKey = sourceKey || "leaders-20th-century";
-  const defaults = smartLeaderDefaultRange(safeSourceKey);
-
-  const requestedFrom = toInt(searchParams.get("from") || searchParams.get("fromYear"), null);
-  const requestedTo = toInt(searchParams.get("to") || searchParams.get("toYear"), null);
-
-  const from = requestedFrom ?? defaults.from;
-  const to = requestedTo ?? defaults.to;
-
-  const manualRange =
-    searchParams.get("manualRange") === "1" ||
-    searchParams.get("manualMode") === "true" ||
-    searchParams.get("sourceKey") === "auto-leaders";
-
-  const page = Math.max(1, toInt(searchParams.get("page"), 1) ?? 1);
-  const pageSize = Math.max(
-    1,
-    Math.min(1000, toInt(searchParams.get("pageSize") || searchParams.get("rows"), 25) ?? 25)
-  );
-
-  const query = searchParams.get("q") || searchParams.get("search") || "";
-
-  const rangeLabel = `${Math.min(from, to)}-${Math.max(from, to)}`;
-  const sourceLabel = manualRange
-    ? `Auto leader sources (${rangeLabel})`
-    : smartLeaderCenturyFromKey(safeSourceKey)
-    ? `${smartLeaderOrdinal(smartLeaderCenturyFromKey(safeSourceKey) || 20)} century leaders`
-    : safeSourceKey === "leaders-before-1000-bc"
-    ? "Before 1000 BC leaders"
-    : safeSourceKey === "leaders-1000-501-bc"
-    ? "1000-501 BC leaders"
-    : safeSourceKey === "leaders-500-1-bc"
-    ? "500-1 BC leaders"
-    : "20th century leaders";
-
-  try {
-    const allRecords = await smartLeaderFetchRecords(safeSourceKey, from, to, manualRange);
-    const rangedRecords = allRecords.filter((record) => smartLeaderRecordOverlaps(record, from, to));
-    const searchedRecords = smartLeaderFilterBySearch(rangedRecords, query);
-
-    const total = searchedRecords.length;
-    const startIndex = (page - 1) * pageSize;
-    const events = searchedRecords.slice(startIndex, startIndex + pageSize);
-    const buckets = smartLeaderBuildBuckets(rangedRecords, from, to);
-
-    return NextResponse.json(
-      {
-        ok: true,
-        segment,
-        sourceKey: manualRange ? "auto-leaders" : safeSourceKey,
-        sourceLabel,
-        sourceTitle: sourceLabel,
-        page,
-        pageSize,
-        events,
-        records: events,
-        data: events,
-        items: events,
-        total,
-        hasMore: startIndex + pageSize < total,
-        buckets,
-        frequency: buckets,
-        frequencyBuckets: buckets,
-        activeRange: {
-          from: Math.min(from, to),
-          to: Math.max(from, to),
-        },
-        warning: total ? null : "No leader records found for the selected timeframe.",
-        meta: {
-          route: "source-records",
-          branch: "smart-leaders-dynamic-century-parser",
-          hardcodedEvents: false,
-          manualRange,
-          fetchedRecords: allRecords.length,
-          rangedRecords: rangedRecords.length,
-        },
-      },
-      {
-        headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate",
-        },
-      }
-    );
-  } catch (error) {
-    console.error("Smart leaders parser failed:", error);
-
-    return NextResponse.json(
-      {
-        ok: true,
-        segment,
-        sourceKey: safeSourceKey,
-        sourceLabel,
-        sourceTitle: sourceLabel,
-        page,
-        pageSize,
-        events: [],
-        records: [],
-        data: [],
-        items: [],
-        total: 0,
-        hasMore: false,
-        buckets: [],
-        activeRange: {
-          from: Math.min(from, to),
-          to: Math.max(from, to),
-        },
-        warning:
-          error instanceof Error
-            ? `Leaders source failed: ${error.message}`
-            : "Leaders source failed.",
-      },
-      {
-        headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate",
-        },
-      }
-    );
-  }
-}
-
-/* STRATIFY_SMART_LEADERS_HANDLER_END */
-
-
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -3355,7 +2616,7 @@ export async function GET(req: Request) {
     }
 
     if (segment === "leaders") {
-      return await handleSmartLeadersOnly(req, segment, sourceKey);
+      return await handleLeadersOnly(req, segment, sourceKey);
     }
 
     // IMPORTANT:
