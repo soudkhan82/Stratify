@@ -1,3 +1,5 @@
+﻿export type CorporateScope = "sp500" | "global" | "all";
+
 export type CorporateProfile = {
   id?: number;
   symbol: string;
@@ -26,6 +28,20 @@ export type CorporateProfile = {
   geocode_query?: string | null;
   geocoded_at?: string | null;
 
+  iso2?: string | null;
+  iso3?: string | null;
+  region?: string | null;
+  source_universe?: string | null;
+  source_index?: string | null;
+  wikidata_qid?: string | null;
+  wikipedia_title?: string | null;
+  commons_category?: string | null;
+  logo_url?: string | null;
+  image_url?: string | null;
+  market_cap?: number | string | null;
+  currency?: string | null;
+  data_quality_score?: number | string | null;
+
   price?: number | string | null;
   change?: number | string | null;
   change_percent?: number | string | null;
@@ -42,7 +58,6 @@ export type CorporateProfile = {
   quote_source?: string | null;
   quote_updated_at?: string | null;
 
-  market_cap?: number | string | null;
   market_value?: number | string | null;
   market_value_usd?: number | string | null;
 };
@@ -52,7 +67,10 @@ export type CorporateDirectorySummary = {
   sectors: number;
   industries: number;
   countries: number;
+  regions?: number;
+  exchanges?: number;
   enriched_profiles: number;
+  exact_hq_locations?: number;
 };
 
 export type ChartDatum = {

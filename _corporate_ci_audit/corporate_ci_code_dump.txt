@@ -1,0 +1,4418 @@
+﻿===== CORPORATE INTELLIGENCE FILE TREE =====
+
+FullName                                                                             
+--------                                                                             
+C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts                 
+C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts           
+C:\NextJS\stratify\app\api\corporate-intelligence\profiles\refresh\route.ts          
+C:\NextJS\stratify\app\api\corporate-intelligence\quote\route.ts                     
+C:\NextJS\stratify\app\api\corporate-intelligence\sp500\import\route.ts              
+C:\NextJS\stratify\app\api\corporate-intelligence\summary\route.ts                   
+C:\NextJS\stratify\app\api\map\route.ts                                              
+C:\NextJS\stratify\app\api\wiki\country\route.ts.bak-brazil-profile-fix              
+C:\NextJS\stratify\app\components\StratifyMap.tsx                                    
+C:\NextJS\stratify\app\corporate-intelligence\page.tsx                               
+C:\NextJS\stratify\app\corporate-intelligence\_components\CompanyMetricCards.tsx     
+C:\NextJS\stratify\app\corporate-intelligence\_components\CompanyTable.tsx           
+C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateDashboard.tsx     
+C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateDirectoryTable.tsx
+C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateMarketSnapshot.tsx
+C:\NextJS\stratify\app\corporate-intelligence\_components\SectorBreakdown.tsx        
+C:\NextJS\stratify\app\corporate-intelligence\_components\TopCompaniesChart.tsx      
+C:\NextJS\stratify\app\corporate-intelligence\_lib\api.ts                            
+C:\NextJS\stratify\app\corporate-intelligence\_lib\corporateFormatters.ts            
+C:\NextJS\stratify\app\corporate-intelligence\_lib\corporateTypes.ts                 
+C:\NextJS\stratify\app\corporate-intelligence\_lib\types.ts                          
+C:\NextJS\stratify\app\world\components\CountryWikiCard.tsx.bak-brazil-profile-fix   
+C:\NextJS\stratify\types\react-simple-maps.d.ts                                      
+
+
+
+
+===== CORPORATE INTELLIGENCE SEARCH HITS =====
+
+
+===== CORPORATE INTELLIGENCE SOURCE FILES =====
+
+
+================ FILE: C:\NextJS\stratify\app\api\corporate-intelligence\directory\route.ts ================
+
+import { NextResponse } from "next/server";
+import supabase from "@/app/config/supabase-config";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type CompanyRow = {
+  symbol: string;
+  name: string | null;
+  sector: string | null;
+  sub_industry: string | null;
+  headquarters: string | null;
+  date_added: string | null;
+  cik: string | null;
+  founded: string | null;
+  source: string | null;
+};
+
+type ProfileRow = {
+  symbol: string;
+  company_name: string | null;
+  exchange: string | null;
+  sector: string | null;
+  industry: string | null;
+  country: string | null;
+  city: string | null;
+  state: string | null;
+  address: string | null;
+  website: string | null;
+  employees: number | string | null;
+  business_summary: string | null;
+  source: string | null;
+  fetched_at: string | null;
+  hq_lat: number | null;
+  hq_lng: number | null;
+  geocode_provider: string | null;
+  geocode_status: string | null;
+  geocode_query: string | null;
+  geocoded_at: string | null;
+};
+
+function clean(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function fallbackHeadquarters(row: ProfileRow) {
+  const address = clean(row.address);
+  if (address) return address;
+
+  const city = clean(row.city);
+  const state = clean(row.state);
+  const country = clean(row.country || "United States");
+
+  return [city, state, country].filter(Boolean).join(", ") || null;
+}
+
+export async function GET() {
+  try {
+    const [profilesRes, companiesRes] = await Promise.all([
+      supabase
+        .from("ci_corporate_profiles")
+        .select(
+          `
+          symbol,
+          company_name,
+          exchange,
+          sector,
+          industry,
+          country,
+          city,
+          state,
+          address,
+          website,
+          employees,
+          business_summary,
+          source,
+          fetched_at,
+          hq_lat,
+          hq_lng,
+          geocode_provider,
+          geocode_status,
+          geocode_query,
+          geocoded_at
+        `,
+        )
+        .order("symbol", { ascending: true }),
+
+      supabase
+        .from("ci_companies")
+        .select(
+          "symbol, name, sector, sub_industry, headquarters, date_added, cik, founded, source",
+        ),
+    ]);
+
+    if (profilesRes.error) throw profilesRes.error;
+
+    const profiles = (profilesRes.data ?? []) as ProfileRow[];
+    const companies = companiesRes.error
+      ? []
+      : ((companiesRes.data ?? []) as CompanyRow[]);
+
+    const companyMap = new Map(
+      companies.map((company) => [
+        clean(company.symbol).toUpperCase(),
+        company,
+      ]),
+    );
+
+    const rows = profiles
+      .filter((profile) => clean(profile.symbol))
+      .map((profile) => {
+        const symbol = clean(profile.symbol).toUpperCase();
+        const company = companyMap.get(symbol);
+
+        return {
+          symbol,
+          company_name: profile.company_name || company?.name || symbol,
+
+          sector: profile.sector || company?.sector || null,
+
+          industry: profile.industry || company?.sub_industry || null,
+
+          country: profile.country || "United States",
+
+          city: profile.city || null,
+
+          state: profile.state || null,
+
+          headquarters:
+            fallbackHeadquarters(profile) || company?.headquarters || null,
+
+          exchange: profile.exchange || "NYSE/Nasdaq",
+
+          source: profile.source || company?.source || "github_sp500",
+
+          fetched_at: profile.fetched_at || null,
+
+          date_added: company?.date_added || null,
+
+          cik: company?.cik || null,
+
+          founded: company?.founded || null,
+
+          website: profile.website || null,
+
+          employees: profile.employees || null,
+
+          business_summary: profile.business_summary || null,
+
+          hq_lat: profile.hq_lat ?? null,
+
+          hq_lng: profile.hq_lng ?? null,
+
+          geocode_provider: profile.geocode_provider || null,
+
+          geocode_status: profile.geocode_status || null,
+
+          geocode_query: profile.geocode_query || null,
+
+          geocoded_at: profile.geocoded_at || null,
+        };
+      })
+      .sort((a, b) =>
+        String(a.company_name).localeCompare(String(b.company_name)),
+      );
+
+    return NextResponse.json({
+      ok: true,
+      count: rows.length,
+      data: rows,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unable to load corporate directory.";
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: message,
+        count: 0,
+        data: [],
+      },
+      { status: 500 },
+    );
+  }
+}
+
+
+
+================ FILE: C:\NextJS\stratify\app\api\corporate-intelligence\geocode\refresh\route.ts ================
+
+import { NextResponse } from "next/server";
+import supabase from "@/app/config/supabase-config";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type ProfileRow = {
+  symbol: string;
+  company_name: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  hq_lat?: number | null;
+  hq_lng?: number | null;
+  geocode_status?: string | null;
+};
+
+const DEFAULT_LIMIT = 10;
+const MAX_LIMIT = 50;
+
+function clean(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function toNumber(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function buildQuery(row: ProfileRow) {
+  const address = clean(row.address);
+  const city = clean(row.city);
+  const state = clean(row.state);
+  const country = clean(row.country || "United States");
+
+  if (address) {
+    const addressLower = address.toLowerCase();
+
+    const extraParts = [city, state, country].filter((part) => {
+      if (!part) return false;
+      return !addressLower.includes(part.toLowerCase());
+    });
+
+    return [address, ...extraParts].filter(Boolean).join(", ");
+  }
+
+  return [city, state, country].filter(Boolean).join(", ");
+}
+
+async function geocodeOpenCage(query: string, apiKey: string) {
+  const url = `https://api.opencagedata.com/geocode/v1/json?q=${encodeURIComponent(
+    query,
+  )}&key=${encodeURIComponent(apiKey)}&limit=1&no_annotations=1`;
+
+  const res = await fetch(url, {
+    cache: "no-store",
+    headers: {
+      "User-Agent": "Stratify Corporate Intelligence Geocoder",
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`OpenCage failed with status ${res.status}`);
+  }
+
+  const json = await res.json();
+  const first = json?.results?.[0];
+
+  if (!first?.geometry) {
+    return {
+      status: "not_found",
+      lat: null as number | null,
+      lng: null as number | null,
+    };
+  }
+
+  return {
+    status: "success",
+    lat: toNumber(first.geometry.lat),
+    lng: toNumber(first.geometry.lng),
+  };
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function saveGeocode({
+  symbol,
+  lat,
+  lng,
+  status,
+  query,
+}: {
+  symbol: string;
+  lat: number | null;
+  lng: number | null;
+  status: string;
+  query: string | null;
+}) {
+  const { data: affected, error } = await supabase.rpc(
+    "ci_update_profile_geocode",
+    {
+      p_symbol: symbol,
+      p_hq_lat: lat,
+      p_hq_lng: lng,
+      p_geocode_provider: "opencage",
+      p_geocode_status: status,
+      p_geocode_query: query,
+    },
+  );
+
+  if (error) throw error;
+
+  return Number(affected ?? 0);
+}
+
+export async function POST(request: Request) {
+  try {
+    const apiKey = process.env.OPENCAGE_API_KEY;
+
+    if (!apiKey) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Missing OPENCAGE_API_KEY in .env.local / Vercel env.",
+        },
+        { status: 500 },
+      );
+    }
+
+    const body = await request.json().catch(() => null);
+
+    const requestedLimit = Number(body?.limit ?? DEFAULT_LIMIT);
+    const limit =
+      Number.isFinite(requestedLimit) && requestedLimit > 0
+        ? Math.min(requestedLimit, MAX_LIMIT)
+        : DEFAULT_LIMIT;
+
+    const symbols = Array.isArray(body?.symbols)
+      ? body.symbols.map((x: unknown) => clean(x).toUpperCase()).filter(Boolean)
+      : [];
+
+    const { data, error } = await supabase
+      .from("ci_corporate_profiles")
+      .select(
+        `
+        symbol,
+        company_name,
+        address,
+        city,
+        state,
+        country,
+        hq_lat,
+        hq_lng,
+        geocode_status
+      `,
+      )
+      .order("symbol", { ascending: true })
+      .limit(1000);
+
+    if (error) throw error;
+
+    const allRows = (data ?? []) as ProfileRow[];
+
+    const targetRows = allRows
+      .filter((row) => {
+        const symbol = clean(row.symbol).toUpperCase();
+
+        if (symbols.length) {
+          return symbols.includes(symbol);
+        }
+
+        const missingCoords = row.hq_lat == null || row.hq_lng == null;
+        const finalFailedStatus = ["not_found", "skipped_empty_query"].includes(
+          clean(row.geocode_status),
+        );
+
+        return missingCoords && !finalFailedStatus;
+      })
+      .slice(0, limit);
+
+    if (!targetRows.length) {
+      return NextResponse.json({
+        ok: true,
+        provider: "opencage",
+        requested: 0,
+        successCount: 0,
+        failedCount: 0,
+        skippedCount: 0,
+        dbUpdatedCount: 0,
+        message: "No missing geocodes found.",
+        details: [],
+      });
+    }
+
+    const details: any[] = [];
+    let successCount = 0;
+    let failedCount = 0;
+    let skippedCount = 0;
+    let dbUpdatedCount = 0;
+
+    for (const row of targetRows) {
+      const geocodeQuery = buildQuery(row);
+
+      if (!geocodeQuery) {
+        skippedCount += 1;
+
+        const dbUpdated = await saveGeocode({
+          symbol: row.symbol,
+          lat: null,
+          lng: null,
+          status: "skipped_empty_query",
+          query: null,
+        });
+
+        dbUpdatedCount += dbUpdated;
+
+        details.push({
+          symbol: row.symbol,
+          status: "skipped_empty_query",
+          dbUpdated,
+        });
+
+        await sleep(1100);
+        continue;
+      }
+
+      try {
+        const result = await geocodeOpenCage(geocodeQuery, apiKey);
+
+        const dbUpdated = await saveGeocode({
+          symbol: row.symbol,
+          lat: result.lat,
+          lng: result.lng,
+          status: result.status,
+          query: geocodeQuery,
+        });
+
+        dbUpdatedCount += dbUpdated;
+
+        if (result.status === "success") {
+          successCount += 1;
+        } else {
+          failedCount += 1;
+        }
+
+        details.push({
+          symbol: row.symbol,
+          status: result.status,
+          lat: result.lat,
+          lng: result.lng,
+          query: geocodeQuery,
+          dbUpdated,
+        });
+      } catch (err) {
+        failedCount += 1;
+
+        const message =
+          err instanceof Error ? err.message : "Unknown geocode error";
+
+        const dbUpdated = await saveGeocode({
+          symbol: row.symbol,
+          lat: null,
+          lng: null,
+          status: "failed",
+          query: geocodeQuery,
+        });
+
+        dbUpdatedCount += dbUpdated;
+
+        details.push({
+          symbol: row.symbol,
+          status: "failed",
+          error: message,
+          query: geocodeQuery,
+          dbUpdated,
+        });
+      }
+
+      await sleep(1100);
+    }
+
+    return NextResponse.json({
+      ok: true,
+      provider: "opencage",
+      requested: targetRows.length,
+      successCount,
+      failedCount,
+      skippedCount,
+      dbUpdatedCount,
+      details,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to refresh geocodes.";
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: message,
+      },
+      { status: 500 },
+    );
+  }
+}
+
+
+
+================ FILE: C:\NextJS\stratify\app\api\corporate-intelligence\profiles\refresh\route.ts ================
+
+import { NextResponse } from "next/server";
+import supabase from "@/app/config/supabase-config";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const DEFAULT_BATCH_LIMIT = 100;
+const MAX_BATCH_LIMIT = 503;
+
+type CompanyRow = {
+  symbol: string;
+  name: string;
+  sector: string | null;
+  sub_industry: string | null;
+  headquarters: string | null;
+};
+
+type ExistingProfileRow = {
+  symbol: string;
+  fetched_at: string | null;
+};
+
+function parseHeadquarters(value?: string | null) {
+  if (!value) {
+    return {
+      city: null,
+      state: null,
+      country: "United States",
+      address: null,
+    };
+  }
+
+  const cleaned = value.trim();
+  const parts = cleaned
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    return {
+      city: parts[0] ?? null,
+      state: parts[1] ?? null,
+      country: parts[2] ?? "United States",
+      address: cleaned,
+    };
+  }
+
+  return {
+    city: parts[0] ?? null,
+    state: null,
+    country: "United States",
+    address: cleaned,
+  };
+}
+
+function safeDateTime(value: string | null | undefined): number | null {
+  if (!value) return null;
+
+  const time = new Date(value).getTime();
+
+  return Number.isFinite(time) ? time : null;
+}
+
+export async function POST(request: Request) {
+  let limit = DEFAULT_BATCH_LIMIT;
+
+  try {
+    const body = await request.json().catch(() => null);
+
+    if (body?.limit) {
+      const requested = Number(body.limit);
+
+      if (Number.isFinite(requested) && requested > 0) {
+        limit = Math.min(requested, MAX_BATCH_LIMIT);
+      }
+    }
+  } catch {
+    limit = DEFAULT_BATCH_LIMIT;
+  }
+
+  await supabase.rpc("ci_insert_refresh_log", {
+    p_refresh_type: "github_profile_refresh",
+    p_status: "running",
+    p_total_records: 0,
+    p_success_count: 0,
+    p_failed_count: 0,
+    p_message: `Started GitHub-based corporate profile refresh. Limit: ${limit}.`,
+    p_finished_at: null,
+  });
+
+  try {
+    const { data: companies, error: companiesError } = await supabase
+      .from("ci_companies")
+      .select("symbol, name, sector, sub_industry, headquarters")
+      .order("symbol", { ascending: true });
+
+    if (companiesError) throw companiesError;
+
+    const allCompanies = (companies ?? []) as CompanyRow[];
+
+    if (!allCompanies.length) {
+      throw new Error("No companies found. Run S&P 500 import first.");
+    }
+
+    const { data: existing, error: existingError } = await supabase
+      .from("ci_corporate_profiles")
+      .select("symbol, fetched_at")
+      .eq("source", "github_sp500");
+
+    if (existingError) throw existingError;
+
+    const existingRows = (existing ?? []) as ExistingProfileRow[];
+
+    const existingMap = new Map<string, string | null>(
+      existingRows.map((x) => [x.symbol, x.fetched_at]),
+    );
+
+    const batchCompanies = allCompanies
+      .sort((a, b) => {
+        const aRawTime = existingMap.get(a.symbol);
+        const bRawTime = existingMap.get(b.symbol);
+
+        const aTime = safeDateTime(aRawTime);
+        const bTime = safeDateTime(bRawTime);
+
+        // Companies never refreshed should be processed first.
+        if (aTime === null && bTime !== null) return -1;
+        if (aTime !== null && bTime === null) return 1;
+
+        // If both have no valid refresh time, sort alphabetically.
+        if (aTime === null && bTime === null) {
+          return a.symbol.localeCompare(b.symbol);
+        }
+
+        // Both are now valid numbers. Older fetched_at comes first.
+        return (aTime ?? 0) - (bTime ?? 0);
+      })
+      .slice(0, limit);
+
+    const payload = batchCompanies.map((company) => {
+      const location = parseHeadquarters(company.headquarters);
+
+      return {
+        symbol: company.symbol,
+        company_name: company.name,
+        exchange: "NYSE/Nasdaq",
+        sector: company.sector,
+        industry: company.sub_industry,
+        country: location.country,
+        city: location.city,
+        state: location.state,
+        address: location.address,
+        website: null,
+        employees: null,
+        business_summary: null,
+        source: "github_sp500",
+        raw_payload: company,
+        fetched_at: new Date().toISOString(),
+      };
+    });
+
+    let affected = 0;
+
+    if (payload.length) {
+      const { data: rpcAffected, error: rpcError } = await supabase.rpc(
+        "ci_upsert_corporate_profiles",
+        { payload },
+      );
+
+      if (rpcError) throw rpcError;
+
+      affected = Number(rpcAffected ?? 0);
+    }
+
+    await supabase.rpc("ci_insert_refresh_log", {
+      p_refresh_type: "github_profile_refresh",
+      p_status: "success",
+      p_total_records: batchCompanies.length,
+      p_success_count: payload.length,
+      p_failed_count: 0,
+      p_message: `Processed ${batchCompanies.length}. Success: ${payload.length}. Affected: ${affected}.`,
+      p_finished_at: new Date().toISOString(),
+    });
+
+    return NextResponse.json({
+      ok: true,
+      source: "github_sp500",
+      processed: batchCompanies.length,
+      successCount: payload.length,
+      failedCount: 0,
+      affected,
+      message: "Corporate profiles populated from S&P 500 GitHub dataset.",
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unknown corporate profile refresh error.";
+
+    await supabase.rpc("ci_insert_refresh_log", {
+      p_refresh_type: "github_profile_refresh",
+      p_status: "failed",
+      p_total_records: 0,
+      p_success_count: 0,
+      p_failed_count: 1,
+      p_message: message,
+      p_finished_at: new Date().toISOString(),
+    });
+
+    return NextResponse.json(
+      {
+        ok: false,
+        source: "github_sp500",
+        error: message,
+      },
+      { status: 500 },
+    );
+  }
+}
+
+
+
+================ FILE: C:\NextJS\stratify\app\api\corporate-intelligence\quote\route.ts ================
+
+import { NextResponse } from "next/server";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type FinnhubQuote = {
+  c?: number; // current price
+  d?: number; // price change
+  dp?: number; // change percent
+  h?: number; // day high
+  l?: number; // day low
+  o?: number; // open
+  pc?: number; // previous close
+  t?: number; // unix timestamp
+};
+
+type FinnhubMetricResponse = {
+  metric?: Record<string, unknown>;
+  metricType?: string;
+  series?: Record<string, unknown>;
+  symbol?: string;
+};
+
+function normalizeSymbol(value: string | null) {
+  return String(value || "")
+    .trim()
+    .toUpperCase();
+}
+
+function toNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+
+  const n =
+    typeof value === "number"
+      ? value
+      : Number(String(value).replace(/[^0-9.-]/g, ""));
+
+  return Number.isFinite(n) ? n : null;
+}
+
+function pickNumber(
+  source: Record<string, unknown> | undefined,
+  keys: string[],
+) {
+  if (!source) return null;
+
+  for (const key of keys) {
+    const value = toNumber(source[key]);
+    if (value !== null) return value;
+  }
+
+  return null;
+}
+
+function normalizeMarketCap(value: unknown) {
+  const n = toNumber(value);
+  if (n === null) return null;
+
+  // Finnhub marketCapitalization commonly comes in USD millions.
+  return n * 1_000_000;
+}
+
+function normalizeVolumeMillions(value: unknown) {
+  const n = toNumber(value);
+  if (n === null) return null;
+
+  // Finnhub average trading volume metrics commonly come in millions of shares.
+  return n * 1_000_000;
+}
+
+function quoteTime(timestamp?: number) {
+  if (!timestamp || !Number.isFinite(timestamp)) {
+    return new Date().toISOString();
+  }
+
+  return new Date(timestamp * 1000).toISOString();
+}
+
+async function fetchFinnhubJson(url: string) {
+  const response = await fetch(url, {
+    next: { revalidate: 60 },
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(
+      `Finnhub request failed with status ${response.status}${
+        text ? `: ${text.slice(0, 180)}` : ""
+      }`,
+    );
+  }
+
+  return response.json();
+}
+
+export async function GET(req: Request) {
+  try {
+    const apiKey = process.env.FINNHUB_API_KEY;
+
+    if (!apiKey) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Missing FINNHUB_API_KEY. Add it in .env.local and Vercel Environment Variables.",
+        },
+        { status: 500 },
+      );
+    }
+
+    const { searchParams } = new URL(req.url);
+    const symbol = normalizeSymbol(
+      searchParams.get("ticker") || searchParams.get("symbol"),
+    );
+
+    if (!symbol) {
+      return NextResponse.json(
+        { ok: false, error: "Ticker/symbol is required." },
+        { status: 400 },
+      );
+    }
+
+    const token = encodeURIComponent(apiKey);
+    const encodedSymbol = encodeURIComponent(symbol);
+
+    const quoteUrl = `https://finnhub.io/api/v1/quote?symbol=${encodedSymbol}&token=${token}`;
+    const metricUrl = `https://finnhub.io/api/v1/stock/metric?symbol=${encodedSymbol}&metric=all&token=${token}`;
+
+    const [quoteRaw, metricRaw] = await Promise.all([
+      fetchFinnhubJson(quoteUrl),
+      fetchFinnhubJson(metricUrl),
+    ]);
+
+    const quote = quoteRaw as FinnhubQuote;
+    const metricPayload = metricRaw as FinnhubMetricResponse;
+    const metric = metricPayload?.metric || {};
+
+    const price = toNumber(quote.c);
+
+    if (price === null || price <= 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          symbol,
+          error:
+            "Finnhub returned no valid quote for this symbol. Check symbol support or market status.",
+        },
+        { status: 404 },
+      );
+    }
+
+    const avgVolumeRaw = pickNumber(metric, [
+      "3MonthAverageTradingVolume",
+      "10DayAverageTradingVolume",
+    ]);
+
+    const tenDayVolumeRaw = pickNumber(metric, [
+      "10DayAverageTradingVolume",
+      "3MonthAverageTradingVolume",
+    ]);
+
+    const data = {
+      symbol,
+      price,
+      change: toNumber(quote.d),
+      change_percent: toNumber(quote.dp),
+
+      // Quote endpoint does not return volume, so we use Finnhub average volume metrics.
+      volume: normalizeVolumeMillions(tenDayVolumeRaw),
+      avg_volume: normalizeVolumeMillions(avgVolumeRaw),
+
+      live_market_cap: normalizeMarketCap(
+        pickNumber(metric, ["marketCapitalization"]),
+      ),
+
+      day_low: toNumber(quote.l),
+      day_high: toNumber(quote.h),
+      open: toNumber(quote.o),
+      previous_close: toNumber(quote.pc),
+
+      year_low: pickNumber(metric, ["52WeekLow"]),
+      year_high: pickNumber(metric, ["52WeekHigh"]),
+
+      pe: pickNumber(metric, [
+        "peBasicExclExtraTTM",
+        "peNormalizedAnnual",
+        "peTTM",
+      ]),
+
+      eps: pickNumber(metric, [
+        "epsBasicExclExtraItemsTTM",
+        "epsNormalizedAnnual",
+        "epsInclExtraItemsTTM",
+      ]),
+
+      quote_time: quoteTime(quote.t),
+      quote_source: "Finnhub",
+      quote_updated_at: new Date().toISOString(),
+    };
+
+    return NextResponse.json(
+      {
+        ok: true,
+        source: "Finnhub",
+        ticker: symbol,
+        quote: data,
+      },
+      {
+        headers: {
+          "Cache-Control": "s-maxage=60, stale-while-revalidate=120",
+        },
+      },
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unable to fetch Finnhub quote.";
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: message,
+      },
+      { status: 500 },
+    );
+  }
+}
+
+
+
+================ FILE: C:\NextJS\stratify\app\api\corporate-intelligence\sp500\import\route.ts ================
+
+import { NextResponse } from "next/server";
+import supabase from "@/app/config/supabase-config";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const SP500_CSV_URL =
+  "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv";
+
+type CsvRow = Record<string, string>;
+
+function parseCsv(text: string): CsvRow[] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (char === '"' && quoted && next === '"') {
+      cell += '"';
+      i++;
+      continue;
+    }
+
+    if (char === '"') {
+      quoted = !quoted;
+      continue;
+    }
+
+    if (char === "," && !quoted) {
+      row.push(cell);
+      cell = "";
+      continue;
+    }
+
+    if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && next === "\n") i++;
+      row.push(cell);
+
+      if (row.some((x) => x.trim() !== "")) rows.push(row);
+
+      row = [];
+      cell = "";
+      continue;
+    }
+
+    cell += char;
+  }
+
+  if (cell || row.length) {
+    row.push(cell);
+    if (row.some((x) => x.trim() !== "")) rows.push(row);
+  }
+
+  const headers = rows[0]?.map((h) => h.trim()) ?? [];
+
+  return rows.slice(1).map((line) => {
+    const item: CsvRow = {};
+    headers.forEach((header, index) => {
+      item[header] = (line[index] ?? "").trim();
+    });
+    return item;
+  });
+}
+
+function cleanDate(value?: string) {
+  if (!value) return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  return trimmed;
+}
+
+function cleanCik(value?: string) {
+  if (!value) return null;
+
+  const digits = value.replace(/\D/g, "");
+  return digits ? digits.padStart(10, "0") : null;
+}
+
+export async function POST() {
+  const startedAt = new Date().toISOString();
+
+  await supabase.rpc("ci_insert_refresh_log", {
+    p_refresh_type: "sp500_import",
+    p_status: "running",
+    p_total_records: 0,
+    p_success_count: 0,
+    p_failed_count: 0,
+    p_message: "Started S&P 500 import from GitHub dataset.",
+    p_finished_at: null,
+  });
+
+  try {
+    const response = await fetch(SP500_CSV_URL, {
+      cache: "no-store",
+      headers: {
+        "User-Agent": "Stratify Corporate Intelligence",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`GitHub CSV fetch failed with status ${response.status}`);
+    }
+
+    const csvText = await response.text();
+    const rows = parseCsv(csvText);
+
+    const payload = rows
+      .map((row) => ({
+        symbol: row.Symbol,
+        name: row.Security,
+        sector: row["GICS Sector"] || null,
+        sub_industry: row["GICS Sub-Industry"] || null,
+        headquarters: row["Headquarters Location"] || null,
+        date_added: cleanDate(row["Date added"]),
+        cik: cleanCik(row.CIK),
+        founded: row.Founded || null,
+        source: "github_sp500",
+      }))
+      .filter((row) => row.symbol && row.name);
+
+    const { data: affected, error } = await supabase.rpc("ci_upsert_companies", {
+      payload,
+    });
+
+    if (error) throw error;
+
+    await supabase.rpc("ci_insert_refresh_log", {
+      p_refresh_type: "sp500_import",
+      p_status: "success",
+      p_total_records: payload.length,
+      p_success_count: Number(affected ?? payload.length),
+      p_failed_count: 0,
+      p_message: `Imported / updated ${payload.length} S&P 500 companies. Started at ${startedAt}.`,
+      p_finished_at: new Date().toISOString(),
+    });
+
+    return NextResponse.json({
+      ok: true,
+      imported: payload.length,
+      affected: Number(affected ?? 0),
+      message: "S&P 500 companies imported successfully.",
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown S&P 500 import error.";
+
+    await supabase.rpc("ci_insert_refresh_log", {
+      p_refresh_type: "sp500_import",
+      p_status: "failed",
+      p_total_records: 0,
+      p_success_count: 0,
+      p_failed_count: 1,
+      p_message: message,
+      p_finished_at: new Date().toISOString(),
+    });
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: message,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+
+
+================ FILE: C:\NextJS\stratify\app\api\corporate-intelligence\summary\route.ts ================
+
+import { NextResponse } from "next/server";
+import supabase from "@/app/config/supabase-config";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type ProfileRow = {
+  symbol: string | null;
+  sector: string | null;
+  industry: string | null;
+  country: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  website: string | null;
+  business_summary: string | null;
+  hq_lat: number | null;
+  hq_lng: number | null;
+};
+
+function clean(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function uniqueCount(values: unknown[]) {
+  return new Set(values.map(clean).filter(Boolean)).size;
+}
+
+export async function GET() {
+  try {
+    const { data, error } = await supabase.from("ci_corporate_profiles").select(
+      `
+        symbol,
+        sector,
+        industry,
+        country,
+        address,
+        city,
+        state,
+        website,
+        business_summary,
+        hq_lat,
+        hq_lng
+      `,
+    );
+
+    if (error) throw error;
+
+    const rows = (data ?? []) as ProfileRow[];
+
+    const enrichedProfiles = rows.filter((row) => {
+      return (
+        clean(row.address) ||
+        clean(row.city) ||
+        clean(row.state) ||
+        clean(row.website) ||
+        clean(row.business_summary) ||
+        (row.hq_lat !== null && row.hq_lng !== null)
+      );
+    }).length;
+
+    return NextResponse.json({
+      ok: true,
+      data: {
+        total_companies: rows.length,
+        sectors: uniqueCount(rows.map((row) => row.sector)),
+        industries: uniqueCount(rows.map((row) => row.industry)),
+        countries: uniqueCount(
+          rows.map((row) => row.country || "United States"),
+        ),
+        enriched_profiles: enrichedProfiles,
+      },
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unable to load corporate directory summary.";
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: message,
+        data: {
+          total_companies: 0,
+          sectors: 0,
+          industries: 0,
+          countries: 0,
+          enriched_profiles: 0,
+        },
+      },
+      { status: 500 },
+    );
+  }
+}
+
+
+
+================ FILE: C:\NextJS\stratify\app\api\map\route.ts ================
+
+// app/api/map/route.ts
+import { NextResponse } from "next/server";
+import supabase from "@/app/config/supabase-config";
+
+/* =======================
+   Types
+======================= */
+
+type MapRow = {
+  iso3: string;
+  country: string;
+  region: string | null;
+  value: number;
+};
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function asString(v: unknown, fallback = ""): string {
+  return typeof v === "string" ? v : fallback;
+}
+function asNumber(v: unknown, fallback = 0): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+}
+function coerceMapRows(payload: unknown): MapRow[] {
+  if (!Array.isArray(payload)) return [];
+  return payload.map((r): MapRow => {
+    if (!isRecord(r)) return { iso3: "", country: "", region: null, value: 0 };
+    return {
+      iso3: asString(r.iso3),
+      country: asString(r.country),
+      region: typeof r.region === "string" ? r.region : null,
+      value: asNumber(r.value),
+    };
+  });
+}
+
+/* =======================
+   Micro-cache + in-flight dedupe
+======================= */
+
+type CacheEntry = { ts: number; rows: MapRow[] };
+const TTL_MS = 60_000;
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __MAP_CACHE__: Map<string, CacheEntry> | undefined;
+  // eslint-disable-next-line no-var
+  var __MAP_INFLIGHT__: Map<string, Promise<MapRow[]>> | undefined;
+}
+
+const CACHE = global.__MAP_CACHE__ ?? new Map<string, CacheEntry>();
+global.__MAP_CACHE__ = CACHE;
+
+const INFLIGHT =
+  global.__MAP_INFLIGHT__ ?? new Map<string, Promise<MapRow[]>>();
+global.__MAP_INFLIGHT__ = INFLIGHT;
+
+function normalizeRegion(regionRaw: string | null) {
+  const r = (regionRaw ?? "").trim();
+  if (!r || r === "ALL" || r === "null" || r === "undefined") return null;
+  return r;
+}
+function cacheKey(indicator: string, region: string | null) {
+  return `${indicator}__${region ?? "WORLD"}`;
+}
+
+async function withTimeout<T>(
+  p: PromiseLike<T>,
+  ms: number,
+  label = "Timeout",
+) {
+  let t: any;
+  const realPromise = Promise.resolve(p);
+  const timeout = new Promise<T>((_, rej) => {
+    t = setTimeout(() => rej(new Error(label)), ms);
+  });
+  try {
+    return await Promise.race([realPromise, timeout]);
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/* =======================
+   Handler
+======================= */
+
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+
+  const indicator = (searchParams.get("indicator") ?? "SP.POP.TOTL").trim();
+  const region = normalizeRegion(searchParams.get("region"));
+
+  // âœ… If you created the optimized RPC: public.fetch_map_wdi_fast(...)
+  // Set this to the latest available year column in wdi_dataset (e.g. 2023 or 2022).
+  // Keeping it fixed avoids extra metadata work and prevents slow "latest year" scans.
+  const FIXED_YEAR = 2023; // <-- change to 2022 if your dataset ends at 2022
+
+  const key = cacheKey(indicator, region);
+
+  // âœ… Serve cache
+  const cached = CACHE.get(key);
+  if (cached && Date.now() - cached.ts < TTL_MS) {
+    return NextResponse.json({ rows: cached.rows }, { status: 200 });
+  }
+
+  // âœ… Deduplicate in-flight requests
+  const inflight = INFLIGHT.get(key);
+  if (inflight) {
+    const rows = await inflight.catch(() => []);
+    return NextResponse.json({ rows }, { status: 200 });
+  }
+
+  const job = (async (): Promise<MapRow[]> => {
+    // âœ… Use FAST RPC (avoids jsonb_each_text per row)
+    const rpcThenable = supabase
+      .rpc("fetch_map_wdi_fast", {
+        p_indicator: indicator,
+        p_region: region,
+        p_year: FIXED_YEAR,
+      })
+      .throwOnError()
+      .then(({ data }) => data);
+
+    const data = await withTimeout(
+      rpcThenable,
+      20_000,
+      "RPC timeout (fetch_map_wdi_fast)",
+    );
+
+    const rows = coerceMapRows(data as unknown)
+      .filter((r) => r.iso3 && r.country)
+      .map((r) => ({ ...r, iso3: r.iso3.toUpperCase() }));
+
+    return rows;
+  })();
+
+  INFLIGHT.set(key, job);
+
+  try {
+    const rows = await job;
+    CACHE.set(key, { ts: Date.now(), rows });
+    return NextResponse.json({ rows }, { status: 200 });
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: e?.message || "Failed to load map data", rows: [] },
+      { status: 500 },
+    );
+  } finally {
+    INFLIGHT.delete(key);
+  }
+}
+
+
+
+================ FILE: C:\NextJS\stratify\app\components\StratifyMap.tsx ================
+
+"use client";
+
+import type React from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ComposableMap,
+  Geographies,
+  Geography,
+  ZoomableGroup,
+} from "@vnedyalk0v/react19-simple-maps";
+
+import { scaleQuantile } from "d3-scale";
+import { interpolateBlues } from "d3-scale-chromatic";
+
+import isoCountries from "i18n-iso-countries";
+import enLocale from "i18n-iso-countries/langs/en.json";
+
+/* register once */
+let __ISO_INIT__ = false;
+function initIso() {
+  if (__ISO_INIT__) return;
+  isoCountries.registerLocale(enLocale as any);
+  __ISO_INIT__ = true;
+}
+
+/* =======================
+   Types
+======================= */
+
+export type StratifyMapRow = {
+  iso3: string;
+  country: string;
+  region: string | null;
+  value: number;
+};
+
+type Props = {
+  rows: StratifyMapRow[];
+  topoJsonUrl: string;
+  selectedIso3: string | null;
+  onSelectIso3?: (iso3: string) => void;
+  indicatorLabel: string;
+  indicatorUnit?: string;
+};
+
+type GeoProps = {
+  name?: unknown;
+  NAME?: unknown;
+  NAME_LONG?: unknown;
+
+  ISO_A3?: unknown;
+  ADM0_A3?: unknown;
+  SOV_A3?: unknown;
+  WB_A3?: unknown;
+  ISO3?: unknown;
+  iso3?: unknown;
+  iso_a3?: unknown;
+};
+
+type TooltipState = {
+  show: boolean;
+  x: number;
+  y: number;
+  iso3: string;
+  country: string;
+  region: string | null;
+  value?: number;
+};
+
+/* =======================
+   Helpers
+======================= */
+
+function cleanISO3(v: unknown): string {
+  return String(v ?? "")
+    .trim()
+    .toUpperCase();
+}
+function isValidISO3(v: unknown): v is string {
+  return typeof v === "string" && /^[A-Z]{3}$/.test(v);
+}
+function fmtNumber(v?: number): string {
+  if (!Number.isFinite(v)) return "â€”";
+  const n = v as number;
+  if (Math.abs(n) >= 1e12) return `${(n / 1e12).toFixed(2)}T`;
+  if (Math.abs(n) >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+  if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+  if (Math.abs(n) >= 1e3) return n.toLocaleString();
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+function getLocalXY(e: React.MouseEvent<SVGPathElement, MouseEvent>): {
+  x: number;
+  y: number;
+} {
+  const svg = e.currentTarget.ownerSVGElement;
+  const rect = svg?.getBoundingClientRect();
+  return {
+    x: rect ? e.clientX - rect.left : e.clientX,
+    y: rect ? e.clientY - rect.top : e.clientY,
+  };
+}
+
+function iso3FromGeo(geo: unknown): string {
+  initIso();
+  const g = geo as any;
+  const p = (g?.properties ?? {}) as GeoProps;
+
+  const propCand = [
+    p.ISO_A3,
+    p.ADM0_A3,
+    p.SOV_A3,
+    p.WB_A3,
+    p.ISO3,
+    p.iso3,
+    p.iso_a3,
+  ]
+    .map(cleanISO3)
+    .find((x) => isValidISO3(x) && x !== "ATA" && x !== "-99");
+
+  if (propCand) return propCand;
+
+  const rawId = String(g?.id ?? "").trim();
+  if (rawId) {
+    const num = rawId.padStart(3, "0");
+    const a3 = isoCountries.numericToAlpha3(num);
+    const iso3 = cleanISO3(a3);
+    if (isValidISO3(iso3)) return iso3;
+  }
+
+  return "";
+}
+
+/**
+ * centroid of Polygon/MultiPolygon using bbox center.
+ * (Good enough to separate mainland France vs French Guiana in world-atlas@2.)
+ */
+function centroidLonLat(geo: any): [number, number] | null {
+  const geom = geo?.geometry;
+  if (!geom) return null;
+
+  const coords = geom.coordinates;
+  if (!coords) return null;
+
+  let minLon = Infinity,
+    minLat = Infinity,
+    maxLon = -Infinity,
+    maxLat = -Infinity;
+
+  function visitPoint(pt: any) {
+    const lon = Number(pt?.[0]);
+    const lat = Number(pt?.[1]);
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
+    if (lon < minLon) minLon = lon;
+    if (lat < minLat) minLat = lat;
+    if (lon > maxLon) maxLon = lon;
+    if (lat > maxLat) maxLat = lat;
+  }
+
+  // Polygon: [ [ [lon,lat], ... ] , [hole...], ... ]
+  // MultiPolygon: [ Polygon, Polygon, ... ]
+  if (geom.type === "Polygon") {
+    for (const ring of coords) for (const pt of ring) visitPoint(pt);
+  } else if (geom.type === "MultiPolygon") {
+    for (const poly of coords)
+      for (const ring of poly) for (const pt of ring) visitPoint(pt);
+  } else {
+    return null;
+  }
+
+  if (!Number.isFinite(minLon) || !Number.isFinite(minLat)) return null;
+  return [(minLon + maxLon) / 2, (minLat + maxLat) / 2];
+}
+
+/**
+ * âœ… FIX for world-atlas@2: FRA appears twice (mainland + overseas).
+ * Remove the overseas FRA piece(s) by longitude (western hemisphere).
+ */
+function isFranceDuplicateGeo(geo: any): boolean {
+  const iso = iso3FromGeo(geo);
+  if (iso !== "FRA") return false;
+
+  const c = centroidLonLat(geo);
+  if (!c) return false;
+
+  const [lon] = c;
+
+  // Mainland France ~ +2 lon. French Guiana ~ -53 lon.
+  // Remove any FRA geometry far west.
+  return lon < -20;
+}
+
+/* =======================
+   Component
+======================= */
+
+export default function StratifyMap({
+  rows,
+  topoJsonUrl,
+  selectedIso3,
+  onSelectIso3,
+  indicatorLabel,
+  indicatorUnit,
+}: Props) {
+  const [zoom, setZoom] = useState<number>(1);
+
+  const [tip, setTip] = useState<TooltipState>({
+    show: false,
+    x: 0,
+    y: 0,
+    iso3: "",
+    country: "",
+    region: null,
+    value: undefined,
+  });
+
+  const [geoData, setGeoData] = useState<any>(null);
+  const [geoErr, setGeoErr] = useState<string | null>(null);
+  const [geoLoading, setGeoLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    let alive = true;
+    async function load() {
+      try {
+        setGeoErr(null);
+        setGeoLoading(true);
+
+        const url = topoJsonUrl.includes("?")
+          ? `${topoJsonUrl}&v=1`
+          : `${topoJsonUrl}?v=1`;
+
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok)
+          throw new Error(
+            `TopoJSON fetch failed: ${res.status} ${res.statusText}`,
+          );
+
+        const json = await res.json();
+        if (!alive) return;
+        setGeoData(json);
+      } catch (e: any) {
+        if (!alive) return;
+        setGeoErr(e?.message || "Failed to load map data");
+        setGeoData(null);
+      } finally {
+        if (!alive) return;
+        setGeoLoading(false);
+      }
+    }
+    load();
+    return () => {
+      alive = false;
+    };
+  }, [topoJsonUrl]);
+
+  const selected = selectedIso3 ? selectedIso3.toUpperCase() : null;
+
+  const rowByIso = useMemo(() => {
+    const m = new Map<string, StratifyMapRow>();
+    for (const r of rows || []) {
+      const iso = cleanISO3(r.iso3);
+      if (isValidISO3(iso) && !m.has(iso)) m.set(iso, r);
+    }
+    return m;
+  }, [rows]);
+
+  const valueByIso = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of rows || []) {
+      const iso = cleanISO3(r.iso3);
+      const v = Number(r.value);
+      if (isValidISO3(iso) && Number.isFinite(v)) m.set(iso, v);
+    }
+    return m;
+  }, [rows]);
+
+  const values = useMemo(() => Array.from(valueByIso.values()), [valueByIso]);
+
+  const quant = useMemo(() => {
+    if (!values.length) return null;
+    return scaleQuantile<number>()
+      .domain(values)
+      .range([0.2, 0.35, 0.5, 0.65, 0.8, 0.95]);
+  }, [values]);
+
+  const MISSING_FILL = "#e5e7eb";
+  const STROKE = "#94a3b8";
+  const HOVER_FILL = "#64748b";
+  const SELECT_STROKE = "#1f2937";
+
+  const legendStops = [0.2, 0.35, 0.5, 0.65, 0.8, 0.95];
+
+  return (
+    <div className="relative rounded-xl border bg-white p-3">
+      {geoLoading ? (
+        <div className="mb-2 rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          Loading mapâ€¦
+        </div>
+      ) : geoErr ? (
+        <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          {geoErr}
+        </div>
+      ) : null}
+
+      {/* Zoom controls */}
+      <div className="absolute right-3 top-3 z-10 flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={() => setZoom((z) => clamp(z * 1.3, 1, 8))}
+          className="h-9 w-9 rounded-lg border bg-white shadow text-sm font-bold"
+          aria-label="Zoom in"
+          title="Zoom in"
+        >
+          +
+        </button>
+        <button
+          type="button"
+          onClick={() => setZoom((z) => clamp(z / 1.3, 1, 8))}
+          className="h-9 w-9 rounded-lg border bg-white shadow text-sm font-bold"
+          aria-label="Zoom out"
+          title="Zoom out"
+        >
+          âˆ’
+        </button>
+        <button
+          type="button"
+          onClick={() => setZoom(1)}
+          className="h-9 w-9 rounded-lg border bg-white shadow text-[11px] font-bold"
+          aria-label="Reset zoom"
+          title="Reset"
+        >
+          âŸ³
+        </button>
+      </div>
+
+      {/* Tooltip */}
+      {tip.show ? (
+        <div
+          className="pointer-events-none absolute z-20 max-w-[260px] rounded-lg border bg-white/95 px-3 py-2 text-xs shadow-lg"
+          style={{ left: tip.x + 12, top: Math.max(tip.y - 10, 0) }}
+        >
+          <div className="text-[11px] font-semibold text-slate-900">
+            {tip.country}{" "}
+            <span className="font-normal text-slate-500">({tip.iso3})</span>
+          </div>
+
+          {tip.region ? (
+            <div className="mt-0.5 text-[11px] text-slate-600">
+              Region: {tip.region}
+            </div>
+          ) : null}
+
+          <div className="mt-1 border-t pt-1 text-[11px] text-slate-700">
+            <span className="font-medium">{indicatorLabel}:</span>{" "}
+            <span className="font-semibold text-slate-900">
+              {fmtNumber(tip.value)}
+            </span>
+            {indicatorUnit ? (
+              <span className="text-slate-500"> {indicatorUnit}</span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      <ComposableMap
+        projection="geoMercator"
+        width={1200}
+        height={600}
+        style={{ width: "100%", height: "auto" }}
+      >
+        <ZoomableGroup zoom={zoom}>
+          <Geographies
+            geography={geoData ?? { type: "FeatureCollection", features: [] }}
+          >
+            {({ geographies }: any) => (
+              <>
+                {(geographies as any[]).map((geo, idx) => {
+                  // âœ… FIX: remove France overseas duplicate
+                  if (isFranceDuplicateGeo(geo)) return null;
+
+                  const iso3 = iso3FromGeo(geo);
+                  const dbRow = iso3 ? rowByIso.get(iso3) : undefined;
+                  const value = iso3 ? valueByIso.get(iso3) : undefined;
+
+                  const isSelected = !!selected && !!iso3 && iso3 === selected;
+
+                  const fillColor =
+                    value !== undefined && quant
+                      ? interpolateBlues(quant(value)!)
+                      : MISSING_FILL;
+
+                  const props = (geo as any)?.properties as
+                    | GeoProps
+                    | undefined;
+                  const geoName = String((props as any)?.name ?? "").trim();
+                  const countryName =
+                    dbRow?.country?.trim() || geoName || iso3 || "â€”";
+
+                  const key =
+                    (geo as any)?.rsmKey ??
+                    (geo as any)?.id ??
+                    `${iso3 || "geo"}-${idx}`;
+
+                  return (
+                    <Geography
+                      key={key}
+                      geography={geo}
+                      fill={fillColor}
+                      stroke={isSelected ? SELECT_STROKE : STROKE}
+                      strokeWidth={isSelected ? 1.2 : 0.8}
+                      style={{
+                        default: {
+                          fill: fillColor,
+                          stroke: isSelected ? SELECT_STROKE : STROKE,
+                          strokeWidth: isSelected ? 1.2 : 0.8,
+                          outline: "none",
+                          cursor: iso3 ? "pointer" : "default",
+                          opacity: 1,
+                        },
+                        hover: {
+                          fill: HOVER_FILL,
+                          stroke: SELECT_STROKE,
+                          strokeWidth: 1.2,
+                          outline: "none",
+                          opacity: 1,
+                        },
+                        pressed: {
+                          fill: fillColor,
+                          stroke: SELECT_STROKE,
+                          strokeWidth: 1.2,
+                          outline: "none",
+                        },
+                      }}
+                      onClick={() => {
+                        if (!iso3) return;
+                        onSelectIso3?.(iso3);
+                      }}
+                      onMouseEnter={(
+                        e: React.MouseEvent<SVGPathElement, MouseEvent>,
+                      ) => {
+                        if (!iso3) return;
+                        const { x, y } = getLocalXY(e);
+                        setTip({
+                          show: true,
+                          x,
+                          y,
+                          iso3,
+                          country: countryName,
+                          region: dbRow?.region ?? null,
+                          value,
+                        });
+                      }}
+                      onMouseMove={(
+                        e: React.MouseEvent<SVGPathElement, MouseEvent>,
+                      ) => {
+                        if (!iso3) return;
+                        const { x, y } = getLocalXY(e);
+                        setTip((prev) =>
+                          prev.show && prev.iso3 === iso3
+                            ? { ...prev, x, y }
+                            : prev,
+                        );
+                      }}
+                      onMouseLeave={() =>
+                        setTip((p) => ({ ...p, show: false }))
+                      }
+                    />
+                  );
+                })}
+              </>
+            )}
+          </Geographies>
+        </ZoomableGroup>
+      </ComposableMap>
+
+      {/* Legend */}
+      <div className="mt-3 flex items-center justify-end text-xs text-slate-500">
+        <div className="flex items-center gap-1">
+          <span>Low</span>
+          {legendStops.map((t) => (
+            <div
+              key={t}
+              className="h-3 w-5"
+              style={{ background: interpolateBlues(t) }}
+            />
+          ))}
+          <span>High</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+================ FILE: C:\NextJS\stratify\app\corporate-intelligence\_components\CompanyMetricCards.tsx ================
+
+import { Building2, DollarSign, Layers3, TrendingUp } from "lucide-react";
+import type { CorporateSummary } from "../_lib/corporateTypes";
+import { formatCompactCurrency, formatNumber } from "../_lib/corporateFormatters";
+
+type Props = {
+  summary: CorporateSummary | null;
+  loading: boolean;
+};
+
+export default function CompanyMetricCards({ summary, loading }: Props) {
+  const cards = [
+    {
+      label: "Companies",
+      value: loading ? "..." : formatNumber(summary?.totalCompanies ?? 0, 0),
+      icon: Building2,
+    },
+    {
+      label: "Sectors",
+      value: loading ? "..." : formatNumber(summary?.sectors ?? 0, 0),
+      icon: Layers3,
+    },
+    {
+      label: "Total Market Cap",
+      value: loading ? "..." : formatCompactCurrency(summary?.totalMarketCap ?? 0),
+      icon: DollarSign,
+    },
+    {
+      label: "Average P/E",
+      value: loading ? "..." : formatNumber(summary?.avgPeRatio ?? 0, 2),
+      icon: TrendingUp,
+    },
+  ];
+
+  return (
+    <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {cards.map((card) => {
+        const Icon = card.icon;
+
+        return (
+          <div
+            key={card.label}
+            className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {card.label}
+                </p>
+                <p className="mt-2 text-2xl font-bold text-slate-950">{card.value}</p>
+              </div>
+
+              <div className="rounded-2xl bg-slate-100 p-3 text-slate-700">
+                <Icon className="h-5 w-5" />
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+
+
+================ FILE: C:\NextJS\stratify\app\corporate-intelligence\_components\CompanyTable.tsx ================
+
+import type { CompanyFinancialSnapshot } from "../_lib/corporateTypes";
+import {
+  formatCompactCurrency,
+  formatNumber,
+  formatPercent,
+} from "../_lib/corporateFormatters";
+
+type Props = {
+  rows: CompanyFinancialSnapshot[];
+  loading: boolean;
+};
+
+export default function CompanyTable({ rows, loading }: Props) {
+  if (loading) {
+    return (
+      <div className="flex min-h-64 items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50">
+        <div className="rounded-2xl bg-slate-900 px-5 py-4 text-center text-white shadow-lg">
+          <div className="mx-auto mb-3 h-6 w-6 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+          <p className="text-sm font-bold">Loading dashboard...</p>
+          <p className="text-xs text-white/70">Fetching corporate intelligence data</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!rows.length) {
+    return (
+      <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-10 text-center">
+        <p className="text-sm font-bold text-slate-700">No companies found</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Import S&P 500 companies and refresh financials to populate this table.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-h-[560px] overflow-auto rounded-2xl border border-slate-200">
+      <table className="min-w-full divide-y divide-slate-200 text-sm">
+        <thead className="sticky top-0 z-10 bg-slate-100 text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            <th className="px-4 py-3 text-left">Ticker</th>
+            <th className="px-4 py-3 text-left">Company</th>
+            <th className="px-4 py-3 text-left">Sector</th>
+            <th className="px-4 py-3 text-right">Market Cap</th>
+            <th className="px-4 py-3 text-right">Revenue TTM</th>
+            <th className="px-4 py-3 text-right">P/E</th>
+            <th className="px-4 py-3 text-right">ROE</th>
+            <th className="px-4 py-3 text-right">Profit Margin</th>
+          </tr>
+        </thead>
+
+        <tbody className="divide-y divide-slate-100 bg-white">
+          {rows.map((row) => (
+            <tr key={row.symbol} className="transition hover:bg-slate-50">
+              <td className="px-4 py-3 font-bold text-slate-950">{row.symbol}</td>
+              <td className="px-4 py-3">
+                <div>
+                  <p className="font-semibold text-slate-800">
+                    {row.company_name ?? "—"}
+                  </p>
+                  <p className="text-xs text-slate-500">{row.industry ?? "—"}</p>
+                </div>
+              </td>
+              <td className="px-4 py-3 text-slate-600">{row.sector ?? "—"}</td>
+              <td className="px-4 py-3 text-right font-semibold">
+                {formatCompactCurrency(row.market_cap)}
+              </td>
+              <td className="px-4 py-3 text-right">
+                {formatCompactCurrency(row.revenue_ttm)}
+              </td>
+              <td className="px-4 py-3 text-right">{formatNumber(row.pe_ratio)}</td>
+              <td className="px-4 py-3 text-right">
+                {formatPercent(row.return_on_equity_ttm)}
+              </td>
+              <td className="px-4 py-3 text-right">
+                {formatPercent(row.profit_margin)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+
+
+================ FILE: C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateDashboard.tsx ================
+
+
+
+================ FILE: C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateDirectoryTable.tsx ================
+
+"use client";
+
+import type { CorporateProfile } from "../_lib/types";
+
+type Props = {
+  rows: CorporateProfile[];
+  onSelect: (row: CorporateProfile) => void;
+};
+
+function clean(value: unknown) {
+  if (value === null || value === undefined || value === "") return "â€”";
+  return String(value);
+}
+
+export default function CorporateDirectoryTable({ rows, onSelect }: Props) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">
+            Corporate Directory
+          </h2>
+          <p className="text-xs text-slate-500">
+            S&amp;P 500 company profile data. Click any row to view live Finnhub
+            market data.
+          </p>
+        </div>
+
+        <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+          {rows.length} shown
+        </div>
+      </div>
+
+      <div className="max-h-[560px] overflow-auto">
+        <table className="w-full min-w-[980px] text-left text-sm">
+          <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="px-4 py-3 font-semibold">Ticker</th>
+              <th className="px-4 py-3 font-semibold">Company</th>
+              <th className="px-4 py-3 font-semibold">Sector</th>
+              <th className="px-4 py-3 font-semibold">Industry</th>
+              <th className="px-4 py-3 font-semibold">Country</th>
+              <th className="px-4 py-3 font-semibold">Headquarters</th>
+              <th className="px-4 py-3 font-semibold">Exchange</th>
+            </tr>
+          </thead>
+
+          <tbody className="divide-y divide-slate-100">
+            {rows.map((row) => (
+              <tr
+                key={row.symbol}
+                onClick={() => onSelect(row)}
+                className="cursor-pointer bg-white transition hover:bg-indigo-50/50"
+              >
+                <td className="px-4 py-3 font-semibold text-indigo-700">
+                  {clean(row.symbol)}
+                </td>
+
+                <td className="px-4 py-3">
+                  <div className="max-w-[260px] truncate font-semibold text-slate-900">
+                    {clean(row.company_name)}
+                  </div>
+                </td>
+
+                <td className="px-4 py-3 text-slate-700">
+                  {clean(row.sector)}
+                </td>
+
+                <td className="px-4 py-3 text-slate-600">
+                  <div className="max-w-[280px] truncate">
+                    {clean(row.industry)}
+                  </div>
+                </td>
+
+                <td className="px-4 py-3 text-slate-700">
+                  <div className="max-w-[160px]">{clean(row.country)}</div>
+                </td>
+
+                <td className="px-4 py-3 text-slate-600">
+                  <div className="max-w-[300px] truncate">
+                    {clean(row.headquarters)}
+                  </div>
+                </td>
+
+                <td className="px-4 py-3 text-slate-700">
+                  {clean(row.exchange)}
+                </td>
+              </tr>
+            ))}
+
+            {rows.length === 0 && (
+              <tr>
+                <td
+                  colSpan={7}
+                  className="px-4 py-10 text-center text-sm text-slate-500"
+                >
+                  No companies found for the selected search/filter.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+
+
+================ FILE: C:\NextJS\stratify\app\corporate-intelligence\_components\CorporateMarketSnapshot.tsx ================
+
+"use client";
+
+import type { CorporateProfile } from "../_lib/types";
+
+function toNum(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n =
+    typeof value === "number"
+      ? value
+      : Number(String(value).replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(n) ? n : null;
+}
+
+function money(value: unknown) {
+  const n = toNum(value);
+  if (n === null) return "N/A";
+  return `$${n.toFixed(2)}`;
+}
+
+function compact(value: unknown) {
+  const n = toNum(value);
+  if (n === null) return "N/A";
+
+  if (Math.abs(n) >= 1_000_000_000_000) {
+    return `$${(n / 1_000_000_000_000).toFixed(2)}T`;
+  }
+
+  if (Math.abs(n) >= 1_000_000_000) {
+    return `$${(n / 1_000_000_000).toFixed(2)}B`;
+  }
+
+  if (Math.abs(n) >= 1_000_000) {
+    return `$${(n / 1_000_000).toFixed(2)}M`;
+  }
+
+  return n.toLocaleString();
+}
+
+function numberText(value: unknown, digits = 2) {
+  const n = toNum(value);
+  if (n === null) return "N/A";
+  return n.toLocaleString("en-US", {
+    maximumFractionDigits: digits,
+  });
+}
+
+function pct(value: unknown) {
+  const n = toNum(value);
+  if (n === null) return "N/A";
+  return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
+}
+
+function dateText(value: unknown) {
+  if (!value) return "N/A";
+  const d = new Date(String(value));
+  if (Number.isNaN(d.getTime())) return "N/A";
+  return d.toLocaleString();
+}
+
+function SnapshotBox({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "green" | "red" | "indigo";
+}) {
+  const valueClass =
+    tone === "green"
+      ? "text-emerald-700"
+      : tone === "red"
+        ? "text-red-700"
+        : tone === "indigo"
+          ? "text-indigo-700"
+          : "text-slate-950";
+
+  return (
+    <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+      <p className={`mt-1 text-sm font-black ${valueClass}`}>{value}</p>
+    </div>
+  );
+}
+
+export default function CorporateMarketSnapshot({
+  company,
+}: {
+  company: CorporateProfile;
+}) {
+  const price = toNum(company.price);
+  const change = toNum(company.change);
+  const changePercent = toNum(company.change_percent);
+  const isUp = (change ?? changePercent ?? 0) >= 0;
+
+  const hasQuote =
+    price !== null ||
+    change !== null ||
+    changePercent !== null ||
+    toNum(company.live_market_cap) !== null ||
+    toNum(company.volume) !== null;
+
+  return (
+    <div className="border-t border-slate-100 px-5 py-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-black text-slate-950">Market Snapshot</h3>
+          <p className="text-xs font-medium text-slate-500">
+            Stock quote data from enriched corporate directory
+          </p>
+        </div>
+
+        <span className="rounded-full bg-indigo-50 px-3 py-1 text-[11px] font-black text-indigo-700">
+          {company.quote_source || "Quote"}
+        </span>
+      </div>
+
+      {!hasQuote ? (
+        <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+          Stock quote is not available for {company.symbol}. Check quote
+          refresh/source data.
+        </div>
+      ) : (
+        <>
+          <div className="mb-3 rounded-2xl bg-slate-950 p-4 text-white shadow-lg">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide text-slate-400">
+                  {company.symbol}
+                </p>
+                <p className="mt-1 text-3xl font-black leading-none">
+                  {money(company.price)}
+                </p>
+                <p className="mt-2 text-[11px] font-medium text-slate-400">
+                  Updated:{" "}
+                  {dateText(company.quote_updated_at || company.quote_time)}
+                </p>
+              </div>
+
+              <div
+                className={`rounded-2xl px-4 py-3 text-right text-sm font-black ${
+                  isUp
+                    ? "bg-emerald-500/15 text-emerald-300"
+                    : "bg-red-500/15 text-red-300"
+                }`}
+              >
+                <p>
+                  {change === null
+                    ? "N/A"
+                    : `${change >= 0 ? "+" : ""}${change.toFixed(2)}`}
+                </p>
+                <p>{pct(company.change_percent)}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <SnapshotBox
+              label="Market Cap"
+              value={compact(company.live_market_cap)}
+            />
+            <SnapshotBox label="Volume" value={numberText(company.volume, 0)} />
+
+            <SnapshotBox
+              label="Day Range"
+              value={`${money(company.day_low)} - ${money(company.day_high)}`}
+            />
+
+            <SnapshotBox
+              label="52W Range"
+              value={`${money(company.year_low)} - ${money(company.year_high)}`}
+            />
+
+            <SnapshotBox
+              label="Average Volume"
+              value={numberText(company.avg_volume, 0)}
+            />
+            <SnapshotBox label="P/E" value={numberText(company.pe, 2)} />
+            <SnapshotBox label="EPS" value={numberText(company.eps, 2)} />
+            <SnapshotBox
+              label="Quote Source"
+              value={company.quote_source || "N/A"}
+              tone="indigo"
+            />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+
+
+================ FILE: C:\NextJS\stratify\app\corporate-intelligence\_components\SectorBreakdown.tsx ================
+
+import type { CompanyFinancialSnapshot } from "../_lib/corporateTypes";
+import { formatCompactCurrency } from "../_lib/corporateFormatters";
+
+type Props = {
+  rows: CompanyFinancialSnapshot[];
+  loading: boolean;
+};
+
+export default function SectorBreakdown({ rows, loading }: Props) {
+  const sectors = Object.values(
+    rows.reduce<Record<string, { sector: string; count: number; marketCap: number }>>(
+      (acc, row) => {
+        const sector = row.sector || "Unknown";
+
+        if (!acc[sector]) {
+          acc[sector] = {
+            sector,
+            count: 0,
+            marketCap: 0,
+          };
+        }
+
+        acc[sector].count += 1;
+        acc[sector].marketCap += row.market_cap ?? 0;
+
+        return acc;
+      },
+      {}
+    )
+  ).sort((a, b) => b.marketCap - a.marketCap);
+
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-3">
+        <h2 className="text-lg font-bold text-slate-950">Sector Breakdown</h2>
+        <p className="text-xs text-slate-500">Company count and market cap by sector</p>
+      </div>
+
+      {loading ? (
+        <div className="flex h-80 items-center justify-center rounded-2xl bg-slate-50 text-sm text-slate-500">
+          Loading sectors...
+        </div>
+      ) : sectors.length ? (
+        <div className="max-h-80 space-y-3 overflow-auto pr-1">
+          {sectors.map((item) => (
+            <div key={item.sector} className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-slate-800">{item.sector}</p>
+                  <p className="text-xs text-slate-500">{item.count} companies</p>
+                </div>
+                <p className="text-sm font-bold text-slate-950">
+                  {formatCompactCurrency(item.marketCap)}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex h-80 items-center justify-center rounded-2xl bg-slate-50 text-sm text-slate-500">
+          No sector data available.
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+================ FILE: C:\NextJS\stratify\app\corporate-intelligence\_components\TopCompaniesChart.tsx ================
+
+"use client";
+
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import type { CompanyFinancialSnapshot } from "../_lib/corporateTypes";
+import { formatCompactCurrency } from "../_lib/corporateFormatters";
+
+type Props = {
+  rows: CompanyFinancialSnapshot[];
+  loading: boolean;
+};
+
+export default function TopCompaniesChart({ rows, loading }: Props) {
+  const data = rows
+    .filter((row) => typeof row.market_cap === "number")
+    .sort((a, b) => (b.market_cap ?? 0) - (a.market_cap ?? 0))
+    .slice(0, 10)
+    .map((row) => ({
+      symbol: row.symbol,
+      marketCap: row.market_cap ?? 0,
+    }));
+
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-3">
+        <h2 className="text-lg font-bold text-slate-950">Top Companies by Market Cap</h2>
+        <p className="text-xs text-slate-500">Largest companies in the selected view</p>
+      </div>
+
+      <div className="h-80">
+        {loading ? (
+          <div className="flex h-full items-center justify-center rounded-2xl bg-slate-50 text-sm text-slate-500">
+            Loading chart...
+          </div>
+        ) : data.length ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="symbol" tickLine={false} axisLine={false} />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(value) => formatCompactCurrency(Number(value))}
+              />
+              <Tooltip
+                formatter={(value) => [
+                  formatCompactCurrency(Number(value)),
+                  "Market Cap",
+                ]}
+              />
+              <Bar dataKey="marketCap" radius={[10, 10, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex h-full items-center justify-center rounded-2xl bg-slate-50 text-sm text-slate-500">
+            No market cap data available.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+
+================ FILE: C:\NextJS\stratify\app\corporate-intelligence\_lib\api.ts ================
+
+import type { CorporateDirectorySummary, CorporateProfile } from "./types";
+
+function unwrapArray<T>(payload: unknown): T[] {
+  if (Array.isArray(payload)) return payload as T[];
+
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "data" in payload &&
+    Array.isArray((payload as { data?: unknown }).data)
+  ) {
+    return (payload as { data: T[] }).data;
+  }
+
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "rows" in payload &&
+    Array.isArray((payload as { rows?: unknown }).rows)
+  ) {
+    return (payload as { rows: T[] }).rows;
+  }
+
+  return [];
+}
+
+function unwrapObject<T>(payload: unknown): T | null {
+  if (!payload || typeof payload !== "object") return null;
+
+  if ("data" in payload && (payload as { data?: unknown }).data) {
+    return (payload as { data: T }).data;
+  }
+
+  return payload as T;
+}
+
+export async function fetchCorporateDirectory(): Promise<CorporateProfile[]> {
+  const res = await fetch("/api/corporate-intelligence/directory", {
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error("Failed to fetch corporate directory");
+  }
+
+  const json = await res.json();
+  return unwrapArray<CorporateProfile>(json);
+}
+
+export async function fetchCorporateSummary(): Promise<CorporateDirectorySummary | null> {
+  const res = await fetch("/api/corporate-intelligence/summary", {
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    return null;
+  }
+
+  const json = await res.json();
+  return unwrapObject<CorporateDirectorySummary>(json);
+}
+
+
+
+================ FILE: C:\NextJS\stratify\app\corporate-intelligence\_lib\corporateFormatters.ts ================
+
+export function formatCompactCurrency(value?: number | null) {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    notation: "compact",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+export function formatNumber(value?: number | null, digits = 2) {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: digits,
+  }).format(value);
+}
+
+export function formatPercent(value?: number | null, digits = 2) {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+
+  const normalized = Math.abs(value) <= 1 ? value * 100 : value;
+
+  return `${new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: digits,
+  }).format(normalized)}%`;
+}
+
+
+
+================ FILE: C:\NextJS\stratify\app\corporate-intelligence\_lib\corporateTypes.ts ================
+
+export type CompanyFinancialSnapshot = {
+  id: number;
+  symbol: string;
+  company_name: string | null;
+  exchange: string | null;
+  currency: string | null;
+  country: string | null;
+  sector: string | null;
+  industry: string | null;
+  market_cap: number | null;
+  ebitda: number | null;
+  pe_ratio: number | null;
+  peg_ratio: number | null;
+  dividend_yield: number | null;
+  eps: number | null;
+  revenue_ttm: number | null;
+  profit_margin: number | null;
+  operating_margin_ttm: number | null;
+  return_on_assets_ttm: number | null;
+  return_on_equity_ttm: number | null;
+  beta: number | null;
+  week_52_high: number | null;
+  week_52_low: number | null;
+  source: string | null;
+  fetched_at: string | null;
+};
+
+export type CorporateSummary = {
+  totalCompanies: number;
+  sectors: number;
+  totalMarketCap: number;
+  totalRevenueTtm: number;
+  avgPeRatio: number;
+  topCompany: string | null;
+  lastFetchedAt: string | null;
+};
+
+
+
+================ FILE: C:\NextJS\stratify\app\corporate-intelligence\_lib\types.ts ================
+
+export type CorporateProfile = {
+  id?: number;
+  symbol: string;
+  company_name: string;
+  sector: string | null;
+  industry: string | null;
+  country: string | null;
+  city?: string | null;
+  state?: string | null;
+  headquarters: string | null;
+  exchange: string | null;
+  source: string | null;
+  fetched_at?: string | null;
+
+  date_added?: string | null;
+  cik?: string | null;
+  founded?: string | null;
+  website?: string | null;
+  employees?: number | string | null;
+  business_summary?: string | null;
+
+  hq_lat?: number | string | null;
+  hq_lng?: number | string | null;
+  geocode_provider?: string | null;
+  geocode_status?: string | null;
+  geocode_query?: string | null;
+  geocoded_at?: string | null;
+
+  price?: number | string | null;
+  change?: number | string | null;
+  change_percent?: number | string | null;
+  volume?: number | string | null;
+  avg_volume?: number | string | null;
+  live_market_cap?: number | string | null;
+  day_low?: number | string | null;
+  day_high?: number | string | null;
+  year_low?: number | string | null;
+  year_high?: number | string | null;
+  pe?: number | string | null;
+  eps?: number | string | null;
+  quote_time?: string | null;
+  quote_source?: string | null;
+  quote_updated_at?: string | null;
+
+  market_cap?: number | string | null;
+  market_value?: number | string | null;
+  market_value_usd?: number | string | null;
+};
+
+export type CorporateDirectorySummary = {
+  total_companies: number;
+  sectors: number;
+  industries: number;
+  countries: number;
+  enriched_profiles: number;
+};
+
+export type ChartDatum = {
+  name: string;
+  value: number;
+};
+
+
+
+================ FILE: C:\NextJS\stratify\app\corporate-intelligence\page.tsx ================
+
+"use client";
+
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+  type ReactNode,
+} from "react";
+import dynamic from "next/dynamic";
+import {
+  Building2,
+  Factory,
+  Globe2,
+  Layers3,
+  MapPinned,
+  RefreshCw,
+  Search,
+  Sparkles,
+  X,
+} from "lucide-react";
+
+import CorporateDirectoryTable from "./_components/CorporateDirectoryTable";
+import { fetchCorporateDirectory, fetchCorporateSummary } from "./_lib/api";
+import type {
+  ChartDatum,
+  CorporateDirectorySummary,
+  CorporateProfile,
+} from "./_lib/types";
+
+type CorporateProfileExtended = CorporateProfile & {
+  market_cap?: number | string | null;
+  market_value?: number | string | null;
+  market_value_usd?: number | string | null;
+  live_market_cap?: number | string | null;
+
+  price?: number | string | null;
+  change?: number | string | null;
+  change_percent?: number | string | null;
+  volume?: number | string | null;
+  avg_volume?: number | string | null;
+  day_low?: number | string | null;
+  day_high?: number | string | null;
+  year_low?: number | string | null;
+  year_high?: number | string | null;
+  pe?: number | string | null;
+  eps?: number | string | null;
+  quote_time?: string | null;
+  quote_source?: string | null;
+  quote_updated_at?: string | null;
+};
+
+type MapCompany = {
+  symbol: string;
+  company_name: string;
+  sector?: string | null;
+  state?: string | null;
+  city?: string | null;
+  headquarters?: string | null;
+};
+
+type MapPoint = {
+  key: string;
+  label: string;
+  lat: number;
+  lng: number;
+  count: number;
+  state: string;
+  isExact: boolean;
+  companies: MapCompany[];
+};
+
+const US_STATES = new Set([
+  "alabama",
+  "alaska",
+  "arizona",
+  "arkansas",
+  "california",
+  "colorado",
+  "connecticut",
+  "delaware",
+  "florida",
+  "georgia",
+  "hawaii",
+  "idaho",
+  "illinois",
+  "indiana",
+  "iowa",
+  "kansas",
+  "kentucky",
+  "louisiana",
+  "maine",
+  "maryland",
+  "massachusetts",
+  "michigan",
+  "minnesota",
+  "mississippi",
+  "missouri",
+  "montana",
+  "nebraska",
+  "nevada",
+  "new hampshire",
+  "new jersey",
+  "new mexico",
+  "new york",
+  "north carolina",
+  "north dakota",
+  "ohio",
+  "oklahoma",
+  "oregon",
+  "pennsylvania",
+  "rhode island",
+  "south carolina",
+  "south dakota",
+  "tennessee",
+  "texas",
+  "utah",
+  "vermont",
+  "virginia",
+  "washington",
+  "west virginia",
+  "wisconsin",
+  "wyoming",
+  "district of columbia",
+  "dc",
+]);
+
+const STATE_NAME_BY_CODE: Record<string, string> = {
+  AL: "Alabama",
+  AK: "Alaska",
+  AZ: "Arizona",
+  AR: "Arkansas",
+  CA: "California",
+  CO: "Colorado",
+  CT: "Connecticut",
+  DE: "Delaware",
+  FL: "Florida",
+  GA: "Georgia",
+  HI: "Hawaii",
+  ID: "Idaho",
+  IL: "Illinois",
+  IN: "Indiana",
+  IA: "Iowa",
+  KS: "Kansas",
+  KY: "Kentucky",
+  LA: "Louisiana",
+  ME: "Maine",
+  MD: "Maryland",
+  MA: "Massachusetts",
+  MI: "Michigan",
+  MN: "Minnesota",
+  MS: "Mississippi",
+  MO: "Missouri",
+  MT: "Montana",
+  NE: "Nebraska",
+  NV: "Nevada",
+  NH: "New Hampshire",
+  NJ: "New Jersey",
+  NM: "New Mexico",
+  NY: "New York",
+  NC: "North Carolina",
+  ND: "North Dakota",
+  OH: "Ohio",
+  OK: "Oklahoma",
+  OR: "Oregon",
+  PA: "Pennsylvania",
+  RI: "Rhode Island",
+  SC: "South Carolina",
+  SD: "South Dakota",
+  TN: "Tennessee",
+  TX: "Texas",
+  UT: "Utah",
+  VT: "Vermont",
+  VA: "Virginia",
+  WA: "Washington",
+  WV: "West Virginia",
+  WI: "Wisconsin",
+  WY: "Wyoming",
+  DC: "District of Columbia",
+};
+
+const STATE_CENTROIDS: Record<string, [number, number]> = {
+  Alabama: [32.806671, -86.79113],
+  Alaska: [61.370716, -152.404419],
+  Arizona: [33.729759, -111.431221],
+  Arkansas: [34.969704, -92.373123],
+  California: [36.116203, -119.681564],
+  Colorado: [39.059811, -105.311104],
+  Connecticut: [41.597782, -72.755371],
+  Delaware: [39.318523, -75.507141],
+  Florida: [27.766279, -81.686783],
+  Georgia: [33.040619, -83.643074],
+  Hawaii: [21.094318, -157.498337],
+  Idaho: [44.240459, -114.478828],
+  Illinois: [40.349457, -88.986137],
+  Indiana: [39.849426, -86.258278],
+  Iowa: [42.011539, -93.210526],
+  Kansas: [38.5266, -96.726486],
+  Kentucky: [37.66814, -84.670067],
+  Louisiana: [31.169546, -91.867805],
+  Maine: [44.693947, -69.381927],
+  Maryland: [39.063946, -76.802101],
+  Massachusetts: [42.230171, -71.530106],
+  Michigan: [43.326618, -84.536095],
+  Minnesota: [45.694454, -93.900192],
+  Mississippi: [32.741646, -89.678696],
+  Missouri: [38.456085, -92.288368],
+  Montana: [46.921925, -110.454353],
+  Nebraska: [41.12537, -98.268082],
+  Nevada: [38.313515, -117.055374],
+  "New Hampshire": [43.452492, -71.563896],
+  "New Jersey": [40.298904, -74.521011],
+  "New Mexico": [34.840515, -106.248482],
+  "New York": [42.165726, -74.948051],
+  "North Carolina": [35.630066, -79.806419],
+  "North Dakota": [47.528912, -99.784012],
+  Ohio: [40.388783, -82.764915],
+  Oklahoma: [35.565342, -96.928917],
+  Oregon: [44.572021, -122.070938],
+  Pennsylvania: [40.590752, -77.209755],
+  "Rhode Island": [41.680893, -71.51178],
+  "South Carolina": [33.856892, -80.945007],
+  "South Dakota": [44.299782, -99.438828],
+  Tennessee: [35.747845, -86.692345],
+  Texas: [31.054487, -97.563461],
+  Utah: [40.150032, -111.862434],
+  Vermont: [44.045876, -72.710686],
+  Virginia: [37.769337, -78.169968],
+  Washington: [47.400902, -121.490494],
+  "West Virginia": [38.491226, -80.954453],
+  Wisconsin: [44.268543, -89.616508],
+  Wyoming: [42.755966, -107.30249],
+  "District of Columbia": [38.9072, -77.0369],
+};
+
+function safeText(value: unknown) {
+  if (value === null || value === undefined || value === "") return "—";
+  return String(value);
+}
+
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function toMapNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+
+  const parsed =
+    typeof value === "number"
+      ? value
+      : Number(String(value).replace(/[^0-9.-]/g, ""));
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isValidLatLng(lat: number | null, lng: number | null) {
+  return (
+    lat !== null &&
+    lng !== null &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180
+  );
+}
+
+function toNumber(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+
+  const parsed = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getMarketValue(row: CorporateProfile): number | string | null {
+  const extended = row as CorporateProfileExtended;
+
+  return (
+    extended.live_market_cap ??
+    extended.market_cap ??
+    extended.market_value_usd ??
+    extended.market_value ??
+    null
+  );
+}
+
+function normalizeState(value: unknown): string | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+
+  const upper = raw.toUpperCase();
+  if (STATE_NAME_BY_CODE[upper]) return STATE_NAME_BY_CODE[upper];
+
+  const title = raw
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+  if (STATE_CENTROIDS[title]) return title;
+
+  return null;
+}
+
+function inferStateFromHeadquarters(headquarters: unknown): string | null {
+  const text = String(headquarters ?? "").trim();
+  if (!text) return null;
+
+  const parts = text
+    .split(/[,\|]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  for (const part of parts) {
+    const state = normalizeState(part);
+    if (state) return state;
+  }
+
+  for (const [code, name] of Object.entries(STATE_NAME_BY_CODE)) {
+    const regex = new RegExp(`\\b${code}\\b|\\b${name}\\b`, "i");
+    if (regex.test(text)) return name;
+  }
+
+  return null;
+}
+
+function getCompanyState(row: CorporateProfile): string | null {
+  return (
+    normalizeState(row.state) ??
+    inferStateFromHeadquarters(row.headquarters) ??
+    null
+  );
+}
+
+function normalizeCountry(row: CorporateProfile): string {
+  const raw = String(row.country ?? "").trim();
+  const rawLower = raw.toLowerCase();
+
+  const state = getCompanyState(row);
+
+  if (state) return "United States";
+  if (rawLower && US_STATES.has(rawLower)) return "United States";
+
+  if (
+    [
+      "us",
+      "u.s.",
+      "usa",
+      "u.s.a.",
+      "united states",
+      "united states of america",
+    ].includes(rawLower)
+  ) {
+    return "United States";
+  }
+
+  if (
+    [
+      "uk",
+      "u.k.",
+      "united kingdom",
+      "great britain",
+      "england",
+      "scotland",
+      "wales",
+      "northern ireland",
+    ].includes(rawLower)
+  ) {
+    return "United Kingdom";
+  }
+
+  if (rawLower === "ireland") return "Ireland";
+  if (rawLower === "switzerland") return "Switzerland";
+  if (rawLower === "netherlands") return "Netherlands";
+  if (rawLower === "canada") return "Canada";
+  if (rawLower === "bermuda") return "Bermuda";
+  if (rawLower === "cayman islands") return "Cayman Islands";
+  if (rawLower === "curacao") return "Curaçao";
+  if (rawLower === "israel") return "Israel";
+
+  return raw || "United States";
+}
+
+function uniqueCount(
+  rows: CorporateProfile[],
+  getValue: (row: CorporateProfile) => unknown,
+) {
+  return new Set(
+    rows
+      .map(getValue)
+      .filter((value) => value !== null && value !== undefined && value !== ""),
+  ).size;
+}
+
+function countBy(
+  rows: CorporateProfile[],
+  getValue: (row: CorporateProfile) => unknown,
+  limit = 10,
+): ChartDatum[] {
+  const map = new Map<string, number>();
+
+  rows.forEach((row) => {
+    const raw = getValue(row);
+    const name = raw ? String(raw) : "Unknown";
+    map.set(name, (map.get(name) ?? 0) + 1);
+  });
+
+  return Array.from(map.entries())
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, limit);
+}
+
+function fallbackSummary(rows: CorporateProfile[]): CorporateDirectorySummary {
+  return {
+    total_companies: rows.length,
+    sectors: uniqueCount(rows, (row) => row.sector),
+    industries: uniqueCount(rows, (row) => row.industry),
+    countries: uniqueCount(rows, (row) => normalizeCountry(row)),
+    enriched_profiles: rows.filter(
+      (row) =>
+        row.headquarters ||
+        row.city ||
+        row.state ||
+        row.cik ||
+        row.founded ||
+        row.website,
+    ).length,
+  };
+}
+
+function normalizeSummary(
+  apiSummary: CorporateDirectorySummary | null,
+  rows: CorporateProfile[],
+): CorporateDirectorySummary {
+  const fallback = fallbackSummary(rows);
+
+  return {
+    total_companies:
+      toNumber(apiSummary?.total_companies) > 0
+        ? toNumber(apiSummary?.total_companies)
+        : fallback.total_companies,
+    sectors:
+      toNumber(apiSummary?.sectors) > 0
+        ? toNumber(apiSummary?.sectors)
+        : fallback.sectors,
+    industries:
+      toNumber(apiSummary?.industries) > 0
+        ? toNumber(apiSummary?.industries)
+        : fallback.industries,
+    countries: fallback.countries,
+    enriched_profiles:
+      toNumber(apiSummary?.enriched_profiles) > 0
+        ? toNumber(apiSummary?.enriched_profiles)
+        : fallback.enriched_profiles,
+  };
+}
+
+function buildStateMapPoints(rows: CorporateProfile[]): MapPoint[] {
+  const grouped = new Map<
+    string,
+    {
+      label: string;
+      lat: number;
+      lng: number;
+      count: number;
+      state: string;
+      isExact: boolean;
+      companies: MapCompany[];
+    }
+  >();
+
+  rows.forEach((row) => {
+    const state = getCompanyState(row) ?? "Unknown";
+    const lat = toMapNumber(row.hq_lat);
+    const lng = toMapNumber(row.hq_lng);
+    const hasExactCoords = isValidLatLng(lat, lng);
+
+    const coords = hasExactCoords
+      ? ([lat as number, lng as number] as [number, number])
+      : (STATE_CENTROIDS[state] ?? [39.8283, -98.5795]);
+
+    const locationLabel =
+      [row.city, state !== "Unknown" ? state : null]
+        .filter(Boolean)
+        .join(", ") ||
+      row.headquarters ||
+      state;
+
+    const key = hasExactCoords
+      ? `exact:${coords[0].toFixed(4)}:${coords[1].toFixed(4)}`
+      : `state:${state}`;
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        label: hasExactCoords ? locationLabel : state,
+        lat: coords[0],
+        lng: coords[1],
+        count: 0,
+        state,
+        isExact: hasExactCoords,
+        companies: [],
+      });
+    }
+
+    const item = grouped.get(key)!;
+
+    item.count += 1;
+    item.companies.push({
+      symbol: row.symbol,
+      company_name: row.company_name,
+      sector: row.sector,
+      state,
+      city: row.city,
+      headquarters: row.headquarters,
+    });
+  });
+
+  return Array.from(grouped.entries())
+    .map(([key, value]) => ({
+      key,
+      ...value,
+      companies: value.companies.sort((a, b) =>
+        String(a.company_name || "").localeCompare(
+          String(b.company_name || ""),
+        ),
+      ),
+    }))
+    .sort((a, b) => b.count - a.count);
+}
+
+type StatCardProps = {
+  title: string;
+  value: number | string;
+  icon: ReactNode;
+  helper?: string;
+};
+
+function StatCard({ title, value, icon, helper }: StatCardProps) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            {title}
+          </p>
+
+          <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
+
+          {helper ? (
+            <p className="mt-1 text-xs text-slate-500">{helper}</p>
+          ) : null}
+        </div>
+
+        <div className="rounded-xl bg-indigo-50 p-2 text-indigo-700">
+          {icon}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BarListCard({
+  title,
+  subtitle,
+  data,
+}: {
+  title: string;
+  subtitle: string;
+  data: ChartDatum[];
+}) {
+  const maxValue = Math.max(...data.map((item) => item.value), 1);
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-4">
+        <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+        <p className="text-xs text-slate-500">{subtitle}</p>
+      </div>
+
+      <div className="space-y-3">
+        {data.map((item) => {
+          const width = Math.max(8, (item.value / maxValue) * 100);
+
+          return (
+            <div
+              key={item.name}
+              className="grid grid-cols-[180px_1fr_42px] items-center gap-3"
+            >
+              <div className="text-xs font-medium leading-snug text-slate-700">
+                {item.name}
+              </div>
+
+              <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-indigo-600"
+                  style={{ width: `${width}%` }}
+                />
+              </div>
+
+              <div className="text-right text-xs font-semibold text-slate-700">
+                {item.value}
+              </div>
+            </div>
+          );
+        })}
+
+        {data.length === 0 ? (
+          <div className="rounded-xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+            No data available.
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function UsaLeafletMap({
+  points,
+  totalCompanies,
+  activeState,
+  onStateSelect,
+}: {
+  points: MapPoint[];
+  totalCompanies: number;
+  activeState: string;
+  onStateSelect: (state: string) => void;
+}) {
+  const mapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let map: any = null;
+    let resizeObserver: ResizeObserver | null = null;
+    let cancelled = false;
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+
+    async function loadMap() {
+      if (!mapRef.current) return;
+
+      const L = await import("leaflet");
+
+      if (cancelled || !mapRef.current) return;
+
+      mapRef.current.innerHTML = "";
+
+      map = L.map(mapRef.current, {
+        center: [39.8283, -98.5795],
+        zoom: 4,
+        minZoom: 3,
+        maxZoom: 12,
+        scrollWheelZoom: true,
+        zoomControl: true,
+      });
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+      }).addTo(map);
+
+      points.forEach((point) => {
+        const radius = point.isExact
+          ? Math.max(7, Math.min(22, Math.sqrt(point.count) * 4.2))
+          : Math.max(10, Math.min(34, Math.sqrt(point.count) * 3.2));
+
+        const companyList = point.companies
+          .slice(0, 10)
+          .map(
+            (company) =>
+              `<div style="margin-top:5px;line-height:1.25;"><b>${escapeHtml(
+                company.symbol,
+              )}</b> — ${escapeHtml(company.company_name)}</div>`,
+          )
+          .join("");
+
+        const extra =
+          point.companies.length > 10
+            ? `<div style="margin-top:7px;color:#64748b;font-size:11px;">+${
+                point.companies.length - 10
+              } more companies in this location</div>`
+            : "";
+
+        const sourceLabel = point.isExact
+          ? "Stored HQ coordinate"
+          : "State centroid fallback";
+
+        const marker = L.circleMarker([point.lat, point.lng], {
+          radius,
+          color: activeState === point.state ? "#0f172a" : "#312e81",
+          fillColor: activeState === point.state ? "#22c55e" : "#4f46e5",
+          fillOpacity: activeState === point.state ? 0.86 : 0.7,
+          weight: activeState === point.state ? 3 : 1.25,
+        })
+          .addTo(map)
+          .bindPopup(
+            `<div style="min-width:245px;max-width:315px;">
+              <div style="font-weight:800;font-size:14px;margin-bottom:2px;">
+                ${escapeHtml(point.label)}
+              </div>
+              <div style="font-size:12px;color:#475569;margin-bottom:4px;">
+                ${point.count} ${point.count === 1 ? "company" : "companies"} in current filter
+              </div>
+              <div style="font-size:11px;color:#64748b;margin-bottom:8px;">
+                ${sourceLabel} · ${escapeHtml(point.state)}
+              </div>
+              ${companyList}
+              ${extra}
+              ${
+                point.state !== "Unknown"
+                  ? `<div style="margin-top:10px;color:#4f46e5;font-size:11px;font-weight:800;">Click marker to filter ${escapeHtml(
+                      point.state,
+                    )}</div>`
+                  : ""
+              }
+            </div>`,
+          );
+
+        marker.on("click", () => {
+          if (point.state && point.state !== "Unknown") {
+            onStateSelect(point.state);
+          }
+        });
+      });
+
+      const fitMap = () => {
+        if (cancelled || !map) return;
+
+        map.invalidateSize();
+
+        if (points.length === 1) {
+          map.setView(
+            [points[0].lat, points[0].lng],
+            points[0].isExact ? 8 : 6,
+          );
+          return;
+        }
+
+        if (points.length > 1) {
+          const bounds = L.latLngBounds(
+            points.map((point) => [point.lat, point.lng]),
+          );
+
+          map.fitBounds(bounds, {
+            padding: [42, 42],
+            maxZoom: points.every((point) => point.isExact) ? 7 : 5,
+          });
+          return;
+        }
+
+        map.setView([39.8283, -98.5795], 4);
+      };
+
+      setTimeout(fitMap, 100);
+      setTimeout(fitMap, 350);
+      setTimeout(fitMap, 800);
+
+      if (mapRef.current && typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(() => {
+          if (resizeTimer) clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(fitMap, 120);
+        });
+
+        resizeObserver.observe(mapRef.current);
+      }
+    }
+
+    loadMap();
+
+    return () => {
+      cancelled = true;
+
+      if (resizeTimer) clearTimeout(resizeTimer);
+
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+        resizeObserver = null;
+      }
+
+      if (map) {
+        map.remove();
+        map = null;
+      }
+    };
+  }, [points, activeState, onStateSelect]);
+
+  const exactLocationCount = points.filter((point) => point.isExact).length;
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">
+            USA Company Map
+          </h2>
+          <p className="text-xs text-slate-500">
+            Filter-responsive headquarters map using stored company Lat/Long.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {activeState !== "All" ? (
+            <button
+              type="button"
+              onClick={() => onStateSelect("All")}
+              className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700 transition hover:bg-indigo-100"
+            >
+              Clear {activeState}
+            </button>
+          ) : null}
+
+          <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+            {points.length} locations · {totalCompanies} companies ·{" "}
+            {exactLocationCount} exact
+          </div>
+        </div>
+      </div>
+
+      <div className="relative h-[460px] w-full overflow-hidden bg-slate-100">
+        <div ref={mapRef} className="absolute inset-0 h-full w-full" />
+
+        {!points.length ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/75">
+            <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-center shadow-sm">
+              <p className="text-sm font-bold text-slate-900">
+                No mapped companies found
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Adjust search, sector, or state filters.
+              </p>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+const DynamicUsaLeafletMap = dynamic(() => Promise.resolve(UsaLeafletMap), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-[420px] items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm text-slate-500">
+      Loading USA map...
+    </div>
+  ),
+});
+
+function Info({ label, value }: { label: string; value: unknown }) {
+  return (
+    <div className="rounded-xl bg-slate-50 px-3 py-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+      <p className="mt-1 text-sm font-medium text-slate-900">
+        {safeText(value)}
+      </p>
+    </div>
+  );
+}
+
+function toNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+
+  const parsed =
+    typeof value === "number"
+      ? value
+      : Number(String(value).replace(/[^0-9.-]/g, ""));
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatMoney(value: unknown) {
+  const num = toNullableNumber(value);
+  if (num === null) return "N/A";
+
+  return `$${num.toFixed(2)}`;
+}
+
+function formatCompactNumber(value: unknown, prefix = "") {
+  const num = toNullableNumber(value);
+  if (num === null) return "N/A";
+
+  const abs = Math.abs(num);
+
+  if (abs >= 1_000_000_000_000) {
+    return `${prefix}${(num / 1_000_000_000_000).toFixed(2)}T`;
+  }
+
+  if (abs >= 1_000_000_000) {
+    return `${prefix}${(num / 1_000_000_000).toFixed(2)}B`;
+  }
+
+  if (abs >= 1_000_000) {
+    return `${prefix}${(num / 1_000_000).toFixed(2)}M`;
+  }
+
+  return `${prefix}${num.toLocaleString()}`;
+}
+
+function formatDecimal(value: unknown, digits = 2) {
+  const num = toNullableNumber(value);
+  if (num === null) return "N/A";
+
+  return num.toLocaleString("en-US", {
+    maximumFractionDigits: digits,
+  });
+}
+
+function formatChangePercent(value: unknown) {
+  const num = toNullableNumber(value);
+  if (num === null) return "N/A";
+
+  return `${num >= 0 ? "+" : ""}${num.toFixed(2)}%`;
+}
+
+function formatQuoteDate(value: unknown) {
+  if (!value) return "N/A";
+
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return "N/A";
+
+  return date.toLocaleString();
+}
+
+function MarketInfo({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  tone?: "default" | "green" | "red" | "indigo";
+}) {
+  const toneClass =
+    tone === "green"
+      ? "text-emerald-700"
+      : tone === "red"
+        ? "text-red-700"
+        : tone === "indigo"
+          ? "text-indigo-700"
+          : "text-slate-950";
+
+  return (
+    <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+      <p className={`mt-1 text-sm font-black ${toneClass}`}>{value}</p>
+    </div>
+  );
+}
+
+function CorporateMarketSnapshot({
+  company,
+}: {
+  company: CorporateProfileExtended;
+}) {
+  const symbol = useMemo(
+    () =>
+      String(company.symbol || "")
+        .trim()
+        .toUpperCase(),
+    [company.symbol],
+  );
+
+  const [liveQuote, setLiveQuote] =
+    useState<Partial<CorporateProfileExtended> | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+
+  const hasLocalMarketData =
+    toNullableNumber(company.price) !== null ||
+    toNullableNumber(company.change) !== null ||
+    toNullableNumber(company.change_percent) !== null ||
+    toNullableNumber(company.live_market_cap) !== null ||
+    toNullableNumber(company.volume) !== null;
+
+  useEffect(() => {
+    if (!symbol) return;
+
+    if (hasLocalMarketData) {
+      setLiveQuote(null);
+      setQuoteError(null);
+      setQuoteLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadLiveQuote() {
+      try {
+        setQuoteLoading(true);
+        setQuoteError(null);
+
+        const cacheKey = `stratify_finnhub_quote_${symbol}`;
+
+        try {
+          const cached = sessionStorage.getItem(cacheKey);
+
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            const ageMs = Date.now() - Number(parsed?.ts || 0);
+
+            if (parsed?.quote && ageMs < 5 * 60 * 1000) {
+              if (!cancelled) {
+                setLiveQuote(parsed.quote);
+                setQuoteLoading(false);
+              }
+              return;
+            }
+          }
+        } catch {
+          // Ignore broken browser cache and fetch fresh data.
+        }
+
+        const res = await fetch(
+          `/api/corporate-intelligence/quote?ticker=${encodeURIComponent(symbol)}`,
+        );
+
+        const json = await res.json();
+
+        if (!res.ok || !json.ok) {
+          throw new Error(json?.error || "Quote not available from Finnhub.");
+        }
+
+        if (!cancelled) {
+          setLiveQuote(json.quote);
+
+          try {
+            sessionStorage.setItem(
+              cacheKey,
+              JSON.stringify({
+                ts: Date.now(),
+                quote: json.quote,
+              }),
+            );
+          } catch {
+            // Ignore storage quota/browser privacy issues.
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLiveQuote(null);
+          setQuoteError(
+            error instanceof Error
+              ? error.message
+              : "Quote not available from Finnhub.",
+          );
+        }
+      } finally {
+        if (!cancelled) setQuoteLoading(false);
+      }
+    }
+
+    loadLiveQuote();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol, hasLocalMarketData]);
+
+  const quote = (
+    hasLocalMarketData ? company : liveQuote
+  ) as Partial<CorporateProfileExtended> | null;
+
+  const price = toNullableNumber(quote?.price);
+  const change = toNullableNumber(quote?.change);
+  const changePercent = toNullableNumber(quote?.change_percent);
+  const isPositive = (change ?? changePercent ?? 0) >= 0;
+
+  const hasMarketData =
+    price !== null ||
+    change !== null ||
+    changePercent !== null ||
+    toNullableNumber(quote?.live_market_cap) !== null ||
+    toNullableNumber(quote?.volume) !== null;
+
+  return (
+    <div className="border-t border-slate-100 px-5 py-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-black text-slate-950">Market Snapshot</h3>
+          <p className="text-xs font-medium text-slate-500">
+            Live stock quote fetched from Finnhub
+          </p>
+        </div>
+
+        <span className="rounded-full bg-indigo-50 px-3 py-1 text-[11px] font-black text-indigo-700">
+          {quote?.quote_source || "Finnhub"}
+        </span>
+      </div>
+
+      {quoteLoading ? (
+        <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
+          Loading stock quote for {safeText(symbol)}...
+        </div>
+      ) : quoteError && !hasMarketData ? (
+        <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+          {quoteError}
+        </div>
+      ) : !hasMarketData ? (
+        <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+          Stock quote is not available for {safeText(symbol)}.
+        </div>
+      ) : (
+        <>
+          <div className="mb-3 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-slate-950 shadow-sm">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide text-indigo-700">
+                  {safeText(symbol)}
+                </p>
+
+                <p className="mt-1 text-3xl font-black leading-none">
+                  {formatMoney(quote?.price)}
+                </p>
+
+                <p className="mt-2 text-[11px] font-semibold text-slate-600">
+                  Updated:{" "}
+                  {formatQuoteDate(
+                    quote?.quote_updated_at || quote?.quote_time,
+                  )}
+                </p>
+              </div>
+
+              <div
+                className={`rounded-2xl px-4 py-3 text-right text-sm font-black ${
+                  isPositive
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-red-100 text-red-700"
+                }`}
+              >
+                <p>
+                  {change === null
+                    ? "N/A"
+                    : `${change >= 0 ? "+" : ""}${change.toFixed(2)}`}
+                </p>
+                <p>{formatChangePercent(quote?.change_percent)}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <MarketInfo
+              label="Market Cap"
+              value={formatCompactNumber(quote?.live_market_cap, "$")}
+            />
+            <MarketInfo
+              label="Volume"
+              value={formatCompactNumber(quote?.volume)}
+            />
+            <MarketInfo
+              label="Day Range"
+              value={`${formatMoney(quote?.day_low)} - ${formatMoney(quote?.day_high)}`}
+            />
+            <MarketInfo
+              label="52W Range"
+              value={`${formatMoney(quote?.year_low)} - ${formatMoney(quote?.year_high)}`}
+            />
+            <MarketInfo
+              label="Average Volume"
+              value={formatCompactNumber(quote?.avg_volume)}
+            />
+            <MarketInfo label="P/E" value={formatDecimal(quote?.pe, 2)} />
+            <MarketInfo label="EPS" value={formatDecimal(quote?.eps, 2)} />
+            <MarketInfo
+              label="Quote Source"
+              value={quote?.quote_source || "Finnhub"}
+              tone="indigo"
+            />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function DetailModal({
+  company,
+  onClose,
+}: {
+  company: CorporateProfile | null;
+  onClose: () => void;
+}) {
+  if (!company) return null;
+
+  const normalizedCountry = normalizeCountry(company);
+  const state = getCompanyState(company);
+  const locationParts = [company.city, state, normalizedCountry].filter(
+    Boolean,
+  );
+  const extendedCompany = company as CorporateProfileExtended;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4">
+      <div className="max-h-[88vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-100 bg-white px-5 py-4">
+          <div>
+            <div className="mb-2 inline-flex rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+              {safeText(company.symbol)}
+            </div>
+
+            <h2 className="text-lg font-semibold text-slate-950">
+              {safeText(company.company_name)}
+            </h2>
+
+            <p className="text-sm text-slate-500">
+              {safeText(company.sector)} · {safeText(company.industry)}
+            </p>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+            aria-label="Close company detail"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="grid gap-3 p-5 sm:grid-cols-2">
+          <Info label="Ticker" value={company.symbol} />
+          <Info label="Exchange" value={company.exchange} />
+          <Info label="Sector" value={company.sector} />
+          <Info label="Industry" value={company.industry} />
+          <Info label="Country / Location" value={locationParts.join(", ")} />
+          <Info label="Headquarters" value={company.headquarters} />
+          <Info label="Founded" value={company.founded} />
+          <Info label="CIK" value={company.cik} />
+          <Info label="Source" value={company.source} />
+        </div>
+
+        <CorporateMarketSnapshot company={extendedCompany} />
+
+        {company.website || company.business_summary ? (
+          <div className="border-t border-slate-100 px-5 py-4">
+            {company.website ? (
+              <a
+                href={String(company.website)}
+                target="_blank"
+                rel="noreferrer"
+                className="mb-3 inline-flex text-sm font-medium text-indigo-700 hover:text-indigo-900"
+              >
+                Visit website
+              </a>
+            ) : null}
+
+            {company.business_summary ? (
+              <p className="text-sm leading-6 text-slate-600">
+                {company.business_summary}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+export default function CorporateIntelligencePage() {
+  const [rows, setRows] = useState<CorporateProfile[]>([]);
+  const [summary, setSummary] = useState<CorporateDirectorySummary | null>(
+    null,
+  );
+  const [selectedCompany, setSelectedCompany] =
+    useState<CorporateProfile | null>(null);
+
+  const [search, setSearch] = useState("");
+  const [sector, setSector] = useState("All");
+  const [stateFilter, setStateFilter] = useState("All");
+
+  const [loading, setLoading] = useState(true);
+  const [refreshingProfiles, setRefreshingProfiles] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function loadData() {
+    try {
+      setError(null);
+      setLoading(true);
+
+      const [directoryRows, summaryData] = await Promise.all([
+        fetchCorporateDirectory(),
+        fetchCorporateSummary(),
+      ]);
+
+      setRows(Array.isArray(directoryRows) ? directoryRows : []);
+      setSummary(summaryData);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load corporate intelligence data",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function refreshProfiles() {
+    try {
+      setRefreshingProfiles(true);
+
+      const res = await fetch("/api/corporate-intelligence/profiles/refresh", {
+        method: "POST",
+      });
+
+      if (!res.ok) {
+        throw new Error("Profile refresh failed");
+      }
+
+      await loadData();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to refresh corporate profiles",
+      );
+    } finally {
+      setRefreshingProfiles(false);
+    }
+  }
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const normalizedRows = useMemo(
+    () =>
+      rows.map((row) => ({
+        ...row,
+        country: normalizeCountry(row),
+        state: getCompanyState(row) ?? row.state,
+      })),
+    [rows],
+  );
+
+  const computedSummary = useMemo(
+    () => normalizeSummary(summary, normalizedRows),
+    [summary, normalizedRows],
+  );
+
+  const sectors = useMemo(
+    () =>
+      [
+        "All",
+        ...Array.from(
+          new Set(normalizedRows.map((row) => row.sector).filter(Boolean)),
+        ).sort(),
+      ] as string[],
+    [normalizedRows],
+  );
+
+  const states = useMemo(
+    () =>
+      [
+        "All",
+        ...Array.from(
+          new Set(
+            normalizedRows.map((row) => getCompanyState(row) ?? "Unknown"),
+          ),
+        ).sort(),
+      ] as string[],
+    [normalizedRows],
+  );
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    return normalizedRows.filter((row) => {
+      const marketValue = getMarketValue(row);
+      const companyState = getCompanyState(row) ?? "Unknown";
+
+      const matchesSearch =
+        !q ||
+        [
+          row.symbol,
+          row.company_name,
+          row.sector,
+          row.industry,
+          row.country,
+          row.city,
+          companyState,
+          row.headquarters,
+          row.exchange,
+          marketValue,
+        ]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(q));
+
+      const matchesSector = sector === "All" || row.sector === sector;
+      const matchesState =
+        stateFilter === "All" || companyState === stateFilter;
+
+      return matchesSearch && matchesSector && matchesState;
+    });
+  }, [normalizedRows, search, sector, stateFilter]);
+
+  const sectorChart = useMemo(
+    () => countBy(filteredRows, (row) => row.sector, 10),
+    [filteredRows],
+  );
+
+  const stateChart = useMemo(
+    () => countBy(filteredRows, (row) => getCompanyState(row) ?? "Unknown", 10),
+    [filteredRows],
+  );
+
+  const industryChart = useMemo(
+    () => countBy(filteredRows, (row) => row.industry, 10),
+    [filteredRows],
+  );
+
+  const mapPoints = useMemo(
+    () => buildStateMapPoints(filteredRows),
+    [filteredRows],
+  );
+
+  const handleStateSelect = useCallback((state: string) => {
+    setStateFilter(state || "All");
+    setSearch("");
+  }, []);
+
+  return (
+    <main className="min-h-screen bg-slate-100 px-4 py-5 text-slate-900 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl space-y-5">
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+            <div>
+              <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                <Sparkles size={14} />
+                Corporate Intelligence
+              </div>
+
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
+                Corporate Directory
+              </h1>
+
+              <p className="mt-1 max-w-4xl text-sm leading-6 text-slate-500">
+                S&amp;P 500 corporate directory with USA headquarters map,
+                sector breakdown, industry concentration and market value
+                support.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={loadData}
+                disabled={loading}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCw
+                  size={16}
+                  className={loading ? "animate-spin" : ""}
+                />
+                Reload
+              </button>
+
+              <button
+                onClick={refreshProfiles}
+                disabled={refreshingProfiles}
+                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCw
+                  size={16}
+                  className={refreshingProfiles ? "animate-spin" : ""}
+                />
+                Refresh Profiles
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {error ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {error}
+          </div>
+        ) : null}
+
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            title="Total Companies"
+            value={computedSummary.total_companies}
+            helper="Imported companies"
+            icon={<Building2 size={20} />}
+          />
+
+          <StatCard
+            title="Sectors"
+            value={computedSummary.sectors}
+            helper="Unique sectors"
+            icon={<Layers3 size={20} />}
+          />
+
+          <StatCard
+            title="Industries"
+            value={computedSummary.industries}
+            helper="Unique industries"
+            icon={<Factory size={20} />}
+          />
+
+          <StatCard
+            title="States"
+            value={states.length > 0 ? states.length - 1 : 0}
+            helper="Detected HQ states"
+            icon={<Globe2 size={20} />}
+          />
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-2">
+          <BarListCard
+            title="Companies by Sector"
+            subtitle="Top sectors by company count"
+            data={sectorChart}
+          />
+
+          <BarListCard
+            title="Companies by State"
+            subtitle="USA headquarters distribution"
+            data={stateChart}
+          />
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-[2fr_1fr]">
+          <DynamicUsaLeafletMap
+            points={mapPoints}
+            totalCompanies={filteredRows.length}
+            activeState={stateFilter}
+            onStateSelect={handleStateSelect}
+          />
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">
+                  Map Summary
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Headquarters concentration in current filter
+                </p>
+              </div>
+              <div className="rounded-xl bg-indigo-50 p-2 text-indigo-700">
+                <MapPinned size={18} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {stateFilter !== "All" ? (
+                <button
+                  type="button"
+                  onClick={() => handleStateSelect("All")}
+                  className="mb-2 w-full rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-left text-xs font-bold text-indigo-700 transition hover:bg-indigo-100"
+                >
+                  Clear state filter: {stateFilter}
+                </button>
+              ) : null}
+
+              {stateChart.slice(0, 8).map((point) => (
+                <button
+                  type="button"
+                  key={point.name}
+                  onClick={() => handleStateSelect(point.name)}
+                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left transition ${
+                    stateFilter === point.name
+                      ? "bg-indigo-600 text-white"
+                      : "bg-slate-50 text-slate-900 hover:bg-indigo-50"
+                  }`}
+                >
+                  <span className="text-sm font-medium">{point.name}</span>
+                  <span className="text-sm font-semibold">{point.value}</span>
+                </button>
+              ))}
+
+              {stateChart.length === 0 ? (
+                <div className="rounded-xl bg-slate-50 px-3 py-8 text-center text-sm text-slate-500">
+                  No locations in current filter.
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-1">
+          <BarListCard
+            title="Top Industries"
+            subtitle="Largest industries in directory"
+            data={industryChart}
+          />
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="grid gap-3 md:grid-cols-[1fr_220px_220px]">
+            <div className="relative">
+              <Search
+                size={17}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search ticker, company, sector, industry, state, headquarters..."
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+              />
+            </div>
+
+            <select
+              value={sector}
+              onChange={(event) => setSector(event.target.value)}
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+            >
+              {sectors.map((item) => (
+                <option key={item} value={item}>
+                  {item === "All" ? "All sectors" : item}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={stateFilter}
+              onChange={(event) => setStateFilter(event.target.value)}
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+            >
+              {states.map((item) => (
+                <option key={item} value={item}>
+                  {item === "All" ? "All states" : item}
+                </option>
+              ))}
+            </select>
+          </div>
+        </section>
+
+        {loading ? (
+          <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="rounded-2xl bg-slate-900 px-7 py-6 text-center shadow-xl">
+              <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              <p className="text-sm font-semibold text-white">
+                Loading directory...
+              </p>
+              <p className="mt-1 text-xs text-slate-300">
+                Fetching corporate profiles
+              </p>
+            </div>
+          </div>
+        ) : (
+          <CorporateDirectoryTable
+            rows={filteredRows}
+            onSelect={setSelectedCompany}
+          />
+        )}
+      </div>
+
+      <DetailModal
+        company={selectedCompany}
+        onClose={() => setSelectedCompany(null)}
+      />
+    </main>
+  );
+}
+
+
+
+================ FILE: C:\NextJS\stratify\types\react-simple-maps.d.ts ================
+
+declare module "react-simple-maps";

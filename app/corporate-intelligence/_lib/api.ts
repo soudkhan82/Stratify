@@ -1,4 +1,8 @@
-import type { CorporateDirectorySummary, CorporateProfile } from "./types";
+﻿import type {
+  CorporateDirectorySummary,
+  CorporateProfile,
+  CorporateScope,
+} from "./types";
 
 function unwrapArray<T>(payload: unknown): T[] {
   if (Array.isArray(payload)) return payload as T[];
@@ -34,10 +38,17 @@ function unwrapObject<T>(payload: unknown): T | null {
   return payload as T;
 }
 
-export async function fetchCorporateDirectory(): Promise<CorporateProfile[]> {
-  const res = await fetch("/api/corporate-intelligence/directory", {
-    cache: "no-store",
-  });
+function scopeParam(scope?: CorporateScope) {
+  return `?scope=${encodeURIComponent(scope || "sp500")}`;
+}
+
+export async function fetchCorporateDirectory(
+  scope: CorporateScope = "sp500",
+): Promise<CorporateProfile[]> {
+  const res = await fetch(
+    `/api/corporate-intelligence/directory${scopeParam(scope)}`,
+    { cache: "no-store" },
+  );
 
   if (!res.ok) {
     throw new Error("Failed to fetch corporate directory");
@@ -47,10 +58,13 @@ export async function fetchCorporateDirectory(): Promise<CorporateProfile[]> {
   return unwrapArray<CorporateProfile>(json);
 }
 
-export async function fetchCorporateSummary(): Promise<CorporateDirectorySummary | null> {
-  const res = await fetch("/api/corporate-intelligence/summary", {
-    cache: "no-store",
-  });
+export async function fetchCorporateSummary(
+  scope: CorporateScope = "sp500",
+): Promise<CorporateDirectorySummary | null> {
+  const res = await fetch(
+    `/api/corporate-intelligence/summary${scopeParam(scope)}`,
+    { cache: "no-store" },
+  );
 
   if (!res.ok) {
     return null;

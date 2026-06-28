@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import type { CorporateProfile } from "../_lib/types";
 
@@ -8,7 +8,7 @@ type Props = {
 };
 
 function clean(value: unknown) {
-  if (value === null || value === undefined || value === "") return "—";
+  if (value === null || value === undefined || value === "") return "â€”";
   return String(value);
 }
 
@@ -21,8 +21,7 @@ export default function CorporateDirectoryTable({ rows, onSelect }: Props) {
             Corporate Directory
           </h2>
           <p className="text-xs text-slate-500">
-            S&amp;P 500 company profile data. Click any row to view live Finnhub
-            market data.
+            Company profile data. Click any row to view market snapshot and profile details.
           </p>
         </div>
 
@@ -104,3 +103,4 @@ export default function CorporateDirectoryTable({ rows, onSelect }: Props) {
     </div>
   );
 }
+
