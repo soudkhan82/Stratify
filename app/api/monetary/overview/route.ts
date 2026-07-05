@@ -52,13 +52,23 @@ async function fetchWorldBankIndicator(
     `/indicator/${encodeURIComponent(indicator.code)}` +
     `?format=json&per_page=20000&date=${fromYear}:${currentYear}`;
 
-  const res = await fetch(url, {
-    next: { revalidate: 43200 },
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "Stratify Monetary API https://worldstats360.com"
-    }
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+
+  let res: Response;
+
+  try {
+    res = await fetch(url, {
+      next: { revalidate: 43200 },
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Stratify Monetary API https://worldstats360.com"
+      }
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!res.ok) {
     throw new Error(`World Bank failed for ${indicator.code}: ${res.status}`);
@@ -222,3 +232,4 @@ export async function GET(req: Request) {
     );
   }
 }
+

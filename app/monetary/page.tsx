@@ -107,24 +107,41 @@ const FALLBACK_COUNTRIES: CountryOption[] = [
 
 const DEFAULT_INDICATOR = "FR.INR.LEND";
 
-async function fetchJson(url: string) {
-  const res = await fetch(url, { cache: "no-store" });
-  const txt = await res.text().catch(() => "");
+async function fetchJson(url: string, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
 
-  if (!res.ok) {
-    throw new Error(
-      `HTTP ${res.status} ${res.statusText}${txt ? ` - ${txt.slice(0, 220)}` : ""}`,
-    );
+  try {
+    const res = await fetch(url, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    const txt = await res.text().catch(() => "");
+
+    if (!res.ok) {
+      throw new Error(
+        `HTTP ${res.status} ${res.statusText}${txt ? ` - ${txt.slice(0, 220)}` : ""}`,
+      );
+    }
+
+    const ct = res.headers.get("content-type") || "";
+    if (!ct.includes("application/json")) {
+      throw new Error(
+        `Expected JSON but got "${ct || "unknown"}"${txt ? ` - ${txt.slice(0, 220)}` : ""}`,
+      );
+    }
+
+    return JSON.parse(txt);
+  } catch (error: any) {
+    if (error?.name === "AbortError") {
+      throw new Error("Request timed out. Please retry or select another country.");
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
   }
-
-  const ct = res.headers.get("content-type") || "";
-  if (!ct.includes("application/json")) {
-    throw new Error(
-      `Expected JSON but got "${ct || "unknown"}"${txt ? ` - ${txt.slice(0, 220)}` : ""}`,
-    );
-  }
-
-  return JSON.parse(txt);
 }
 
 function toNum(v: unknown): number | null {
@@ -161,6 +178,27 @@ function fmtVal(v: number | null | undefined, unit?: string | null) {
   if (unit === "LCU per US$") return `${base}`;
 
   return `${base} ${unit}`;
+}
+
+function fmtTableVal(v: number | null | undefined, unit?: string | null) {
+  if (v === null || v === undefined || !Number.isFinite(v)) return "-";
+
+  const base =
+    Math.abs(v) >= 1e6
+      ? fmtCompact(v)
+      : v.toLocaleString("en-US", { maximumFractionDigits: 2 });
+
+  if (!unit) return base;
+  if (unit === "%") return `${base}%`;
+  if (unit === "annual %") return `${base}%`;
+  if (unit === "% of GDP") return `${base}%`;
+  if (unit === "% of total gross loans") return `${base}%`;
+  if (unit === "current US$") return `$${base}`;
+  if (unit === "LCU per US$") return base;
+  if (unit === "count") return base;
+  if (unit === "months") return `${base} mo`;
+
+  return base;
 }
 
 function safeText(value: string, max = 68) {
@@ -205,6 +243,17 @@ function yoyTable(series: { year: number; value: number }[]) {
   });
 }
 
+function uniqueOptions(rows: CountryOption[]) {
+  const map = new Map<string, CountryOption>();
+
+  for (const row of rows) {
+    if (!row.code) continue;
+    if (!map.has(row.code)) map.set(row.code, row);
+  }
+
+  return Array.from(map.values());
+}
+
 function LoadingScreen() {
   return (
     <div className="min-h-screen bg-slate-100">
@@ -215,7 +264,7 @@ function LoadingScreen() {
             Loading monetary intelligence
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            Fetching live World Bank indicators...
+            Fetching countries, indicators, and latest series...
           </p>
         </div>
       </div>
@@ -223,13 +272,12 @@ function LoadingScreen() {
   );
 }
 
-function LoadingOverlay() {
+function PageLoadingBar({ loading }: { loading: boolean }) {
+  if (!loading) return null;
+
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center rounded-[22px] bg-white/50 backdrop-blur-sm">
-      <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-4 py-2 shadow-sm">
-        <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-violet-600" />
-        <span className="text-xs font-black text-slate-700">Refreshing data...</span>
-      </div>
+    <div className="fixed left-0 right-0 top-[72px] z-40 h-1 overflow-hidden bg-violet-100">
+      <div className="h-full w-1/3 animate-pulse rounded-full bg-gradient-to-r from-violet-600 to-blue-600" />
     </div>
   );
 }
@@ -266,45 +314,9 @@ function MetricCard({
   );
 }
 
-function CoverageBar({
-  label,
-  value,
-  max,
-}: {
-  label: string;
-  value: number;
-  max: number;
-}) {
-  const pct = max > 0 ? Math.max(4, Math.round((value / max) * 100)) : 0;
-
-  return (
-    <div className="grid grid-cols-[150px_1fr_32px] items-center gap-3 text-sm">
-      <div className="truncate font-semibold text-slate-800">{label}</div>
-      <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-violet-600 to-blue-600"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <div className="text-right font-bold text-slate-900">{value}</div>
-    </div>
-  );
-}
-
-function uniqueOptions(rows: CountryOption[]) {
-  const map = new Map<string, CountryOption>();
-
-  for (const row of rows) {
-    if (!row.code) continue;
-    if (!map.has(row.code)) map.set(row.code, row);
-  }
-
-  return Array.from(map.values());
-}
-
 export default function MonetaryPage() {
   const [country, setCountry] = useState("PAK");
-  const [regionFilter, setRegionFilter] = useState("ALL");
+  const [regionFilter, setRegionFilter] = useState("WLD");
   const [indicatorCode, setIndicatorCode] = useState(DEFAULT_INDICATOR);
 
   const [regions, setRegions] = useState<CountryOption[]>(FALLBACK_REGIONS);
@@ -320,7 +332,8 @@ export default function MonetaryPage() {
 
     (async () => {
       try {
-        const j = (await fetchJson("/api/monetary/countries")) as CountriesResp;
+        const j = (await fetchJson("/api/monetary/countries", 20000)) as CountriesResp;
+
         if (!alive) return;
 
         if (j.ok) {
@@ -349,6 +362,7 @@ export default function MonetaryPage() {
       try {
         const j = (await fetchJson(
           `/api/monetary/overview?country=${encodeURIComponent(country)}&series=1`,
+          30000,
         )) as MonetaryResp;
 
         if (!alive) return;
@@ -359,17 +373,30 @@ export default function MonetaryPage() {
 
         setResp(j);
 
-        const exists = j.indicators?.some((x) => x.code === indicatorCode);
-        if (!exists) {
-          const firstWithSeries =
-            j.indicators?.find((x) => cleanSeries(x).length >= 2) ||
-            j.indicators?.[0];
+        const currentRow =
+          j.indicators?.find((x) => x.code === indicatorCode) || null;
 
-          if (firstWithSeries) setIndicatorCode(firstWithSeries.code);
+        const currentHasSeries =
+          currentRow ? cleanSeries(currentRow).length >= 2 : false;
+
+        const firstWithSeries =
+          j.indicators?.find((x) => cleanSeries(x).length >= 2) || null;
+
+        const firstWithLatest =
+          j.indicators?.find((x) => x.latestValue !== null) || null;
+
+        const fallbackIndicator =
+          firstWithSeries || firstWithLatest || j.indicators?.[0] || null;
+
+        if (
+          !currentHasSeries &&
+          fallbackIndicator?.code &&
+          fallbackIndicator.code !== indicatorCode
+        ) {
+          setIndicatorCode(fallbackIndicator.code);
         }
       } catch (e: any) {
         if (!alive) return;
-        setResp(null);
         setErr(e?.message || "Failed to load monetary data");
       } finally {
         if (alive) {
@@ -385,42 +412,27 @@ export default function MonetaryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [country]);
 
-  const regionOptions = useMemo(() => {
-    return [
-      { code: "ALL", name: "All Regions", type: "region" as const },
-      ...regions,
-    ];
-  }, [regions]);
+  const regionOptions = useMemo(() => regions, [regions]);
 
   const countryOptions = useMemo(() => {
-    if (regionFilter === "ALL") {
-      return uniqueOptions([
-        ...regions.filter((r) => r.code === "WLD"),
-        ...countries,
-      ]);
-    }
+    if (regionFilter === "WLD") return uniqueOptions(countries);
 
-    if (regionFilter === "WLD") {
-      return uniqueOptions([
-        ...regions.filter((r) => r.code === "WLD"),
-        ...countries,
-      ]);
-    }
-
-    const regionAggregate = regions.filter((r) => r.code === regionFilter);
-    const filteredCountries = countries.filter(
-      (c) => c.regionCode === regionFilter,
+    return uniqueOptions(
+      countries.filter((c) => c.regionCode === regionFilter),
     );
-
-    return uniqueOptions([...regionAggregate, ...filteredCountries]);
-  }, [regionFilter, regions, countries]);
+  }, [regionFilter, countries]);
 
   const indicators = resp?.indicators ?? [];
 
   const selected = useMemo(() => {
+    const current = indicators.find((x) => x.code === indicatorCode) || null;
+
+    if (current && cleanSeries(current).length >= 2) return current;
+
     return (
-      indicators.find((x) => x.code === indicatorCode) ||
       indicators.find((x) => cleanSeries(x).length >= 2) ||
+      indicators.find((x) => x.latestValue !== null) ||
+      current ||
       indicators[0] ||
       null
     );
@@ -446,7 +458,6 @@ export default function MonetaryPage() {
 
   const selectedCountryOption =
     countryOptions.find((c) => c.code === country) ||
-    regions.find((r) => r.code === country) ||
     countries.find((c) => c.code === country);
 
   const countryLabel =
@@ -465,12 +476,12 @@ export default function MonetaryPage() {
 
   const maxCategory = Math.max(1, ...categoryRows.map((x) => x.total));
 
-  const showOverlay = loading && !initialLoading;
-
   if (initialLoading) return <LoadingScreen />;
 
   return (
     <div className="min-h-screen bg-slate-100">
+      <PageLoadingBar loading={loading} />
+
       <div className="mx-auto max-w-[1480px] space-y-5 px-4 py-6 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-4 rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -481,7 +492,7 @@ export default function MonetaryPage() {
               Monetary & Financial Stability
             </h1>
             <p className="mt-1 max-w-4xl text-sm text-slate-600">
-              Country and regional monetary intelligence covering money supply,
+              Country-level monetary intelligence covering money supply,
               interest rates, exchange rates, FX reserves, banking health, and
               capital markets.
             </p>
@@ -493,12 +504,21 @@ export default function MonetaryPage() {
               onValueChange={(value) => {
                 setRegionFilter(value);
 
-                if (value === "ALL") {
-                  setCountry("PAK");
-                  return;
-                }
+                const nextCountries =
+                  value === "WLD"
+                    ? countries
+                    : countries.filter((c) => c.regionCode === value);
 
-                setCountry(value);
+                const currentStillValid = nextCountries.find(
+                  (c) => c.code === country,
+                );
+
+                const preferred =
+                  currentStillValid ||
+                  nextCountries.find((c) => c.code === "PAK") ||
+                  nextCountries[0];
+
+                if (preferred?.code) setCountry(preferred.code);
               }}
             >
               <SelectTrigger className="w-[250px] rounded-2xl border-slate-200 bg-slate-50 font-bold shadow-sm">
@@ -515,13 +535,12 @@ export default function MonetaryPage() {
 
             <Select value={country} onValueChange={setCountry}>
               <SelectTrigger className="w-[310px] rounded-2xl border-slate-200 bg-slate-50 font-bold shadow-sm">
-                <SelectValue placeholder="Country / region" />
+                <SelectValue placeholder="Country" />
               </SelectTrigger>
               <SelectContent className="max-h-[420px]">
                 {countryOptions.map((c) => (
                   <SelectItem key={c.code} value={c.code}>
-                    {c.name}
-                    {c.type === "country" && c.region ? ` (${c.code})` : ""}
+                    {c.name} ({c.code})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -543,7 +562,7 @@ export default function MonetaryPage() {
             <Button
               className="rounded-2xl bg-gradient-to-r from-violet-600 to-blue-600 font-black text-white shadow-md shadow-violet-200 hover:opacity-95"
               onClick={() => {
-                setRegionFilter("ALL");
+                setRegionFilter("WLD");
                 setCountry("PAK");
                 setIndicatorCode(DEFAULT_INDICATOR);
               }}
@@ -552,6 +571,12 @@ export default function MonetaryPage() {
             </Button>
           </div>
         </div>
+
+        {loading ? (
+          <div className="rounded-[18px] border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-bold text-violet-700">
+            Loading latest monetary data for {countryLabel}...
+          </div>
+        ) : null}
 
         {err ? (
           <div className="rounded-[20px] border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
@@ -566,8 +591,63 @@ export default function MonetaryPage() {
           <MetricCard title="FX Reserves" row={resp?.kpis?.total_reserves} icon="🏦" />
         </div>
 
+        <Card className="rounded-[24px] border border-slate-200 bg-white shadow-sm">
+          <CardHeader className="pb-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="text-2xl font-black text-slate-950">
+                  Indicator Coverage
+                </CardTitle>
+                <p className="text-sm text-slate-500">
+                  Monetary dataset sections and available indicator groups.
+                </p>
+              </div>
+
+              <Badge className="rounded-full bg-slate-100 px-3 py-1 font-black text-slate-700 hover:bg-slate-100">
+                {resp?.coverage?.available_latest_values ?? 0} available
+              </Badge>
+            </div>
+          </CardHeader>
+
+          <CardContent>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {categoryRows.map((row) => (
+                <div
+                  key={row.category}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                >
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <span className="truncate text-sm font-black text-slate-900">
+                      {row.category}
+                    </span>
+                    <span className="text-sm font-black text-slate-950">
+                      {row.total}
+                    </span>
+                  </div>
+
+                  <div className="h-3 overflow-hidden rounded-full bg-white">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-violet-600 to-blue-600"
+                      style={{
+                        width: `${Math.max(
+                          6,
+                          Math.round((row.total / maxCategory) * 100),
+                        )}%`,
+                      }}
+                    />
+                  </div>
+
+                  <div className="mt-2 text-[11px] font-semibold text-slate-500">
+                    {row.available} with latest values
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-12 gap-4">
-          <Card className="col-span-12 rounded-[24px] border border-slate-200 bg-white shadow-sm lg:col-span-8">
+          <Card className="col-span-12 rounded-[24px] border border-slate-200 bg-white shadow-sm lg:col-span-7">
             <CardHeader className="pb-2">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -576,182 +656,143 @@ export default function MonetaryPage() {
                   </CardTitle>
                   <p className="text-sm text-slate-500">
                     {safeText(selected?.label || "", 120)}{" "}
-                    {selected?.unit ? `• ${selected.unit}` : ""} • {countryLabel}
+                    {selected?.unit ? `- ${selected.unit}` : ""} - {countryLabel}
                   </p>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="secondary" className="rounded-full">
-                    {selected?.firstAvailableYear ?? "-"}-
-                    {selected?.lastAvailableYear ?? "-"}
-                  </Badge>
-                  {loading && !initialLoading ? (
-                    <Badge className="rounded-full bg-slate-900 text-white">
-                      Loading
-                    </Badge>
-                  ) : null}
-                </div>
-              </div>
-            </CardHeader>
-
-            <CardContent>
-              <div className="relative">
-                {showOverlay ? <LoadingOverlay /> : null}
-
-                {!table.length && !loading ? (
-                  <div className="rounded-2xl border bg-slate-50 px-4 py-4 text-sm text-slate-600">
-                    No series available for this indicator.
-                  </div>
-                ) : (
-                  <div className={showOverlay ? "opacity-70" : ""}>
-                    <div className="h-[370px] rounded-2xl border bg-white p-3">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart
-                          data={lineData}
-                          margin={{ left: 8, right: 16, top: 12, bottom: 8 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="year" />
-                          <YAxis
-                            domain={yDomain as any}
-                            tickFormatter={(v) => fmtCompact(Number(v))}
-                          />
-                          <Tooltip
-                            labelFormatter={(l) => `Year: ${l}`}
-                            formatter={(v: any) =>
-                              fmtVal(
-                                typeof v === "number" ? v : toNum(v),
-                                selected?.unit,
-                              )
-                            }
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="value"
-                            stroke="#4f46e5"
-                            strokeWidth={3}
-                            dot={false}
-                            isAnimationActive={false}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-
-                    <div className="mt-2 text-xs text-slate-500">
-                      Showing last {Math.min(40, lineData.length)} points •{" "}
-                      {selected?.code ?? "-"}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="col-span-12 rounded-[24px] border border-slate-200 bg-white shadow-sm lg:col-span-4">
-            <CardHeader className="pb-2">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <CardTitle className="text-2xl font-black text-slate-950">
-                    Indicator Coverage
-                  </CardTitle>
-                  <p className="text-sm text-slate-500">
-                    Current monetary dataset sections.
-                  </p>
-                </div>
-
-                <Badge className="rounded-full bg-slate-100 px-3 py-1 font-black text-slate-700 hover:bg-slate-100">
-                  {resp?.coverage?.available_latest_values ?? 0} available
+                <Badge variant="secondary" className="rounded-full">
+                  {selected?.firstAvailableYear ?? "-"}-
+                  {selected?.lastAvailableYear ?? "-"}
                 </Badge>
               </div>
             </CardHeader>
 
             <CardContent>
-              <div className="space-y-4">
-                {categoryRows.map((row) => (
-                  <CoverageBar
-                    key={row.category}
-                    label={row.category}
-                    value={row.total}
-                    max={maxCategory}
-                  />
-                ))}
+              {!table.length ? (
+                <div className="rounded-2xl border bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                  No series available for this indicator.
+                </div>
+              ) : (
+                <>
+                  <div className="h-[370px] rounded-2xl border bg-white p-3">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart
+                        data={lineData}
+                        margin={{ left: 8, right: 16, top: 12, bottom: 8 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="year" />
+                        <YAxis
+                          domain={yDomain as any}
+                          tickFormatter={(v) => fmtCompact(Number(v))}
+                        />
+                        <Tooltip
+                          labelFormatter={(l) => `Year: ${l}`}
+                          formatter={(v: any) =>
+                            fmtVal(
+                              typeof v === "number" ? v : toNum(v),
+                              selected?.unit,
+                            )
+                          }
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="value"
+                          stroke="#4f46e5"
+                          strokeWidth={3}
+                          dot={false}
+                          isAnimationActive={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="mt-2 text-xs text-slate-500">
+                    Showing last {Math.min(40, lineData.length)} points -{" "}
+                    {selected?.code ?? "-"}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="col-span-12 rounded-[24px] border border-slate-200 bg-white shadow-sm lg:col-span-5">
+            <CardHeader className="pb-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="text-2xl font-black text-slate-950">
+                    Monetary Indicator Table
+                  </CardTitle>
+                  <p className="text-sm text-slate-500">
+                    Click any row to update the trend chart.
+                  </p>
+                </div>
+
+                <Badge className="rounded-full bg-slate-100 px-3 py-1 font-black text-slate-700 hover:bg-slate-100">
+                  {indicators.length} indicators
+                </Badge>
+              </div>
+            </CardHeader>
+
+            <CardContent>
+              <div className="max-h-[430px] overflow-y-auto overflow-x-hidden rounded-2xl border border-slate-200 bg-white">
+                <table className="w-full table-fixed text-[12px]">
+                  <colgroup>
+                    <col className="w-[58%]" />
+                    <col className="w-[27%]" />
+                    <col className="w-[15%]" />
+                  </colgroup>
+                  <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] text-slate-600">
+                    <tr>
+                      <th className="px-2 py-2 text-left">Indicator</th>
+                      <th className="px-2 py-2 text-right">Value</th>
+                      <th className="px-2 py-2 text-right">Year</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {indicators.map((row) => {
+                      const active = row.code === selected?.code;
+
+                      return (
+                        <tr
+                          key={row.code}
+                          className={[
+                            "cursor-pointer border-t transition",
+                            active ? "bg-violet-50" : "hover:bg-slate-50",
+                          ].join(" ")}
+                          onClick={() => setIndicatorCode(row.code)}
+                        >
+                          <td className="px-2 py-2 align-top">
+                            <div className="break-words text-[12px] font-black leading-snug text-slate-950">
+                              {row.label}
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-1 leading-tight">
+                              <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">
+                                {row.category}
+                              </span>
+                              <span className="rounded-full bg-slate-100 px-1.5 py-0.5 font-mono text-[9px] font-bold text-slate-500">
+                                {row.code}
+                              </span>
+                            </div>
+                          </td>
+
+                          <td className="px-2 py-2 align-top text-right text-[12px] font-black leading-snug text-slate-950 break-words">
+                            {fmtTableVal(row.latestValue, row.unit)}
+                          </td>
+
+                          <td className="px-2 py-2 align-top text-right text-[12px] text-slate-700">
+                            {row.latestYear ?? "-"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </CardContent>
           </Card>
         </div>
-
-        <Card className="rounded-[24px] border border-slate-200 bg-white shadow-sm">
-          <CardHeader className="pb-2">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <CardTitle className="text-2xl font-black text-slate-950">
-                  Monetary Indicator Table
-                </CardTitle>
-                <p className="text-sm text-slate-500">
-                  Latest available values from live REST-first World Bank indicators.
-                </p>
-              </div>
-
-              <Badge className="rounded-full bg-slate-100 px-3 py-1 font-black text-slate-700 hover:bg-slate-100">
-                {indicators.length} indicators
-              </Badge>
-            </div>
-          </CardHeader>
-
-          <CardContent>
-            <div className="max-h-[460px] overflow-auto rounded-2xl border border-slate-200 bg-white">
-              <table className="w-full min-w-[980px] text-sm">
-                <thead className="sticky top-0 z-10 bg-slate-50 text-xs text-slate-600">
-                  <tr>
-                    <th className="p-3 text-left">Category</th>
-                    <th className="p-3 text-left">Indicator</th>
-                    <th className="p-3 text-right">Latest value</th>
-                    <th className="p-3 text-right">Year</th>
-                    <th className="p-3 text-right">Coverage</th>
-                    <th className="p-3 text-left">Code</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {indicators.map((row) => {
-                    const active = row.code === selected?.code;
-
-                    return (
-                      <tr
-                        key={row.code}
-                        className={[
-                          "cursor-pointer border-t transition",
-                          active ? "bg-violet-50" : "hover:bg-slate-50",
-                        ].join(" ")}
-                        onClick={() => setIndicatorCode(row.code)}
-                      >
-                        <td className="p-3 font-semibold text-slate-700">
-                          {row.category}
-                        </td>
-                        <td className="p-3 font-bold text-slate-950">
-                          {row.label}
-                        </td>
-                        <td className="p-3 text-right font-black text-slate-950">
-                          {fmtVal(row.latestValue, row.unit)}
-                        </td>
-                        <td className="p-3 text-right text-slate-700">
-                          {row.latestYear ?? "-"}
-                        </td>
-                        <td className="p-3 text-right text-slate-700">
-                          {row.firstAvailableYear ?? "-"}-
-                          {row.lastAvailableYear ?? "-"}
-                        </td>
-                        <td className="p-3 font-mono text-xs text-slate-500">
-                          {row.code}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
 
         <Card className="rounded-[24px] border border-slate-200 bg-white shadow-sm">
           <CardHeader className="pb-2">
@@ -769,7 +810,7 @@ export default function MonetaryPage() {
                 <thead className="sticky top-0 z-10 bg-slate-50 text-xs text-slate-600">
                   <tr>
                     <th className="p-3 text-left">Year</th>
-                    <th className="p-3 text-right">Value</th>
+                    <th className="px-2 py-2 text-right">Value</th>
                     <th className="p-3 text-right">Change</th>
                     <th className="p-3 text-right">Change %</th>
                   </tr>
@@ -784,7 +825,7 @@ export default function MonetaryPage() {
                         <td className="p-3 font-semibold text-slate-700">
                           {r.year}
                         </td>
-                        <td className="p-3 text-right font-black text-slate-950">
+                        <td className="px-2 py-2 align-top text-right text-[12px] font-black leading-snug text-slate-950 break-words">
                           {fmtVal(r.value, selected?.unit)}
                         </td>
                         <td className="p-3 text-right font-semibold text-slate-700">
@@ -819,3 +860,4 @@ export default function MonetaryPage() {
     </div>
   );
 }
+
