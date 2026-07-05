@@ -20,45 +20,101 @@ const INDICATORS = [
   { code: "CM.MKT.TRAD.GD.ZS", label: "Stocks traded total value", unit: "% of GDP", category: "Capital Markets" }
 ];
 
+const ISO3_TO_ISO2: Record<string, string> = {
+  PAK: "PK",
+  IND: "IN",
+  AUS: "AU",
+  NZL: "NZ",
+  USA: "US",
+  GBR: "GB",
+  CHN: "CN",
+  JPN: "JP",
+  DEU: "DE",
+  FRA: "FR",
+  ITA: "IT",
+  ESP: "ES",
+  CAN: "CA",
+  BRA: "BR",
+  MEX: "MX",
+  TUR: "TR",
+  SAU: "SA",
+  ARE: "AE",
+  KOR: "KR",
+  IDN: "ID",
+  MYS: "MY",
+  THA: "TH",
+  VNM: "VN",
+  BGD: "BD",
+  LKA: "LK",
+  NPL: "NP",
+  AFG: "AF",
+  IRN: "IR",
+  IRQ: "IQ",
+  QAT: "QA",
+  KWT: "KW",
+  OMN: "OM",
+  BHR: "BH",
+  EGY: "EG",
+  ZAF: "ZA",
+  NGA: "NG",
+  KEN: "KE",
+  ETH: "ET",
+  RUS: "RU",
+  UKR: "UA",
+  POL: "PL",
+  NLD: "NL",
+  BEL: "BE",
+  CHE: "CH",
+  SWE: "SE",
+  NOR: "NO",
+  DNK: "DK",
+  FIN: "FI",
+  AUT: "AT",
+  IRL: "IE",
+  PRT: "PT",
+  GRC: "GR",
+  ARG: "AR",
+  CHL: "CL",
+  COL: "CO",
+  PER: "PE",
+  PHL: "PH",
+  SGP: "SG"
+};
+
+type Indicator = typeof INDICATORS[number];
+
 function clean(value: unknown) {
   return String(value ?? "").trim();
 }
 
-function normalizeIso3(value: string | null) {
-  const iso3 = clean(value || "PAK")
+function normalizeCountryCode(value: string | null) {
+  const code = clean(value || "PAK")
     .toUpperCase()
-    .replace(/[^A-Z]/g, "")
-    .slice(0, 3);
+    .replace(/[^A-Z]/g, "");
 
-  return iso3 || "PAK";
+  if (code.length === 2) return code;
+  if (code.length >= 3) return code.slice(0, 3);
+
+  return "PK";
 }
 
 function toNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
-  const n = typeof value === "number" ? value : Number(String(value).replace(/,/g, ""));
+
+  const n =
+    typeof value === "number"
+      ? value
+      : Number(String(value).replace(/,/g, "").trim());
+
   return Number.isFinite(n) ? n : null;
 }
 
-async function fetchWorldBankIndicator(
-  country: string,
-  indicator: typeof INDICATORS[number],
-  includeSeries: boolean
-) {
-  const currentYear = new Date().getUTCFullYear();
-  const fromYear = currentYear - 45;
-
-  const url =
-    `https://api.worldbank.org/v2/country/${encodeURIComponent(country)}` +
-    `/indicator/${encodeURIComponent(indicator.code)}` +
-    `?format=json&per_page=20000&date=${fromYear}:${currentYear}`;
-
+async function fetchWithTimeout(url: string, timeoutMs = 12000) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 12000);
-
-  let res: Response;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    res = await fetch(url, {
+    return await fetch(url, {
       next: { revalidate: 43200 },
       signal: controller.signal,
       headers: {
@@ -69,9 +125,59 @@ async function fetchWorldBankIndicator(
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function resolveIso2FromWorldBank(countryCode: string) {
+  const fallback = ISO3_TO_ISO2[countryCode];
+  if (fallback) return fallback;
+
+  try {
+    const url = `https://api.worldbank.org/v2/country/${encodeURIComponent(countryCode)}?format=json`;
+
+    const res = await fetchWithTimeout(url, 8000);
+    if (!res.ok) return null;
+
+    const json = await res.json();
+    const row = Array.isArray(json?.[1]) ? json[1][0] : null;
+    const iso2 = clean(row?.iso2Code).toUpperCase();
+
+    if (/^[A-Z]{2}$/.test(iso2)) return iso2;
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function uniqueCodes(codes: Array<string | null | undefined>) {
+  const out: string[] = [];
+
+  for (const code of codes) {
+    const cleaned = clean(code).toUpperCase();
+    if (!cleaned) continue;
+    if (!out.includes(cleaned)) out.push(cleaned);
+  }
+
+  return out;
+}
+
+async function parseWorldBankSeries(
+  countryCodeForApi: string,
+  originalCountry: string,
+  indicator: Indicator,
+) {
+  const currentYear = new Date().getUTCFullYear();
+  const fromYear = currentYear - 65;
+
+  const url =
+    `https://api.worldbank.org/v2/country/${encodeURIComponent(countryCodeForApi)}` +
+    `/indicator/${encodeURIComponent(indicator.code)}` +
+    `?format=json&per_page=20000&date=${fromYear}:${currentYear}`;
+
+  const res = await fetchWithTimeout(url, 12000);
 
   if (!res.ok) {
-    throw new Error(`World Bank failed for ${indicator.code}: ${res.status}`);
+    throw new Error(`World Bank failed for ${indicator.code} using ${countryCodeForApi}: ${res.status}`);
   }
 
   const json = await res.json();
@@ -83,9 +189,9 @@ async function fetchWorldBankIndicator(
       value: toNumber(r?.value),
       indicator: indicator.code,
       indicatorName: clean(r?.indicator?.value) || indicator.label,
-      countryIso3: clean(r?.countryiso3code) || country,
-      countryName: clean(r?.country?.value) || country,
-      source: "World Bank"
+      countryIso3: clean(r?.countryiso3code) || originalCountry,
+      countryName: clean(r?.country?.value) || originalCountry,
+      source: "World Bank",
     }))
     .filter((r: any) => Number.isFinite(r.year))
     .sort((a: any, b: any) => b.year - a.year);
@@ -94,20 +200,64 @@ async function fetchWorldBankIndicator(
   const latest = validPoints[0] || null;
 
   return {
+    url,
+    apiCountryCode: countryCodeForApi,
+    allPoints,
+    validPoints,
+    latest,
+  };
+}
+
+async function fetchWorldBankIndicator(originalCountry: string, indicator: Indicator, includeSeries: boolean) {
+  const iso2 = await resolveIso2FromWorldBank(originalCountry);
+
+  const candidates = uniqueCodes([
+    originalCountry,
+    iso2,
+    ISO3_TO_ISO2[originalCountry],
+  ]);
+
+  let best: Awaited<ReturnType<typeof parseWorldBankSeries>> | null = null;
+  const errors: string[] = [];
+
+  for (const code of candidates) {
+    try {
+      const result = await parseWorldBankSeries(code, originalCountry, indicator);
+
+      if (!best || result.validPoints.length > best.validPoints.length) {
+        best = result;
+      }
+
+      if (result.validPoints.length > 0) {
+        best = result;
+        break;
+      }
+    } catch (e: any) {
+      errors.push(e?.message || `Failed with ${code}`);
+    }
+  }
+
+  const validPoints = best?.validPoints ?? [];
+  const latest = best?.latest ?? null;
+
+  return {
     code: indicator.code,
     label: indicator.label,
     category: indicator.category,
     unit: indicator.unit,
     latestYear: latest?.year ?? null,
     latestValue: latest?.value ?? null,
-    countryIso3: latest?.countryIso3 ?? country,
-    countryName: latest?.countryName ?? country,
+    countryIso3: latest?.countryIso3 ?? originalCountry,
+    countryName: latest?.countryName ?? originalCountry,
     source: "World Bank",
-    sourceUrl: url,
+    sourceUrl: best?.url ?? null,
+    apiCountryCodeUsed: best?.apiCountryCode ?? candidates[0],
+    attemptedCountryCodes: candidates,
     availablePoints: validPoints.length,
     firstAvailableYear: validPoints.length ? validPoints[validPoints.length - 1].year : null,
     lastAvailableYear: latest?.year ?? null,
-    series: includeSeries ? validPoints : undefined
+    error: validPoints.length ? undefined : errors[0],
+    series: includeSeries ? validPoints : undefined,
   };
 }
 
@@ -131,7 +281,7 @@ function compactGroups(groups: Record<string, any[]>) {
       latestValue: row.latestValue,
       availablePoints: row.availablePoints,
       firstAvailableYear: row.firstAvailableYear,
-      lastAvailableYear: row.lastAvailableYear
+      lastAvailableYear: row.lastAvailableYear,
     }));
   }
 
@@ -142,8 +292,8 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
 
-    const country = normalizeIso3(
-      searchParams.get("country") || searchParams.get("iso3")
+    const country = normalizeCountryCode(
+      searchParams.get("country") || searchParams.get("iso3"),
     );
 
     const includeSeries =
@@ -152,8 +302,8 @@ export async function GET(req: Request) {
 
     const settled = await Promise.allSettled(
       INDICATORS.map((indicator) =>
-        fetchWorldBankIndicator(country, indicator, includeSeries)
-      )
+        fetchWorldBankIndicator(country, indicator, includeSeries),
+      ),
     );
 
     const indicators = settled.map((result, index) => {
@@ -172,11 +322,13 @@ export async function GET(req: Request) {
         countryName: country,
         source: "World Bank",
         sourceUrl: null,
+        apiCountryCodeUsed: country,
+        attemptedCountryCodes: [country],
         availablePoints: 0,
         firstAvailableYear: null,
         lastAvailableYear: null,
         error: result.reason instanceof Error ? result.reason.message : "Fetch failed",
-        series: includeSeries ? [] : undefined
+        series: includeSeries ? [] : undefined,
       };
     });
 
@@ -195,7 +347,7 @@ export async function GET(req: Request) {
         coverage: {
           requested_indicators: INDICATORS.length,
           available_latest_values: available.length,
-          missing_latest_values: INDICATORS.length - available.length
+          missing_latest_values: INDICATORS.length - available.length,
         },
         kpis: {
           money_supply: indicators.find((x) => x.code === "FM.LBL.BMNY.GD.ZS") ?? null,
@@ -204,32 +356,26 @@ export async function GET(req: Request) {
           exchange_rate: indicators.find((x) => x.code === "PA.NUS.FCRF") ?? null,
           total_reserves: indicators.find((x) => x.code === "FI.RES.TOTL.CD") ?? null,
           npl_ratio: indicators.find((x) => x.code === "FB.AST.NPER.ZS") ?? null,
-          market_cap_gdp: indicators.find((x) => x.code === "CM.MKT.LCAP.GD.ZS") ?? null
+          market_cap_gdp: indicators.find((x) => x.code === "CM.MKT.LCAP.GD.ZS") ?? null,
         },
         groups: includeSeries ? groups : compactGroups(groups),
         indicators,
-        notes: [
-          "Default response is compact and excludes full time series.",
-          "Add ?series=1 to include historical non-null series.",
-          "Null-only years are removed from series output."
-        ],
-        generated_at: new Date().toISOString()
+        generated_at: new Date().toISOString(),
       },
       {
         headers: {
-          "Cache-Control": "s-maxage=43200, stale-while-revalidate=86400"
-        }
-      }
+          "Cache-Control": "s-maxage=43200, stale-while-revalidate=86400",
+        },
+      },
     );
   } catch (error) {
     return NextResponse.json(
       {
         ok: false,
         module: "Monetary & Financial Economics",
-        error: error instanceof Error ? error.message : "Unable to load monetary overview"
+        error: error instanceof Error ? error.message : "Unable to load monetary overview",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-

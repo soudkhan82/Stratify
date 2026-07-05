@@ -272,12 +272,26 @@ function LoadingScreen() {
   );
 }
 
-function PageLoadingBar({ loading }: { loading: boolean }) {
-  if (!loading) return null;
+function PageLoadingBar({
+  loading,
+  progress,
+}: {
+  loading: boolean;
+  progress: number;
+}) {
+  if (!loading && progress === 0) return null;
+
+  const pct = Math.max(0, Math.min(100, Math.round(progress)));
 
   return (
-    <div className="fixed left-0 right-0 top-[72px] z-40 h-1 overflow-hidden bg-violet-100">
-      <div className="h-full w-1/3 animate-pulse rounded-full bg-gradient-to-r from-violet-600 to-blue-600" />
+    <div className="fixed left-0 right-0 top-[72px] z-40 h-5 overflow-hidden bg-violet-50 shadow-sm">
+      <div
+        className="h-full rounded-r-full bg-gradient-to-r from-violet-600 to-blue-600 transition-all duration-300"
+        style={{ width: `${pct}%` }}
+      />
+      <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-slate-900">
+        Loading {pct}%
+      </div>
     </div>
   );
 }
@@ -324,9 +338,33 @@ export default function MonetaryPage() {
 
   const [resp, setResp] = useState<MonetaryResp | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const [initialLoading, setInitialLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!loading) {
+      if (loadingProgress > 0) {
+        setLoadingProgress(100);
+        const doneTimer = window.setTimeout(() => setLoadingProgress(0), 600);
+        return () => window.clearTimeout(doneTimer);
+      }
+
+      return;
+    }
+
+    setLoadingProgress(8);
+
+    const timer = window.setInterval(() => {
+      setLoadingProgress((prev) => {
+        if (prev >= 94) return prev;
+        const step = Math.max(1, Math.round((94 - prev) * 0.16));
+        return Math.min(94, prev + step);
+      });
+    }, 350);
+
+    return () => window.clearInterval(timer);
+  }, [loading, loadingProgress]);
   useEffect(() => {
     let alive = true;
 
@@ -480,7 +518,7 @@ export default function MonetaryPage() {
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <PageLoadingBar loading={loading} />
+      <PageLoadingBar loading={loading} progress={loadingProgress} />
 
       <div className="mx-auto max-w-[1480px] space-y-5 px-4 py-6 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-4 rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-end lg:justify-between">
@@ -574,7 +612,7 @@ export default function MonetaryPage() {
 
         {loading ? (
           <div className="rounded-[18px] border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-bold text-violet-700">
-            Loading latest monetary data for {countryLabel}...
+            Loading latest monetary data for {countryLabel}... {Math.round(loadingProgress)}%
           </div>
         ) : null}
 
@@ -860,4 +898,5 @@ export default function MonetaryPage() {
     </div>
   );
 }
+
 
