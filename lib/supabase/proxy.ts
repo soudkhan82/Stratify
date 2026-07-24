@@ -57,11 +57,24 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
+  const pathname = request.nextUrl.pathname;
+  const authCode = request.nextUrl.searchParams.get("code");
+
+  if (authCode && pathname !== "/auth/callback") {
+    const callbackUrl = request.nextUrl.clone();
+    callbackUrl.pathname = "/auth/callback";
+    callbackUrl.search = "";
+    callbackUrl.searchParams.set("code", authCode);
+
+    const callbackResponse = NextResponse.redirect(callbackUrl);
+    copyResponseCookies(supabaseResponse, callbackResponse);
+    return callbackResponse;
+  }
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const pathname = request.nextUrl.pathname;
   const publicPath = isPublicPath(pathname);
 
   // Mandatory sign-in: every application page requires a valid Google/Supabase user.

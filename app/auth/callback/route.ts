@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -12,7 +13,23 @@ function safeNextPath(value: string | null) {
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
-  const nextPath = safeNextPath(requestUrl.searchParams.get("next"));
+  const cookieStore = await cookies();
+  const cookieNextValue =
+    cookieStore.get("stratify_auth_next")?.value ?? null;
+
+  let decodedCookieNext: string | null = cookieNextValue;
+
+  if (cookieNextValue) {
+    try {
+      decodedCookieNext = decodeURIComponent(cookieNextValue);
+    } catch {
+      decodedCookieNext = null;
+    }
+  }
+
+  const nextPath = safeNextPath(
+    decodedCookieNext || requestUrl.searchParams.get("next"),
+  );
 
   if (!code) {
     const loginUrl = new URL("/login", requestUrl.origin);
@@ -84,5 +101,14 @@ export async function GET(request: Request) {
     }
   });
 
-  return NextResponse.redirect(new URL(nextPath, requestUrl.origin));
+  const response = NextResponse.redirect(
+    new URL(nextPath, requestUrl.origin),
+  );
+
+  response.cookies.set("stratify_auth_next", "", {
+    path: "/",
+    maxAge: 0,
+  });
+
+  return response;
 }

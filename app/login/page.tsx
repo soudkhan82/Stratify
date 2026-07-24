@@ -51,12 +51,22 @@ export default function LoginPage() {
       const params = new URLSearchParams(window.location.search);
       const nextPath = safeNextPath(params.get("next"));
 
+      const secureCookie =
+        window.location.protocol === "https:" ? "; Secure" : "";
+
+      document.cookie = `stratify_auth_next=${encodeURIComponent(
+        nextPath,
+      )}; Path=/; Max-Age=600; SameSite=Lax${secureCookie}`;
+
+      const configuredSiteUrl =
+        process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "");
+
+      const siteUrl = configuredSiteUrl || window.location.origin;
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(
-            nextPath,
-          )}`,
+          redirectTo: `${siteUrl}/auth/callback`,
         },
       });
 
@@ -153,7 +163,7 @@ export default function LoginPage() {
                 backgroundColor: "#e0e7ff",
               }}
             >
-              âœ“
+              Ã¢Å“â€œ
             </div>
 
             <div>
