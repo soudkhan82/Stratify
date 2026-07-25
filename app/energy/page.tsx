@@ -89,14 +89,14 @@ async function fetchJson(url: string) {
 
   if (!response.ok) {
     throw new Error(
-      `HTTP ${response.status} ${response.statusText}${text ? ` — ${text.slice(0, 220)}` : ""}`,
+      `HTTP ${response.status} ${response.statusText}${text ? ` â€” ${text.slice(0, 220)}` : ""}`,
     );
   }
 
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {
     throw new Error(
-      `Expected JSON but received "${contentType || "unknown"}"${text ? ` — ${text.slice(0, 220)}` : ""}`,
+      `Expected JSON but received "${contentType || "unknown"}"${text ? ` â€” ${text.slice(0, 220)}` : ""}`,
     );
   }
 
@@ -110,7 +110,7 @@ function toNum(value: unknown): number | null {
 }
 
 function fmtCompact(value: number | null | undefined, digits = 2) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  if (value === null || value === undefined || !Number.isFinite(value)) return "â€”";
   const absolute = Math.abs(value);
   if (absolute >= 1e12) return `${(value / 1e12).toFixed(digits)}T`;
   if (absolute >= 1e9) return `${(value / 1e9).toFixed(digits)}B`;
@@ -120,7 +120,7 @@ function fmtCompact(value: number | null | undefined, digits = 2) {
 }
 
 function fmtValue(value: number | null | undefined, unit?: string | null, fmt?: FmtType) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  if (value === null || value === undefined || !Number.isFinite(value)) return "â€”";
   const formatted = value.toLocaleString("en-US", {
     maximumFractionDigits: fmt === "pct" ? 2 : 2,
   });
@@ -200,7 +200,7 @@ function LiveCounterCard({
           <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">{title}</div>
           <div className="mt-2 tabular-nums text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
             {value === null
-              ? "—"
+              ? "â€”"
               : value.toLocaleString("en-US", { maximumFractionDigits: 0 })}
           </div>
           <div className="mt-0.5 text-xs font-semibold text-slate-600">{unit}</div>
@@ -229,10 +229,10 @@ function MetricStat({
     <div className="rounded-xl border border-slate-200 bg-white p-3">
       <div className="text-[11px] font-medium text-slate-500">{label}</div>
       <div className="mt-1 text-lg font-bold text-slate-950">
-        {value === null ? "—" : fmtValue(value, unit)}
+        {value === null ? "â€”" : fmtValue(value, unit)}
       </div>
       <div className="mt-0.5 text-[10px] text-slate-400">
-        Latest annual value{year ? ` • ${year}` : ""}
+        Latest annual value{year ? ` â€¢ ${year}` : ""}
       </div>
     </div>
   );
@@ -386,7 +386,7 @@ export default function EnergyPage() {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(124,58,237,0.11),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(14,165,233,0.10),_transparent_30%),linear-gradient(to_bottom,_#f8fafc,_#eef2ff)]">
       <main className="mx-auto max-w-[1500px] space-y-4 px-4 py-6 lg:px-6">
-        <section className="relative overflow-hidden rounded-3xl bg-slate-950 px-5 py-6 text-white shadow-2xl lg:px-7">
+        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-950 via-indigo-950 to-violet-950 px-5 py-6 !text-white shadow-2xl lg:px-7">
           <div className="pointer-events-none absolute inset-0">
             <div className="absolute -left-20 -top-24 h-72 w-72 rounded-full bg-violet-600/30 blur-3xl" />
             <div className="absolute -right-16 top-0 h-72 w-72 rounded-full bg-sky-500/20 blur-3xl" />
@@ -395,13 +395,13 @@ export default function EnergyPage() {
 
           <div className="relative flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-3xl">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-violet-300">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.22em] !text-violet-200">
                 <Activity className="h-4 w-4" />
                 Stratify Energy Intelligence
               </div>
-              <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">World Energy Live</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
-                Running estimates for energy consumed, generated and demanded today—supported by Stratify&apos;s latest annual energy data.
+              <h1 className="mt-3 text-3xl font-black tracking-tight !text-white drop-shadow-sm sm:text-4xl lg:text-5xl">World Energy Live</h1>
+              <p className="mt-2 max-w-2xl text-sm font-medium leading-6 !text-slate-200 sm:text-base">
+                Running estimates for energy consumed, generated and demanded todayâ€”supported by Stratify&apos;s latest annual energy data.
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Badge className="bg-violet-500 text-white hover:bg-violet-500">Estimated live counters</Badge>
@@ -412,7 +412,7 @@ export default function EnergyPage() {
 
             <div className="grid w-full gap-2 sm:grid-cols-2 xl:w-auto xl:grid-cols-[220px_310px_120px_auto]">
               <Select value={country} onValueChange={setCountry}>
-                <SelectTrigger className="border-white/15 bg-white/10 text-white shadow-none">
+                <SelectTrigger className="border-white/25 bg-white/10 !text-white shadow-none [&>span]:!text-white hover:bg-white/15">
                   <SelectValue placeholder="Country" />
                 </SelectTrigger>
                 <SelectContent className="max-h-[360px]">
@@ -429,7 +429,7 @@ export default function EnergyPage() {
                   setRankYear(null);
                 }}
               >
-                <SelectTrigger className="border-white/15 bg-white/10 text-white shadow-none">
+                <SelectTrigger className="border-white/25 bg-white/10 !text-white shadow-none [&>span]:!text-white hover:bg-white/15">
                   <SelectValue placeholder="Historical metric" />
                 </SelectTrigger>
                 <SelectContent className="max-h-[360px]">
@@ -444,7 +444,7 @@ export default function EnergyPage() {
                 onValueChange={(value) => setRankYear(Number(value))}
                 disabled={!rankYearOptions.length}
               >
-                <SelectTrigger className="border-white/15 bg-white/10 text-white shadow-none">
+                <SelectTrigger className="border-white/25 bg-white/10 !text-white shadow-none [&>span]:!text-white hover:bg-white/15">
                   <SelectValue placeholder="Year" />
                 </SelectTrigger>
                 <SelectContent className="max-h-[360px]">
@@ -537,12 +537,12 @@ export default function EnergyPage() {
                     <BarChart3 className="h-5 w-5 text-violet-600" />
                     Historical energy trend
                   </CardTitle>
-                  <div className="mt-1 text-xs text-slate-500">{metricMeta.label} • {country}</div>
+                  <div className="mt-1 text-xs text-slate-500">{metricMeta.label} â€¢ {country}</div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="secondary">{response?.coverage?.min_year ?? "—"}–{response?.coverage?.max_year ?? "—"}</Badge>
+                  <Badge variant="secondary">{response?.coverage?.min_year ?? "â€”"}â€“{response?.coverage?.max_year ?? "â€”"}</Badge>
                   <Badge variant="secondary">{response?.coverage?.points ?? 0} points</Badge>
-                  {isRefreshing ? <Badge className="bg-violet-600 text-white">Refreshing…</Badge> : null}
+                  {isRefreshing ? <Badge className="bg-violet-600 text-white">Refreshingâ€¦</Badge> : null}
                 </div>
               </div>
             </CardHeader>
@@ -625,7 +625,7 @@ export default function EnergyPage() {
         <section className="grid grid-cols-12 gap-4">
           <Card className="col-span-12 rounded-2xl border-slate-200 bg-white/90 shadow-sm lg:col-span-7">
             <CardHeader className="border-b border-slate-100 pb-3">
-              <CardTitle className="text-base">Country ranking • {response?.rankYear ?? "—"}</CardTitle>
+              <CardTitle className="text-base">Country ranking â€¢ {response?.rankYear ?? "â€”"}</CardTitle>
               <div className="text-xs text-slate-500">Top 10 for {metricMeta.label}</div>
             </CardHeader>
             <CardContent className="pt-4">
@@ -661,7 +661,7 @@ export default function EnergyPage() {
               </div>
               <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
                 <Badge variant="secondary">Selected rank: {response?.country_rank ? `#${response.country_rank}` : "not ranked"}</Badge>
-                <Badge variant="secondary">Countries: {response?.total_countries ?? "—"}</Badge>
+                <Badge variant="secondary">Countries: {response?.total_countries ?? "â€”"}</Badge>
               </div>
             </CardContent>
           </Card>
@@ -669,7 +669,7 @@ export default function EnergyPage() {
           <Card className="col-span-12 rounded-2xl border-slate-200 bg-white/90 shadow-sm lg:col-span-5">
             <CardHeader className="border-b border-slate-100 pb-3">
               <CardTitle className="text-base">Recent annual values</CardTitle>
-              <div className="text-xs text-slate-500">{metricMeta.label} • latest 12 observations</div>
+              <div className="text-xs text-slate-500">{metricMeta.label} â€¢ latest 12 observations</div>
             </CardHeader>
             <CardContent className="pt-4">
               <div className="max-h-[390px] overflow-auto rounded-xl border border-slate-200">
@@ -698,7 +698,7 @@ export default function EnergyPage() {
                                   ? "bg-emerald-50 text-emerald-700"
                                   : "bg-rose-50 text-rose-700"
                             }`}>
-                              {row.deltaPct === null ? "—" : `${row.deltaPct >= 0 ? "+" : ""}${row.deltaPct.toFixed(1)}%`}
+                              {row.deltaPct === null ? "â€”" : `${row.deltaPct >= 0 ? "+" : ""}${row.deltaPct.toFixed(1)}%`}
                             </span>
                           </td>
                         </tr>
