@@ -58,15 +58,15 @@ export default function LoginPage() {
         nextPath,
       )}; Path=/; Max-Age=600; SameSite=Lax${secureCookie}`;
 
-      const configuredSiteUrl =
-        process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "");
-
-      const siteUrl = configuredSiteUrl || window.location.origin;
+      const callbackUrl = new URL(
+        "/auth/callback",
+        window.location.origin,
+      ).toString();
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${siteUrl}/auth/callback`,
+          redirectTo: callbackUrl,
         },
       });
 
@@ -163,7 +163,7 @@ export default function LoginPage() {
                 backgroundColor: "#e0e7ff",
               }}
             >
-              Ã¢Å“â€œ
+              ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“
             </div>
 
             <div>

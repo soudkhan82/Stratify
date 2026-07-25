@@ -26,43 +26,262 @@ function errorMessage(response: Response, body: string) {
   return `${response.status} ${response.statusText}${snippet ? `: ${snippet}` : ""}`;
 }
 
+const INVALID_TEXT_PATTERN =
+  /^(?:\[object\s+[^\]]+\]|undefined|null|nan|n\/a|none)$/i;
+
+const TEXT_KEYS = [
+  "cdata!",
+  "#text",
+  "text",
+  "value",
+  "name",
+  "title",
+  "display_title",
+  "label",
+  "description",
+  "abstract",
+  "content",
+] as const;
+
+/**
+ * Converts inconsistent third-party API values into genuine readable text.
+ * Plain object stringification is intentionally forbidden because it creates
+ * visible "[object Object]" cards.
+ */
+function extractPlainText(value: unknown, maxLength = 520): string {
+  const visited = new Set<object>();
+
+  function visit(input: unknown, depth: number): string {
+    if (input === null || input === undefined || depth > 5) return "";
+
+    if (typeof input === "string") return input;
+    if (typeof input === "number" || typeof input === "bigint") {
+      return String(input);
+    }
+    if (typeof input === "boolean") return "";
+
+    if (Array.isArray(input)) {
+      for (const entry of input) {
+        const resolved = visit(entry, depth + 1);
+        if (resolved) return resolved;
+      }
+      return "";
+    }
+
+    if (typeof input === "object") {
+      if (visited.has(input)) return "";
+      visited.add(input);
+
+      const record = input as Record<string, unknown>;
+      for (const key of TEXT_KEYS) {
+        if (!(key in record)) continue;
+        const resolved = visit(record[key], depth + 1);
+        if (resolved) return resolved;
+      }
+
+      return "";
+    }
+
+    return "";
+  }
+
+  const text = cleanText(visit(value, 0), maxLength);
+  if (!text || INVALID_TEXT_PATTERN.test(text) || /\[object\s+Object\]/i.test(text)) {
+    return "";
+  }
+
+  return text;
+}
+
+function imageFromMarkup(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+
+  const match = value.match(
+    /<img\b[^>]*?(?:src|data-src)\s*=\s*["']([^"']+)["'][^>]*>/i,
+  );
+
+  return match?.[1] ? match[1].trim() : null;
+}
+
+function decodeHtmlAttribute(value: string) {
+  return value
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
+function resolveHttpUrl(value: unknown, baseUrl?: string | null) {
+  const raw = extractPlainText(value, 2_048);
+  if (!raw) return null;
+
+  try {
+    const parsed = baseUrl ? new URL(decodeHtmlAttribute(raw), baseUrl) : new URL(decodeHtmlAttribute(raw));
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+      ? parsed.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function metaImageFromHtml(html: string, articleUrl: string) {
+  const candidates: string[] = [];
+  const metaTags = html.match(/<meta\b[^>]*>/gi) ?? [];
+
+  for (const tag of metaTags) {
+    const keyMatch = tag.match(
+      /(?:property|name|itemprop)\s*=\s*["']([^"']+)["']/i,
+    );
+    const contentMatch = tag.match(/content\s*=\s*["']([^"']+)["']/i);
+    const key = keyMatch?.[1]?.trim().toLowerCase();
+
+    if (
+      key &&
+      contentMatch?.[1] &&
+      [
+        "og:image",
+        "og:image:url",
+        "og:image:secure_url",
+        "twitter:image",
+        "twitter:image:src",
+        "image",
+      ].includes(key)
+    ) {
+      candidates.push(contentMatch[1]);
+    }
+  }
+
+  const imageLink = html.match(
+    /<link\b[^>]*rel\s*=\s*["'][^"']*image_src[^"']*["'][^>]*href\s*=\s*["']([^"']+)["'][^>]*>/i,
+  );
+  if (imageLink?.[1]) candidates.push(imageLink[1]);
+
+  const jsonLdImage = html.match(
+    /["']image["']\s*:\s*(?:["']([^"']+)["']|\[\s*["']([^"']+)["'])/i,
+  );
+  if (jsonLdImage?.[1] || jsonLdImage?.[2]) {
+    candidates.push(jsonLdImage[1] ?? jsonLdImage[2]);
+  }
+
+  for (const candidate of candidates) {
+    const resolved = resolveHttpUrl(candidate, articleUrl);
+    if (resolved) return resolved;
+  }
+
+  return null;
+}
+
+async function fetchArticleImage(articleUrl: string) {
+  try {
+    const response = await fetchWithTimeout(
+      articleUrl,
+      {
+        headers: {
+          Accept: "text/html,application/xhtml+xml",
+          "User-Agent": "StratifyGlobalPulse/1.0 (+https://worldstats360.com)",
+        },
+        next: { revalidate: 21_600 },
+      },
+      6_000,
+    );
+
+    if (!response.ok) return null;
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.toLowerCase().includes("text/html")) return null;
+
+    const html = (await response.text()).slice(0, 450_000);
+    return metaImageFromHtml(html, articleUrl);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Adds article Open Graph images only where a source feed did not provide one.
+ * Work is deliberately bounded and chunked so a slow publisher cannot block the feed.
+ */
+export async function enrichMissingImages(
+  items: PulseItem[],
+  maxLookups = 24,
+): Promise<PulseItem[]> {
+  const candidates = items
+    .filter((item) => !item.imageUrl && resolveHttpUrl(item.url))
+    .slice(0, Math.max(0, maxLookups));
+
+  if (!candidates.length) return items;
+
+  const imageById = new Map<string, string>();
+  const concurrency = Math.max(1, candidates.length);
+
+  for (let index = 0; index < candidates.length; index += concurrency) {
+    const batch = candidates.slice(index, index + concurrency);
+    const resolved = await Promise.all(
+      batch.map(async (item) => ({
+        id: item.id,
+        imageUrl: await fetchArticleImage(item.url),
+      })),
+    );
+
+    for (const result of resolved) {
+      if (result.imageUrl) imageById.set(result.id, result.imageUrl);
+    }
+  }
+
+  if (!imageById.size) return items;
+
+  return items.map((item) => {
+    const imageUrl = imageById.get(item.id);
+    return imageUrl
+      ? {
+          ...item,
+          imageUrl,
+          score: item.score + 8,
+        }
+      : item;
+  });
+}
+
 function baseItem(args: {
   sourceId: PulseSourceId;
-  source: string;
+  source: unknown;
   sourceType: PulseItem["sourceType"];
-  title: string;
-  summary?: string | null;
-  url: string;
-  imageUrl?: string | null;
-  publishedAt?: string | null;
+  title: unknown;
+  summary?: unknown;
+  url: unknown;
+  imageUrl?: unknown;
+  publishedAt?: unknown;
   fallbackTopic?: Exclude<PulseTopic, "all">;
-  countries?: string[];
-  language?: string | null;
-  sourceCountry?: string | null;
+  countries?: unknown[];
+  language?: unknown;
+  sourceCountry?: unknown;
   tone?: number | null;
   isOfficial?: boolean;
   baseScore?: number;
   year?: number | null;
 }): PulseItem | null {
-  const title = cleanText(args.title, 240);
-  const url = safeUrl(args.url);
-  if (!title || !url) return null;
+  const title = extractPlainText(args.title, 240);
+  const url = safeUrl(extractPlainText(args.url, 2_048));
+  if (title.length < 8 || !url) return null;
 
-  const summary = cleanText(args.summary, 520) || null;
-  const publishedAt = toIsoDate(args.publishedAt);
+  const summary = extractPlainText(args.summary, 520) || null;
+  const publishedAt = toIsoDate(extractPlainText(args.publishedAt, 120) || null);
   const classified = normalizeTopic(
     title,
     summary,
     args.fallbackTopic ?? "geo-economy",
   );
   const module = moduleForTopic(classified.topic);
-  const imageUrl = safeUrl(args.imageUrl);
+  const imageUrl = resolveHttpUrl(args.imageUrl, url);
   const isOfficial = Boolean(args.isOfficial);
+  const source = extractPlainText(args.source, 140) || args.sourceId;
 
   return {
     id: stableId(args.sourceId, url, title),
     sourceId: args.sourceId,
-    source: cleanText(args.source) || args.sourceId,
+    source,
     sourceType: args.sourceType,
     title,
     summary,
@@ -72,10 +291,14 @@ function baseItem(args: {
     topic: classified.topic,
     topics: classified.topics,
     countries: Array.from(
-      new Set((args.countries ?? []).map((value) => cleanText(value)).filter(Boolean)),
+      new Set(
+        (args.countries ?? [])
+          .map((value) => extractPlainText(value, 100))
+          .filter(Boolean),
+      ),
     ),
-    language: cleanText(args.language) || null,
-    sourceCountry: cleanText(args.sourceCountry) || null,
+    language: extractPlainText(args.language, 60) || null,
+    sourceCountry: extractPlainText(args.sourceCountry, 100) || null,
     tone:
       args.tone !== null && args.tone !== undefined && Number.isFinite(args.tone)
         ? args.tone
@@ -410,7 +633,8 @@ function parseRss(xml: string, config: RssConfig, limit: number) {
       const imageUrl =
         xmlAttribute(block, "media:content", "url") ||
         xmlAttribute(block, "media:thumbnail", "url") ||
-        xmlAttribute(block, "enclosure", "url");
+        xmlAttribute(block, "enclosure", "url") ||
+        imageFromMarkup(summary);
 
       return baseItem({
         sourceId: config.id,

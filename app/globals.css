@@ -328,3 +328,21 @@ select {
   color: #475569 !important;
   font-size: 10px !important;
 }
+
+/* STRATIFY DARK-SURFACE CONTRAST GUARD
+   Prevents global typography colors from overriding readable foreground colors. */
+.stratify-dark-surface :is(h1, h2, h3, h4, h5, h6) {
+  color: #ffffff !important;
+}
+
+.stratify-dark-surface p {
+  color: #cbd5e1 !important;
+}
+
+.stratify-dark-link {
+  color: #ffffff !important;
+}
+
+.stratify-light-link {
+  color: #0f172a !important;
+}

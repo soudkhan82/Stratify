@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -23,6 +23,7 @@ import {
   Sparkles,
   TrendingUp,
   Wheat,
+  X,
   XCircle,
   Zap,
 } from "lucide-react";
@@ -70,9 +71,9 @@ const EMPTY_RESPONSE: PulseResponse = {
 };
 
 function formatRelative(value: string | null) {
-  if (!value) return "Time unavailable";
+  if (!value) return null;
   const timestamp = new Date(value).getTime();
-  if (!Number.isFinite(timestamp)) return "Time unavailable";
+  if (!Number.isFinite(timestamp)) return null;
 
   const minutes = Math.max(0, Math.round((Date.now() - timestamp) / 60_000));
   if (minutes < 2) return "Just now";
@@ -87,6 +88,41 @@ function formatRelative(value: string | null) {
     day: "numeric",
     year: "numeric",
   }).format(new Date(timestamp));
+}
+
+function readableText(value: unknown) {
+  if (typeof value !== "string") return "";
+
+  const text = value.replace(/\s+/g, " ").trim();
+  if (
+    !text ||
+    /^(?:\[object\s+[^\]]+\]|undefined|null|nan|n\/a|none)$/i.test(text) ||
+    /\[object\s+Object\]/i.test(text)
+  ) {
+    return "";
+  }
+
+  return text;
+}
+
+function validHttpUrl(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return false;
+
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function isDisplayableItem(item: PulseItem | null | undefined): item is PulseItem {
+  return Boolean(
+    item &&
+      readableText(item.title).length >= 8 &&
+      readableText(item.source) &&
+      validHttpUrl(item.url),
+  );
 }
 
 function formatYear(value: number | null | undefined) {
@@ -182,9 +218,13 @@ function SectionHeader({
   );
 }
 
-function HeroStory({ item }: { item: PulseItem }) {
+type OpenStory = (item: PulseItem) => void;
+
+function HeroStory({ item, onOpen }: { item: PulseItem; onOpen: OpenStory }) {
+  const relativeTime = formatRelative(item.publishedAt);
+
   return (
-    <article className="group relative min-h-[430px] overflow-hidden rounded-[30px] border border-slate-200 bg-slate-950 shadow-xl shadow-slate-300/40">
+    <article className="stratify-dark-surface group relative min-h-[430px] overflow-hidden rounded-[30px] border border-slate-200 bg-slate-950 shadow-xl shadow-slate-300/40">
       {item.imageUrl ? (
         <img
           src={item.imageUrl}
@@ -214,59 +254,70 @@ function HeroStory({ item }: { item: PulseItem }) {
         ) : null}
 
         <div className="mt-6 flex flex-wrap items-center gap-3">
-          <a
-            href={item.url}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-black text-slate-950 shadow-lg transition hover:bg-slate-100"
+          <button
+            type="button"
+            onClick={() => onOpen(item)}
+            className="stratify-light-link inline-flex items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-black text-slate-950 shadow-lg transition hover:bg-slate-100"
           >
-            Read original
-            <ExternalLink className="h-4 w-4" />
-          </a>
+            View details
+            <Newspaper className="h-4 w-4" />
+          </button>
 
           <Link
             href={item.moduleHref}
-            className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-black text-white backdrop-blur transition hover:bg-white/20"
+            className="stratify-dark-link inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-black text-white backdrop-blur transition hover:bg-white/20"
           >
             {item.moduleLabel}
             <ArrowUpRight className="h-4 w-4" />
           </Link>
 
-          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-300">
-            <Clock3 className="h-3.5 w-3.5" />
-            {formatRelative(item.publishedAt)}
-          </span>
+          {relativeTime ? (
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-300">
+              <Clock3 className="h-3.5 w-3.5" />
+              {relativeTime}
+            </span>
+          ) : null}
         </div>
       </div>
     </article>
   );
 }
 
-function StoryCard({ item, compact = false }: { item: PulseItem; compact?: boolean }) {
+function StoryCard({
+  item,
+  compact = false,
+  onOpen,
+}: {
+  item: PulseItem;
+  compact?: boolean;
+  onOpen: OpenStory;
+}) {
+  const relativeTime = formatRelative(item.publishedAt);
+
   return (
-    <article className="group overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
-      {item.imageUrl ? (
-        <div className={compact ? "h-32 overflow-hidden" : "h-44 overflow-hidden"}>
+    <button
+      type="button"
+      onClick={() => onOpen(item)}
+      aria-label={`View details for ${item.title}`}
+      className="group flex h-full min-w-0 flex-col overflow-hidden rounded-[22px] border border-slate-200 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2"
+    >
+      {item.imageUrl && validHttpUrl(item.imageUrl) ? (
+        <div className={compact ? "h-24 w-full overflow-hidden" : "h-36 w-full overflow-hidden"}>
           <img
             src={item.imageUrl}
             alt=""
-            className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+            className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.035]"
             loading="lazy"
             referrerPolicy="no-referrer"
+            onError={(event) => {
+              const media = event.currentTarget.parentElement;
+              if (media) media.style.display = "none";
+            }}
           />
         </div>
-      ) : (
-        <div
-          className={[
-            compact ? "h-24" : "h-32",
-            "flex items-center justify-center bg-gradient-to-br from-indigo-100 via-blue-50 to-emerald-50",
-          ].join(" ")}
-        >
-          <Newspaper className="h-9 w-9 text-indigo-500" />
-        </div>
-      )}
+      ) : null}
 
-      <div className="p-4">
+      <div className="flex w-full flex-1 flex-col p-4">
         <div className="flex flex-wrap items-center gap-2">
           <TopicBadge topic={item.topic} />
           {item.isOfficial ? (
@@ -276,44 +327,49 @@ function StoryCard({ item, compact = false }: { item: PulseItem; compact?: boole
           ) : null}
         </div>
 
-        <h3 className="mt-3 line-clamp-3 text-[17px] font-black leading-[1.28] tracking-tight text-slate-950">
+        <h3
+          className={[
+            "mt-3 font-black leading-[1.25] tracking-tight text-slate-950",
+            compact ? "line-clamp-2 text-[15px]" : "line-clamp-3 text-[16px]",
+          ].join(" ")}
+        >
           {item.title}
         </h3>
 
         {!compact && item.summary ? (
-          <p className="mt-2 line-clamp-3 text-xs font-medium leading-5 text-slate-600">
+          <p className="mt-2 line-clamp-2 text-xs font-medium leading-5 text-slate-600">
             {item.summary}
           </p>
         ) : null}
 
-        <div className="mt-4 flex items-end justify-between gap-3 border-t border-slate-100 pt-3">
+        <div className="mt-auto flex items-end justify-between gap-3 border-t border-slate-100 pt-3">
           <div className="min-w-0">
             <div className="truncate text-xs font-black text-slate-700">
               {item.source}
             </div>
-            <div className="mt-0.5 text-[11px] font-semibold text-slate-400">
-              {formatRelative(item.publishedAt)}
-            </div>
+            {relativeTime ? (
+              <div className="mt-0.5 text-[11px] font-semibold text-slate-400">
+                {relativeTime}
+              </div>
+            ) : null}
           </div>
 
-          <a
-            href={item.url}
-            target="_blank"
-            rel="noreferrer"
-            aria-label={`Open ${item.title}`}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-950 text-white transition hover:bg-indigo-700"
-          >
-            <ArrowUpRight className="h-4 w-4" />
-          </a>
+          <span className="stratify-dark-link flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-700 text-white transition group-hover:bg-indigo-800">
+            <Newspaper className="h-4 w-4" />
+          </span>
         </div>
       </div>
-    </article>
+    </button>
   );
 }
 
-function HistoryCard({ item }: { item: PulseItem }) {
+function HistoryCard({ item, onOpen }: { item: PulseItem; onOpen: OpenStory }) {
   return (
-    <article className="rounded-[22px] border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-4 shadow-sm">
+    <button
+      type="button"
+      onClick={() => onOpen(item)}
+      className="w-full rounded-[22px] border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-4 text-left shadow-sm transition hover:border-violet-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-violet-400"
+    >
       <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-violet-700">
         <History className="h-4 w-4" />
         {formatYear(item.year)}
@@ -323,17 +379,182 @@ function HistoryCard({ item }: { item: PulseItem }) {
       </h3>
       <div className="mt-3 flex items-center justify-between gap-2">
         <span className="text-[11px] font-bold text-slate-500">Wikipedia</span>
-        <a
-          href={item.url}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 text-xs font-black text-violet-700 hover:text-violet-900"
-        >
-          Read
-          <ArrowUpRight className="h-3.5 w-3.5" />
-        </a>
+        <span className="inline-flex items-center gap-1 text-xs font-black text-violet-700">
+          Details
+          <Newspaper className="h-3.5 w-3.5" />
+        </span>
       </div>
-    </article>
+    </button>
+  );
+}
+
+function NewsDetailModal({
+  item,
+  onClose,
+}: {
+  item: PulseItem | null;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!item) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [item, onClose]);
+
+  if (!item) return null;
+
+  const relativeTime = formatRelative(item.publishedAt);
+  const countries = item.countries.map(readableText).filter(Boolean).slice(0, 6);
+  const summary = readableText(item.summary);
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/65 p-3 backdrop-blur-sm sm:p-6"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="global-pulse-detail-title"
+        className="relative max-h-[90vh] w-full max-w-[980px] overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-2xl"
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close news details"
+          className="absolute right-4 top-4 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-lg transition hover:bg-slate-100 hover:text-slate-950"
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        <div className="max-h-[90vh] overflow-y-auto">
+          {item.imageUrl && validHttpUrl(item.imageUrl) ? (
+            <div className="relative h-[230px] overflow-hidden bg-slate-100 sm:h-[320px]">
+              <img
+                src={item.imageUrl}
+                alt=""
+                className="h-full w-full object-cover"
+                referrerPolicy="no-referrer"
+                onError={(event) => {
+                  const media = event.currentTarget.parentElement;
+                  if (media) media.style.display = "none";
+                }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/65 via-transparent to-transparent" />
+            </div>
+          ) : null}
+
+          <div className="p-5 sm:p-7">
+            <div className="flex flex-wrap items-center gap-2">
+              <TopicBadge topic={item.topic} />
+              <SourceBadge item={item} />
+              {item.topic === "history" && item.year !== null && item.year !== undefined ? (
+                <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-violet-800">
+                  {formatYear(item.year)}
+                </span>
+              ) : null}
+            </div>
+
+            <h2
+              id="global-pulse-detail-title"
+              className="mt-4 text-2xl font-black leading-tight tracking-[-0.025em] text-slate-950 sm:text-3xl"
+            >
+              {item.title}
+            </h2>
+
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-semibold text-slate-500">
+              <span className="inline-flex items-center gap-1.5">
+                <Landmark className="h-4 w-4 text-indigo-600" />
+                {item.source}
+              </span>
+              {relativeTime ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock3 className="h-4 w-4 text-indigo-600" />
+                  {relativeTime}
+                </span>
+              ) : null}
+              {item.sourceCountry ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Globe2 className="h-4 w-4 text-indigo-600" />
+                  {item.sourceCountry}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-indigo-700">
+                Story summary
+              </div>
+              <p className="mt-2 whitespace-pre-line text-sm font-medium leading-7 text-slate-700 sm:text-[15px]">
+                {summary || "A detailed summary was not supplied by this source. Use the original-source button below for the complete report."}
+              </p>
+            </div>
+
+            {countries.length ? (
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-black text-slate-500">Countries:</span>
+                {countries.map((country) => (
+                  <span
+                    key={country}
+                    className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-700"
+                  >
+                    {country}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            <p className="mt-5 text-xs font-semibold leading-5 text-slate-400">
+              This preview uses the headline, image and summary supplied by the listed source. The original publisher remains the authoritative source.
+            </p>
+
+            <div className="mt-6 flex flex-col-reverse gap-2 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-end">
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50"
+              >
+                Close
+              </button>
+
+              <Link
+                href={item.moduleHref}
+                onClick={onClose}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-sm font-black text-indigo-800 transition hover:bg-indigo-100"
+              >
+                {item.moduleLabel}
+                <ArrowUpRight className="h-4 w-4" />
+              </Link>
+
+              <a
+                href={item.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-indigo-700"
+              >
+                Open original source
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -390,6 +611,15 @@ export default function GlobalPulsePage() {
   const [payload, setPayload] = useState<PulseResponse>(EMPTY_RESPONSE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedItem, setSelectedItem] = useState<PulseItem | null>(null);
+
+  const openStory = useCallback((item: PulseItem) => {
+    setSelectedItem(item);
+  }, []);
+
+  const closeStory = useCallback(() => {
+    setSelectedItem(null);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -431,14 +661,28 @@ export default function GlobalPulsePage() {
     return () => controller.abort();
   }, [topic, hours, searchQuery, country, refreshToken]);
 
-  const hero = payload.hero;
+  const validItems = useMemo(
+    () => payload.items.filter(isDisplayableItem),
+    [payload.items],
+  );
+  const hero = isDisplayableItem(payload.hero)
+    ? payload.hero
+    : validItems.find((item) => item.imageUrl) ?? validItems[0] ?? null;
   const secondaryStories = useMemo(
-    () => payload.items.filter((item) => item.id !== hero?.id).slice(0, 3),
-    [payload.items, hero?.id],
+    () => validItems.filter((item) => item.id !== hero?.id).slice(0, 3),
+    [validItems, hero?.id],
   );
   const remainingStories = useMemo(
-    () => payload.items.filter((item) => item.id !== hero?.id).slice(3),
-    [payload.items, hero?.id],
+    () => validItems.filter((item) => item.id !== hero?.id).slice(3),
+    [validItems, hero?.id],
+  );
+  const validOfficialUpdates = useMemo(
+    () => payload.officialUpdates.filter(isDisplayableItem).slice(0, 6),
+    [payload.officialUpdates],
+  );
+  const validHistoryItems = useMemo(
+    () => payload.todayInHistory.filter(isDisplayableItem).slice(0, 4),
+    [payload.todayInHistory],
   );
 
   function applySearch(event: FormEvent<HTMLFormElement>) {
@@ -449,7 +693,7 @@ export default function GlobalPulsePage() {
 
   return (
     <main className="min-h-screen bg-slate-100 pb-16">
-      <section className="border-b border-indigo-950/20 bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-900 text-white">
+      <section className="stratify-dark-surface border-b border-indigo-950/20 bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-900 text-white">
         <div className="mx-auto w-full max-w-[1480px] px-4 py-9 sm:px-6 lg:px-8">
           <div className="flex flex-col justify-between gap-6 xl:flex-row xl:items-end">
             <div className="max-w-4xl">
@@ -574,15 +818,37 @@ export default function GlobalPulsePage() {
               <button
                 type="button"
                 onClick={() => setRefreshToken(Date.now())}
-                aria-label="Refresh Global Pulse"
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:border-indigo-300 hover:text-indigo-700"
+                disabled={loading}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-sm font-black text-indigo-800 transition hover:border-indigo-300 hover:bg-indigo-100 disabled:cursor-wait disabled:opacity-70"
               >
                 <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                {loading ? "Refreshing" : "Refresh"}
               </button>
             </div>
           </form>
         </div>
       </div>
+
+      {loading && payload.items.length > 0 ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm"
+          role="status"
+          aria-live="polite"
+          aria-label="Refreshing Global Pulse"
+        >
+          <div className="flex min-w-[290px] flex-col items-center rounded-[28px] border border-white/70 bg-white px-8 py-7 text-center shadow-2xl">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-indigo-50 text-indigo-700">
+              <Loader2 className="h-9 w-9 animate-spin" />
+            </div>
+            <div className="mt-4 text-xl font-black text-slate-950">
+              Refreshing Global Pulse
+            </div>
+            <p className="mt-1 text-sm font-semibold text-slate-600">
+              Updating stories, source health and intelligence signals...
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8">
         {loading && !payload.items.length ? (
@@ -610,28 +876,26 @@ export default function GlobalPulsePage() {
           </div>
         ) : (
           <>
-            <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)_330px]">
-              <aside className="space-y-6">
-                <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="grid items-start gap-5 xl:grid-cols-[260px_minmax(0,1fr)_330px]">
+              <aside className="space-y-5">
+                <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
                   <SectionHeader
                     icon={TrendingUp}
                     eyebrow="Signals"
                     title="Trending"
-                    description="Ranked by story volume, authority and freshness."
+                    description="Ranked by volume, authority and freshness."
                   />
 
                   <div className="space-y-2">
                     {payload.trending.length ? (
-                      payload.trending.map((item, index) => (
+                      payload.trending.map((item) => (
                         <button
                           key={item.topic}
                           type="button"
                           onClick={() => setTopic(item.topic)}
-                          className="flex w-full items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3 text-left transition hover:border-indigo-200 hover:bg-indigo-50"
+                          className="group relative flex w-full items-center rounded-2xl border border-slate-100 bg-slate-50 px-3.5 py-2.5 text-left transition hover:border-indigo-200 hover:bg-indigo-50"
                         >
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white text-sm font-black text-indigo-700 shadow-sm">
-                            {index + 1}
-                          </span>
+                          <span className="absolute inset-y-2.5 left-0 w-1 rounded-full bg-indigo-500 transition group-hover:bg-indigo-700" />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm font-black text-slate-850">
                               {item.label}
@@ -640,6 +904,7 @@ export default function GlobalPulsePage() {
                               {item.count} related reports
                             </span>
                           </span>
+                          <ArrowUpRight className="ml-3 h-4 w-4 shrink-0 text-slate-400 transition group-hover:text-indigo-700" />
                         </button>
                       ))
                     ) : (
@@ -650,7 +915,7 @@ export default function GlobalPulsePage() {
                   </div>
                 </section>
 
-                <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm">
+                <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
                   <SectionHeader
                     icon={Database}
                     eyebrow="Diagnostics"
@@ -664,34 +929,55 @@ export default function GlobalPulsePage() {
                 </section>
               </aside>
 
-              <section className="min-w-0">
-                {hero ? (
-                  <HeroStory item={hero} />
-                ) : (
-                  <div className="flex min-h-[430px] items-center justify-center rounded-[30px] border border-dashed border-slate-300 bg-white text-center">
-                    <div className="max-w-sm p-8">
-                      <Newspaper className="mx-auto h-10 w-10 text-slate-400" />
-                      <h2 className="mt-3 text-xl font-black text-slate-950">
-                        No matching stories
-                      </h2>
-                      <p className="mt-2 text-sm font-medium text-slate-500">
-                        Clear the search or choose a broader category.
-                      </p>
+              <div className="min-w-0 space-y-5">
+                <section className="min-w-0">
+                  {hero ? (
+                    <HeroStory item={hero} onOpen={openStory} />
+                  ) : (
+                    <div className="flex min-h-[430px] items-center justify-center rounded-[30px] border border-dashed border-slate-300 bg-white text-center">
+                      <div className="max-w-sm p-8">
+                        <Newspaper className="mx-auto h-10 w-10 text-slate-400" />
+                        <h2 className="mt-3 text-xl font-black text-slate-950">
+                          No matching stories
+                        </h2>
+                        <p className="mt-2 text-sm font-medium text-slate-500">
+                          Clear the search or choose a broader category.
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {secondaryStories.length ? (
-                  <div className="mt-5 grid gap-4 md:grid-cols-3">
-                    {secondaryStories.map((item) => (
-                      <StoryCard key={item.id} item={item} compact />
-                    ))}
-                  </div>
+                  {secondaryStories.length ? (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                      {secondaryStories.map((item) => (
+                        <StoryCard key={item.id} item={item} compact onOpen={openStory} />
+                      ))}
+                    </div>
+                  ) : null}
+                </section>
+
+                {remainingStories.length ? (
+                  <section className="rounded-[26px] border border-slate-200 bg-white/45 p-4 shadow-sm">
+                    <div className="mb-3 flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
+                        <Newspaper className="h-5 w-5" />
+                      </div>
+                      <h2 className="text-xl font-black tracking-tight text-slate-950">
+                        Latest Updates
+                      </h2>
+                    </div>
+
+                    <div className="grid grid-cols-[repeat(auto-fit,minmax(225px,1fr))] gap-4">
+                      {remainingStories.map((item) => (
+                        <StoryCard key={item.id} item={item} onOpen={openStory} />
+                      ))}
+                    </div>
+                  </section>
                 ) : null}
-              </section>
+              </div>
 
-              <aside className="space-y-6">
-                <section className="rounded-[26px] border border-violet-200 bg-white p-5 shadow-sm">
+              <aside className="space-y-5 xl:sticky xl:top-[164px]">
+                <section className="rounded-[24px] border border-violet-200 bg-white p-4 shadow-sm">
                   <SectionHeader
                     icon={BookOpen}
                     eyebrow="Wikipedia"
@@ -699,68 +985,88 @@ export default function GlobalPulsePage() {
                     description="Daily context from Wikipedia's On This Day feed."
                   />
                   <div className="space-y-3">
-                    {payload.todayInHistory.slice(0, 4).map((item) => (
-                      <HistoryCard key={item.id} item={item} />
-                    ))}
+                    {validHistoryItems.length ? (
+                      validHistoryItems.map((item) => (
+                        <HistoryCard key={item.id} item={item} onOpen={openStory} />
+                      ))
+                    ) : (
+                      <p className="rounded-2xl bg-slate-50 p-4 text-xs font-semibold text-slate-500">
+                        No valid history updates are available.
+                      </p>
+                    )}
                   </div>
                   <Link
                     href="/history"
-                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-black text-white transition hover:bg-violet-800"
+                    className="stratify-dark-link mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-black text-white transition hover:bg-violet-800"
                   >
                     Open History Module
                     <ArrowUpRight className="h-4 w-4" />
                   </Link>
                 </section>
 
-                <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm">
+                <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
                   <SectionHeader
                     icon={Landmark}
                     eyebrow="Primary Sources"
                     title="Official Updates"
-                    description="Latest updates from multilateral institutions."
                   />
                   <div className="divide-y divide-slate-100">
-                    {payload.officialUpdates.slice(0, 6).map((item) => (
-                      <article key={item.id} className="py-3 first:pt-0 last:pb-0">
-                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.1em] text-emerald-700">
-                          <ShieldCheck className="h-3.5 w-3.5" />
-                          {item.source}
-                        </div>
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-1.5 block text-sm font-black leading-5 text-slate-900 hover:text-indigo-700"
-                        >
-                          {item.title}
-                        </a>
-                        <div className="mt-1 text-[11px] font-semibold text-slate-400">
-                          {formatRelative(item.publishedAt)}
-                        </div>
-                      </article>
-                    ))}
+                    {validOfficialUpdates.length ? (
+                      validOfficialUpdates.map((item) => {
+                        const relativeTime = formatRelative(item.publishedAt);
+
+                        return (
+                          <article key={item.id} className="py-3 first:pt-0 last:pb-0">
+                            <div className="flex gap-3">
+                              {item.imageUrl && validHttpUrl(item.imageUrl) ? (
+                                <div className="h-14 w-20 shrink-0 overflow-hidden rounded-xl bg-slate-100">
+                                  <img
+                                    src={item.imageUrl}
+                                    alt=""
+                                    className="h-full w-full object-cover"
+                                    loading="lazy"
+                                    referrerPolicy="no-referrer"
+                                    onError={(event) => {
+                                      const media = event.currentTarget.parentElement;
+                                      if (media) media.style.display = "none";
+                                    }}
+                                  />
+                                </div>
+                              ) : null}
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.1em] text-emerald-700">
+                                  <ShieldCheck className="h-3.5 w-3.5" />
+                                  {item.source}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => openStory(item)}
+                                  className="mt-1.5 line-clamp-3 block w-full text-left text-sm font-black leading-5 text-slate-900 transition hover:text-indigo-700 focus:outline-none focus:text-indigo-700"
+                                >
+                                  {item.title}
+                                </button>
+                                {relativeTime ? (
+                                  <div className="mt-1 text-[11px] font-semibold text-slate-400">
+                                    {relativeTime}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          </article>
+                        );
+                      })
+                    ) : (
+                      <p className="py-3 text-xs font-semibold text-slate-500">
+                        No valid official updates are available.
+                      </p>
+                    )}
                   </div>
                 </section>
               </aside>
             </div>
 
-            {remainingStories.length ? (
-              <section className="mt-8">
-                <SectionHeader
-                  icon={Newspaper}
-                  eyebrow="Global Coverage"
-                  title="Latest Intelligence"
-                  description="Deduplicated reports ranked by recency, authority and relevance."
-                />
-                <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-                  {remainingStories.map((item) => (
-                    <StoryCard key={item.id} item={item} />
-                  ))}
-                </div>
-              </section>
-            ) : null}
-
-            <section className="mt-8 overflow-hidden rounded-[30px] border border-indigo-900/20 bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-950 p-6 text-white shadow-xl sm:p-8">
+            <section className="stratify-dark-surface mt-8 overflow-hidden rounded-[30px] border border-indigo-900/20 bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-950 p-6 text-white shadow-xl sm:p-8">
               <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
                 <div>
                   <div className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-emerald-300">
@@ -789,7 +1095,7 @@ export default function GlobalPulsePage() {
                       <Link
                         key={String(label)}
                         href={String(href)}
-                        className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3.5 py-2 text-xs font-black text-white transition hover:bg-white/20"
+                        className="stratify-dark-link inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3.5 py-2 text-xs font-black text-white transition hover:bg-white/20"
                       >
                         <ModuleIcon className="h-4 w-4" />
                         {String(label)}
@@ -816,6 +1122,8 @@ export default function GlobalPulsePage() {
           </>
         )}
       </div>
+
+      <NewsDetailModal item={selectedItem} onClose={closeStory} />
     </main>
   );
 }

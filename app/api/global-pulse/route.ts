@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import {
+  enrichMissingImages,
   fetchFao,
   fetchGdelt,
   fetchImf,
@@ -68,6 +69,62 @@ function intParam(value: string | null, fallback: number, min: number, max: numb
 function topicParam(value: string | null): PulseTopic {
   const normalized = cleanText(value).toLowerCase() as PulseTopic;
   return VALID_TOPICS.has(normalized) ? normalized : "all";
+}
+
+function readableText(value: unknown, maxLength = 520) {
+  if (typeof value !== "string") return "";
+
+  const text = cleanText(value, maxLength);
+  if (
+    !text ||
+    /^(?:\[object\s+[^\]]+\]|undefined|null|nan|n\/a|none)$/i.test(text) ||
+    /\[object\s+Object\]/i.test(text)
+  ) {
+    return "";
+  }
+
+  return text;
+}
+
+function validHttpUrl(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return null;
+
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+      ? parsed.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeItem(item: PulseItem): PulseItem | null {
+  const title = readableText(item.title, 240);
+  const source = readableText(item.source, 140);
+  const url = validHttpUrl(item.url);
+
+  if (title.length < 8 || !source || !url) return null;
+
+  return {
+    ...item,
+    title,
+    source,
+    url,
+    summary: readableText(item.summary, 520) || null,
+    imageUrl: validHttpUrl(item.imageUrl),
+    publishedAt:
+      item.publishedAt && Number.isFinite(new Date(item.publishedAt).getTime())
+        ? item.publishedAt
+        : null,
+    countries: Array.isArray(item.countries)
+      ? item.countries
+          .map((value) => readableText(value, 100))
+          .filter(Boolean)
+      : [],
+    language: readableText(item.language, 60) || null,
+    sourceCountry: readableText(item.sourceCountry, 100) || null,
+  };
 }
 
 function searchMatches(item: PulseItem, q: string, country: string) {
@@ -166,16 +223,31 @@ export async function GET(request: Request) {
         fetchWikipediaOnThisDay(12),
       ]);
 
-    const results = [gdelt, reliefweb, worldBank, imf, wto, fao, wikipedia];
-    const todayInHistory = wikipedia.items.slice(0, 8);
+    const rawResults = [gdelt, reliefweb, worldBank, imf, wto, fao, wikipedia];
+    const results = rawResults.map((result) => ({
+      ...result,
+      items: result.items
+        .map((item) => sanitizeItem(item))
+        .filter((item): item is PulseItem => Boolean(item)),
+    }));
 
-    const allNews = dedupeItems(
+    const wikipediaResult = results.find((result) => result.id === "wikipedia");
+    const todayInHistory = (wikipediaResult?.items ?? []).slice(0, 8);
+
+    const baseAllNews = dedupeItems(
       results
         .filter((result) => result.id !== "wikipedia")
         .flatMap((result) => result.items)
         .filter((item) => withinWindow(item, hours))
         .sort(sortNews),
     );
+
+    const allNews = (
+      await enrichMissingImages(
+        baseAllNews,
+        Math.min(18, Math.max(12, limit)),
+      )
+    ).sort(sortNews);
 
     const filteredItems = allNews
       .filter((item) => topicMatches(item, topic))
