@@ -1,6 +1,30 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import {
+  Activity,
+  BarChart3,
+  Bolt,
+  Factory,
+  Flame,
+  Gauge,
+  Globe2,
+  Leaf,
+  RefreshCw,
+  Zap,
+} from "lucide-react";
+import {
+  CartesianGrid,
+  Cell,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 import {
   Select,
@@ -9,23 +33,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-} from "recharts";
-
-/* =======================
-   Types
-======================= */
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type FmtType = "pct" | "num";
 
@@ -36,237 +46,247 @@ type MetricMeta = {
   fmt: FmtType;
 };
 
+type LiveMetric = MetricMeta & {
+  year: number | null;
+  value: unknown;
+};
+
 type ApiResp = {
   ok: boolean;
   error?: string;
-
-  meta: {
-    countries: string[];
-    metrics: MetricMeta[];
-  };
-
+  meta: { countries: string[]; metrics: MetricMeta[] };
   country: string;
   metric: string;
   metric_meta: MetricMeta;
-
-  coverage: {
-    min_year: number | null;
-    max_year: number | null;
-    points: number;
-  };
-
-  latest: { year: number; value: any } | null;
-  series: { year: any; value: any }[];
-
+  coverage: { min_year: number | null; max_year: number | null; points: number };
+  latest: { year: number; value: unknown } | null;
+  series: Array<{ year: unknown; value: unknown }>;
   rankYear: number;
   top10: Array<{
     rank: number;
     country: string;
     iso_code: string | null;
     year: number;
-    value: any;
+    value: unknown;
   }>;
   country_rank: number | null;
   total_countries: number | null;
+  live_pack: LiveMetric[];
 };
 
-/* =======================
-   Helpers
-======================= */
+type HistoryRow = {
+  year: number;
+  value: number;
+  delta: number | null;
+  deltaPct: number | null;
+};
+
+const MIX_COLORS = ["#f97316", "#22c55e", "#8b5cf6"];
 
 async function fetchJson(url: string) {
-  const res = await fetch(url, { cache: "no-store" });
-  const txt = await res.text().catch(() => "");
-  if (!res.ok) {
+  const response = await fetch(url, { cache: "no-store" });
+  const text = await response.text().catch(() => "");
+
+  if (!response.ok) {
     throw new Error(
-      `HTTP ${res.status} ${res.statusText}${txt ? ` â€” ${txt.slice(0, 220)}` : ""}`,
+      `HTTP ${response.status} ${response.statusText}${text ? ` — ${text.slice(0, 220)}` : ""}`,
     );
   }
-  const ct = res.headers.get("content-type") || "";
-  if (!ct.includes("application/json")) {
+
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
     throw new Error(
-      `Expected JSON but got "${ct || "unknown"}"${txt ? ` â€” ${txt.slice(0, 220)}` : ""}`,
+      `Expected JSON but received "${contentType || "unknown"}"${text ? ` — ${text.slice(0, 220)}` : ""}`,
     );
   }
-  return JSON.parse(txt);
+
+  return JSON.parse(text);
 }
 
-const toNum = (v: any): number | null => {
-  if (v === null || v === undefined) return null;
-  const x = Number(String(v).replaceAll(",", "").trim());
-  return Number.isFinite(x) ? x : null;
-};
-
-function fmtCompact(n: number | null | undefined): string {
-  if (n === null || n === undefined || !Number.isFinite(n)) return "â€”";
-  const v = n as number;
-  if (Math.abs(v) >= 1e12) return `${(v / 1e12).toFixed(2)}T`;
-  if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
-  if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
-  if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(2)}K`;
-  return Number.isInteger(v) ? String(v) : v.toFixed(2);
+function toNum(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(String(value).replaceAll(",", "").trim());
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-function fmtVal(
-  v: number | null | undefined,
-  unit?: string | null,
-  fmt?: FmtType,
-) {
-  if (v === null || v === undefined || !Number.isFinite(v)) return "â€”";
-  const base =
-    fmt === "pct"
-      ? (v as number).toLocaleString("en-US", { maximumFractionDigits: 2 })
-      : (v as number).toLocaleString("en-US", { maximumFractionDigits: 2 });
-
-  return unit ? `${base} ${unit}` : base;
+function fmtCompact(value: number | null | undefined, digits = 2) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  const absolute = Math.abs(value);
+  if (absolute >= 1e12) return `${(value / 1e12).toFixed(digits)}T`;
+  if (absolute >= 1e9) return `${(value / 1e9).toFixed(digits)}B`;
+  if (absolute >= 1e6) return `${(value / 1e6).toFixed(digits)}M`;
+  if (absolute >= 1e3) return `${(value / 1e3).toFixed(digits)}K`;
+  return value.toLocaleString("en-US", { maximumFractionDigits: digits });
 }
 
-function stableColorFromKey(key: string): string {
-  let h = 0;
-  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
-  const hue = h % 360;
-  return `hsl(${hue} 72% 45%)`;
+function fmtValue(value: number | null | undefined, unit?: string | null, fmt?: FmtType) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  const formatted = value.toLocaleString("en-US", {
+    maximumFractionDigits: fmt === "pct" ? 2 : 2,
+  });
+  return unit ? `${formatted} ${unit}` : formatted;
 }
 
-function safeText(s: string, max = 60) {
-  const t = (s || "").trim();
-  if (t.length <= max) return t;
-  return `${t.slice(0, max - 1)}â€¦`;
-}
-
-function yPadDomain(values: number[]) {
-  if (!values.length) return [0, 1] as [number, number];
-  const mn0 = Math.min(...values);
-  const mx0 = Math.max(...values);
-  if (mn0 === mx0) {
-    const pad = mn0 === 0 ? 1 : Math.abs(mn0) * 0.1;
-    return [mn0 - pad, mx0 + pad] as [number, number];
+function paddedDomain(values: number[]): [number, number] {
+  if (!values.length) return [0, 1];
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (min === max) {
+    const padding = min === 0 ? 1 : Math.abs(min) * 0.1;
+    return [min - padding, max + padding];
   }
-  const pad = (mx0 - mn0) * 0.08;
-  return [mn0 - pad, mx0 + pad] as [number, number];
+  const padding = (max - min) * 0.08;
+  return [min - padding, max + padding];
 }
 
-function energyYoYTable(series: { year: number; value: number }[]) {
-  const s = (series || [])
-    .filter((p) => Number.isFinite(p.year) && Number.isFinite(p.value))
-    .sort((a, b) => a.year - b.year);
-
-  return s.map((cur, idx) => {
-    const prev = idx > 0 ? s[idx - 1] : null;
-    const delta = prev ? cur.value - prev.value : null;
+function buildHistory(series: Array<{ year: number; value: number }>): HistoryRow[] {
+  const sorted = [...series].sort((a, b) => a.year - b.year);
+  return sorted.map((current, index) => {
+    const previous = index > 0 ? sorted[index - 1] : null;
+    const delta = previous ? current.value - previous.value : null;
     const deltaPct =
-      prev && prev.value !== 0
-        ? ((cur.value - prev.value) / Math.abs(prev.value)) * 100
+      previous && previous.value !== 0
+        ? ((current.value - previous.value) / Math.abs(previous.value)) * 100
         : null;
-    return { year: cur.year, value: cur.value, delta, deltaPct };
+    return { year: current.year, value: current.value, delta, deltaPct };
   });
 }
 
-function PageLoader({ label = "Loading dashboard..." }: { label?: string }) {
-  return (
-    <div className="relative min-h-screen overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 -z-30">
-        <div className="absolute inset-0 bg-gradient-to-b from-white via-white/90 to-white/80" />
-        <div className="absolute -top-24 -left-24 h-80 w-80 rounded-full bg-sky-300/30 blur-3xl" />
-        <div className="absolute top-40 -right-24 h-80 w-80 rounded-full bg-emerald-200/30 blur-3xl" />
-        <div className="absolute bottom-0 left-1/3 h-80 w-80 rounded-full bg-violet-200/30 blur-3xl" />
-      </div>
+function secondsInCurrentYear(date: Date) {
+  const start = new Date(date.getFullYear(), 0, 1);
+  const end = new Date(date.getFullYear() + 1, 0, 1);
+  return Math.max(1, (end.getTime() - start.getTime()) / 1000);
+}
 
-      <div className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-4 py-7">
-        <div className="rounded-3xl border border-white/70 bg-white/80 px-10 py-8 shadow-xl backdrop-blur-md">
-          <div className="mx-auto mb-4 h-14 w-14 animate-spin rounded-full border-4 border-slate-200 border-t-slate-900" />
-          <div className="text-center">
-            <h2 className="text-xl font-semibold text-slate-900">{label}</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Please wait while the latest energy data is being prepared
-            </p>
+function secondsSinceLocalMidnight(date: Date) {
+  const midnight = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return Math.max(0, (date.getTime() - midnight.getTime()) / 1000);
+}
+
+function annualTwhToTodayGwh(annualTwh: number | null, now: Date): number | null {
+  if (annualTwh === null || !Number.isFinite(annualTwh)) return null;
+  return annualTwh * 1000 * (secondsSinceLocalMidnight(now) / secondsInCurrentYear(now));
+}
+
+function useLiveClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 250);
+    return () => window.clearInterval(timer);
+  }, []);
+  return now;
+}
+
+function LiveCounterCard({
+  title,
+  value,
+  unit,
+  icon,
+  description,
+  accentClass,
+}: {
+  title: string;
+  value: number | null;
+  unit: string;
+  icon: React.ReactNode;
+  description: string;
+  accentClass: string;
+}) {
+  return (
+    <div className="group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+      <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${accentClass}`} />
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">{title}</div>
+          <div className="mt-2 tabular-nums text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+            {value === null
+              ? "—"
+              : value.toLocaleString("en-US", { maximumFractionDigits: 0 })}
           </div>
+          <div className="mt-0.5 text-xs font-semibold text-slate-600">{unit}</div>
         </div>
+        <div className="rounded-xl bg-slate-950 p-2.5 text-white shadow-sm">{icon}</div>
+      </div>
+      <div className="mt-3 border-t border-slate-100 pt-2 text-[11px] leading-5 text-slate-500">
+        {description}
       </div>
     </div>
   );
 }
 
-function LoadingOverlay({ label = "Loadingâ€¦" }: { label?: string }) {
+function MetricStat({
+  label,
+  value,
+  unit,
+  year,
+}: {
+  label: string;
+  value: number | null;
+  unit: string;
+  year: number | null;
+}) {
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center">
-      <div className="absolute inset-0 rounded-2xl bg-white/35 backdrop-blur-sm" />
-      <div className="absolute h-28 w-28 rounded-full bg-sky-300/30 blur-2xl" />
-      <div className="absolute h-20 w-20 rounded-full bg-emerald-200/30 blur-2xl" />
-
-      <div className="relative flex items-center gap-3 rounded-full border border-white/70 bg-white/80 px-4 py-2 shadow-lg">
-        <span className="relative h-5 w-5">
-          <span className="absolute inset-0 rounded-full border-2 border-slate-200" />
-          <span className="absolute inset-0 rounded-full border-2 border-slate-900 border-t-transparent animate-spin" />
-        </span>
-        <span className="text-xs font-semibold text-slate-700">{label}</span>
-        <span className="ml-1 h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+    <div className="rounded-xl border border-slate-200 bg-white p-3">
+      <div className="text-[11px] font-medium text-slate-500">{label}</div>
+      <div className="mt-1 text-lg font-bold text-slate-950">
+        {value === null ? "—" : fmtValue(value, unit)}
+      </div>
+      <div className="mt-0.5 text-[10px] text-slate-400">
+        Latest annual value{year ? ` • ${year}` : ""}
       </div>
     </div>
   );
 }
 
-/* =======================
-   Page
-======================= */
+function PageLoader() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="rounded-3xl border border-slate-200 bg-white px-10 py-8 text-center shadow-xl">
+        <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-violet-600" />
+        <h2 className="text-lg font-semibold text-slate-900">Loading World Energy Live</h2>
+        <p className="mt-1 text-sm text-slate-500">Preparing annual data and live estimates</p>
+      </div>
+    </div>
+  );
+}
 
 export default function EnergyPage() {
   const [country, setCountry] = useState("World");
-  const [metric, setMetric] = useState("renewables_share_energy");
+  const [metric, setMetric] = useState("primary_energy_consumption");
   const [rankYear, setRankYear] = useState<number | null>(null);
-
-  const [resp, setResp] = useState<ApiResp | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
+  const [response, setResponse] = useState<ApiResp | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-
-  const debug = useMemo(() => {
-    if (typeof window === "undefined") return false;
-    return new URLSearchParams(window.location.search).get("debug") === "1";
-  }, []);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const now = useLiveClock();
 
   useEffect(() => {
-    let alive = true;
+    let active = true;
 
     (async () => {
       setLoading(true);
-      setErr(null);
+      setError(null);
 
       try {
-        const qp = new URLSearchParams();
-        qp.set("country", country);
-        qp.set("metric", metric);
-        if (rankYear != null) qp.set("rankYear", String(rankYear));
+        const params = new URLSearchParams({ country, metric });
+        if (rankYear !== null) params.set("rankYear", String(rankYear));
 
-        const j = (await fetchJson(`/api/energy?${qp.toString()}`)) as ApiResp;
-        if (!alive) return;
+        const data = (await fetchJson(`/api/energy?${params.toString()}`)) as ApiResp;
+        if (!active) return;
 
-        setResp(j);
-
-        if (!j?.ok) setErr(j?.error || "Energy API returned ok=false");
-
-        if (j?.ok && j.country && j.country !== country) setCountry(j.country);
-
-        if (rankYear == null && j?.ok && typeof j.rankYear === "number") {
-          setRankYear(j.rankYear);
+        setResponse(data);
+        if (!data.ok) {
+          setError(data.error || "Energy API returned ok=false");
+          return;
         }
-
-        if (debug) {
-          console.log("[energy] fetched:", {
-            country: j.country,
-            metric: j.metric,
-            points: j.coverage?.points,
-            latest: j.latest,
-            series0: j.series?.[0],
-            seriesN: j.series?.[j.series?.length - 1],
-          });
-        }
-      } catch (e: any) {
-        if (!alive) return;
-        setResp(null);
-        setErr(e?.message || "Failed to load energy data");
+        if (data.country && data.country !== country) setCountry(data.country);
+        if (rankYear === null && Number.isFinite(data.rankYear)) setRankYear(data.rankYear);
+      } catch (caught: any) {
+        if (!active) return;
+        setError(caught?.message || "Failed to load energy data");
       } finally {
-        if (alive) {
+        if (active) {
           setLoading(false);
           setInitialLoading(false);
         }
@@ -274,534 +294,425 @@ export default function EnergyPage() {
     })();
 
     return () => {
-      alive = false;
+      active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [country, metric, rankYear, debug]);
+  }, [country, metric, rankYear, refreshToken]);
 
-  const countries = resp?.meta?.countries?.length
-    ? resp.meta.countries
-    : ["World"];
-
-  const metrics = resp?.meta?.metrics?.length
-    ? resp.meta.metrics
-    : ([
-        {
-          key: "renewables_share_energy",
-          label: "Renewables share of energy",
-          unit: "%",
-          fmt: "pct",
-        },
-      ] as MetricMeta[]);
-
-  const metricMeta =
-    resp?.metric_meta ?? metrics.find((m) => m.key === metric) ?? metrics[0];
+  const countries = response?.meta?.countries?.length ? response.meta.countries : ["World"];
+  const metrics = response?.meta?.metrics?.length
+    ? response.meta.metrics
+    : [{ key: "primary_energy_consumption", label: "Primary energy consumption", unit: "TWh", fmt: "num" as const }];
+  const metricMeta = response?.metric_meta ?? metrics.find((item) => item.key === metric) ?? metrics[0];
 
   const cleanSeries = useMemo(() => {
-    const raw = Array.isArray(resp?.series) ? resp!.series : [];
-    const out = raw
-      .map((p) => ({ year: Number(p.year), value: toNum(p.value) }))
-      .filter((p) => Number.isFinite(p.year) && p.value !== null)
-      .map((p) => ({ year: p.year, value: p.value as number }))
+    const raw = Array.isArray(response?.series) ? response.series : [];
+    return raw
+      .map((point) => ({ year: Number(point.year), value: toNum(point.value) }))
+      .filter(
+        (point): point is { year: number; value: number } =>
+          Number.isFinite(point.year) && point.value !== null,
+      )
       .sort((a, b) => a.year - b.year);
+  }, [response]);
 
-    if (debug) {
-      console.log("[energy] cleanSeries:", {
-        rawLen: raw.length,
-        cleanLen: out.length,
-        first: out[0],
-        last: out[out.length - 1],
-      });
-    }
-    return out;
-  }, [resp, debug]);
+  const history = useMemo(() => buildHistory(cleanSeries), [cleanSeries]);
+  const lineData = useMemo(() => history.slice(Math.max(0, history.length - 45)), [history]);
+  const yDomain = useMemo(() => paddedDomain(lineData.map((point) => point.value)), [lineData]);
 
-  const table = useMemo(() => energyYoYTable(cleanSeries), [cleanSeries]);
+  const liveByKey = useMemo(() => {
+    const map = new Map<string, LiveMetric>();
+    for (const item of response?.live_pack ?? []) map.set(item.key, item);
+    return map;
+  }, [response]);
 
-  const lineData = useMemo(() => {
-    if (!table.length) return [];
-    const take = 40;
-    return table.slice(Math.max(0, table.length - take));
-  }, [table]);
+  const liveValue = (key: string) => toNum(liveByKey.get(key)?.value);
+  const liveYear = (key: string) => liveByKey.get(key)?.year ?? null;
 
-  const latest = useMemo(() => {
-    const lv = toNum(resp?.latest?.value);
-    const ly = resp?.latest?.year ? Number(resp!.latest!.year) : null;
-    if (ly && lv !== null) return { year: ly, value: lv };
-    if (!table.length) return null;
-    const last = table[table.length - 1];
-    return { year: last.year, value: last.value };
-  }, [resp, table]);
+  const annualConsumption = liveValue("primary_energy_consumption");
+  const fossilShare = liveValue("fossil_share_energy");
+  const renewableShare = liveValue("renewables_share_energy");
+  const lowCarbonShare = liveValue("low_carbon_share_energy");
+  const annualGeneration = liveValue("electricity_generation");
+  const annualDemand = liveValue("electricity_demand");
 
-  const latestDelta = useMemo(() => {
-    if (table.length < 2) return null;
-    return table[table.length - 1].delta ?? null;
-  }, [table]);
+  const energyToday = annualTwhToTodayGwh(annualConsumption, now);
+  const generationToday = annualTwhToTodayGwh(annualGeneration, now);
+  const demandToday = annualTwhToTodayGwh(annualDemand, now);
+  const fossilToday = energyToday !== null && fossilShare !== null ? energyToday * (fossilShare / 100) : null;
+  const renewableToday = energyToday !== null && renewableShare !== null ? energyToday * (renewableShare / 100) : null;
+  const lowCarbonToday = energyToday !== null && lowCarbonShare !== null ? energyToday * (lowCarbonShare / 100) : null;
 
-  const points = resp?.coverage?.points ?? 0;
-  const minYear = resp?.coverage?.min_year ?? null;
-  const maxYear = resp?.coverage?.max_year ?? null;
+  const otherLowCarbonShare =
+    lowCarbonShare !== null && renewableShare !== null
+      ? Math.max(0, lowCarbonShare - renewableShare)
+      : fossilShare !== null && renewableShare !== null
+        ? Math.max(0, 100 - fossilShare - renewableShare)
+        : null;
 
-  const yDomain = useMemo(() => {
-    const vals = lineData.map((d) => d.value).filter((v) => Number.isFinite(v));
-    return yPadDomain(vals);
-  }, [lineData]);
-
-  const showOverlay = loading && !initialLoading;
+  const mixData = useMemo(
+    () =>
+      [
+        { name: "Fossil fuels", value: fossilShare },
+        { name: "Renewables", value: renewableShare },
+        { name: "Other low-carbon", value: otherLowCarbonShare },
+      ].filter(
+        (item): item is { name: string; value: number } =>
+          item.value !== null && Number.isFinite(item.value) && item.value > 0,
+      ),
+    [fossilShare, renewableShare, otherLowCarbonShare],
+  );
 
   const rankYearOptions = useMemo(() => {
-    if (!minYear || !maxYear) return [];
-    const out: number[] = [];
-    for (let y = maxYear; y >= minYear; y--) out.push(y);
-    return out;
-  }, [minYear, maxYear]);
+    const min = response?.coverage?.min_year;
+    const max = response?.coverage?.max_year;
+    if (!min || !max) return [];
+    const years: number[] = [];
+    for (let year = max; year >= min; year--) years.push(year);
+    return years;
+  }, [response]);
 
-  const top10 = resp?.top10 ?? [];
+  const latest = useMemo(() => {
+    const apiValue = toNum(response?.latest?.value);
+    const apiYear = response?.latest?.year ? Number(response.latest.year) : null;
+    if (apiYear && apiValue !== null) return { year: apiYear, value: apiValue };
+    return cleanSeries.length ? cleanSeries[cleanSeries.length - 1] : null;
+  }, [response, cleanSeries]);
 
-  if (initialLoading) {
-    return <PageLoader label="Loading dashboard..." />;
-  }
+  const top10 = response?.top10 ?? [];
+  const isRefreshing = loading && !initialLoading;
+
+  if (initialLoading) return <PageLoader />;
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 -z-30">
-        <div className="absolute inset-0 bg-gradient-to-b from-white via-white/90 to-white/80" />
-        <div className="absolute -top-24 -left-24 h-80 w-80 rounded-full bg-sky-300/30 blur-3xl" />
-        <div className="absolute top-40 -right-24 h-80 w-80 rounded-full bg-emerald-200/30 blur-3xl" />
-        <div className="absolute bottom-0 left-1/3 h-80 w-80 rounded-full bg-violet-200/30 blur-3xl" />
-      </div>
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(124,58,237,0.11),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(14,165,233,0.10),_transparent_30%),linear-gradient(to_bottom,_#f8fafc,_#eef2ff)]">
+      <main className="mx-auto max-w-[1500px] space-y-4 px-4 py-6 lg:px-6">
+        <section className="relative overflow-hidden rounded-3xl bg-slate-950 px-5 py-6 text-white shadow-2xl lg:px-7">
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute -left-20 -top-24 h-72 w-72 rounded-full bg-violet-600/30 blur-3xl" />
+            <div className="absolute -right-16 top-0 h-72 w-72 rounded-full bg-sky-500/20 blur-3xl" />
+            <div className="absolute bottom-0 left-1/2 h-px w-2/3 -translate-x-1/2 bg-gradient-to-r from-transparent via-violet-400 to-transparent" />
+          </div>
 
-      <div className="mx-auto max-w-7xl px-4 py-7 space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="text-xs tracking-widest text-slate-500">
-              WORLDSTATS360
+          <div className="relative flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div className="max-w-3xl">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-violet-300">
+                <Activity className="h-4 w-4" />
+                Stratify Energy Intelligence
+              </div>
+              <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">World Energy Live</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
+                Running estimates for energy consumed, generated and demanded today—supported by Stratify&apos;s latest annual energy data.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Badge className="bg-violet-500 text-white hover:bg-violet-500">Estimated live counters</Badge>
+                <Badge className="bg-white/10 text-white hover:bg-white/10">Resets at local midnight</Badge>
+                <Badge className="bg-white/10 text-white hover:bg-white/10">Scope: {country}</Badge>
+              </div>
             </div>
-            <h1 className="mt-1 text-2xl font-semibold text-slate-900">
-              Energy & Power Transition
-            </h1>
-            <div className="mt-1 text-sm text-slate-700">
-              Latest non-null values, complete coverage, and ranking for your
-              selection.
+
+            <div className="grid w-full gap-2 sm:grid-cols-2 xl:w-auto xl:grid-cols-[220px_310px_120px_auto]">
+              <Select value={country} onValueChange={setCountry}>
+                <SelectTrigger className="border-white/15 bg-white/10 text-white shadow-none">
+                  <SelectValue placeholder="Country" />
+                </SelectTrigger>
+                <SelectContent className="max-h-[360px]">
+                  {countries.map((item) => (
+                    <SelectItem key={item} value={item}>{item}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={metric}
+                onValueChange={(value) => {
+                  setMetric(value);
+                  setRankYear(null);
+                }}
+              >
+                <SelectTrigger className="border-white/15 bg-white/10 text-white shadow-none">
+                  <SelectValue placeholder="Historical metric" />
+                </SelectTrigger>
+                <SelectContent className="max-h-[360px]">
+                  {metrics.map((item) => (
+                    <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={rankYear === null ? undefined : String(rankYear)}
+                onValueChange={(value) => setRankYear(Number(value))}
+                disabled={!rankYearOptions.length}
+              >
+                <SelectTrigger className="border-white/15 bg-white/10 text-white shadow-none">
+                  <SelectValue placeholder="Year" />
+                </SelectTrigger>
+                <SelectContent className="max-h-[360px]">
+                  {rankYearOptions.map((year) => (
+                    <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Button
+                onClick={() => setRefreshToken((value) => value + 1)}
+                disabled={loading}
+                className="gap-2 bg-violet-600 text-white hover:bg-violet-500"
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
             </div>
           </div>
+        </section>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={country} onValueChange={setCountry}>
-              <SelectTrigger className="w-[220px] rounded-xl bg-white/70 backdrop-blur-md border border-white/60 shadow-sm">
-                <SelectValue placeholder="Country" />
-              </SelectTrigger>
-              <SelectContent className="max-h-[360px]">
-                {countries.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={metric}
-              onValueChange={(v) => {
-                setMetric(v);
-                setRankYear(null);
-              }}
-            >
-              <SelectTrigger className="w-[320px] rounded-xl bg-white/70 backdrop-blur-md border border-white/60 shadow-sm">
-                <SelectValue placeholder="Metric" />
-              </SelectTrigger>
-              <SelectContent className="max-h-[360px]">
-                {metrics.map((m) => (
-                  <SelectItem key={m.key} value={m.key}>
-                    {m.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={String(resp?.rankYear ?? rankYear ?? "")}
-              onValueChange={(v) => setRankYear(Number(v))}
-            >
-              <SelectTrigger className="w-[120px] rounded-xl bg-white/70 backdrop-blur-md border border-white/60 shadow-sm">
-                <SelectValue placeholder="Year" />
-              </SelectTrigger>
-              <SelectContent className="max-h-[360px]">
-                {rankYearOptions.map((y) => (
-                  <SelectItem key={y} value={String(y)}>
-                    {y}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Button
-              variant="secondary"
-              className="rounded-xl bg-white/70 backdrop-blur-md border border-white/60 shadow-sm"
-              onClick={() => {
-                setCountry("World");
-                setMetric("renewables_share_energy");
-                setRankYear(null);
-              }}
-            >
-              Reset
-            </Button>
-          </div>
-        </div>
-
-        {err ? (
-          <div className="rounded-xl border border-rose-200 bg-rose-50/90 backdrop-blur p-3 text-sm text-rose-700">
-            {err}
-          </div>
+        {error ? (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
         ) : null}
 
-        <Card className="shadow-sm bg-white/70 border border-white/60 rounded-2xl">
-          <CardHeader className="py-3">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle className="text-sm font-semibold text-slate-800">
-                Energy Snapshot
-              </CardTitle>
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <LiveCounterCard
+            title="Energy consumed today"
+            value={energyToday}
+            unit="GWh since midnight"
+            icon={<Gauge className="h-5 w-5" />}
+            description={`Estimated from ${liveYear("primary_energy_consumption") ?? "the latest"} primary-energy consumption.`}
+            accentClass="from-violet-600 to-indigo-500"
+          />
+          <LiveCounterCard
+            title="Fossil-fuel energy today"
+            value={fossilToday}
+            unit="GWh since midnight"
+            icon={<Flame className="h-5 w-5" />}
+            description={`Applies the latest fossil share${fossilShare !== null ? ` (${fossilShare.toFixed(1)}%)` : ""} to today's energy estimate.`}
+            accentClass="from-orange-500 to-rose-500"
+          />
+          <LiveCounterCard
+            title="Renewable energy today"
+            value={renewableToday}
+            unit="GWh since midnight"
+            icon={<Leaf className="h-5 w-5" />}
+            description={`Applies the latest renewable share${renewableShare !== null ? ` (${renewableShare.toFixed(1)}%)` : ""} to today's energy estimate.`}
+            accentClass="from-emerald-500 to-green-400"
+          />
+          <LiveCounterCard
+            title="Low-carbon energy today"
+            value={lowCarbonToday}
+            unit="GWh since midnight"
+            icon={<Globe2 className="h-5 w-5" />}
+            description={`Includes the latest available low-carbon share${lowCarbonShare !== null ? ` (${lowCarbonShare.toFixed(1)}%)` : ""}.`}
+            accentClass="from-sky-500 to-cyan-400"
+          />
+          <LiveCounterCard
+            title="Electricity generated today"
+            value={generationToday}
+            unit="GWh since midnight"
+            icon={<Zap className="h-5 w-5" />}
+            description={`Estimated from ${liveYear("electricity_generation") ?? "the latest"} annual electricity generation.`}
+            accentClass="from-amber-400 to-orange-500"
+          />
+          <LiveCounterCard
+            title="Electricity demand today"
+            value={demandToday}
+            unit="GWh since midnight"
+            icon={<Bolt className="h-5 w-5" />}
+            description={`Estimated from ${liveYear("electricity_demand") ?? "the latest"} annual electricity demand.`}
+            accentClass="from-fuchsia-500 to-violet-600"
+          />
+        </section>
 
-              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                <Badge variant="secondary">{country}</Badge>
-                <Badge variant="secondary">
-                  {safeText(metricMeta.label, 44)}
-                </Badge>
-                {metricMeta.unit ? (
-                  <Badge variant="secondary">{metricMeta.unit}</Badge>
-                ) : null}
-                <Badge variant="secondary">
-                  coverage: {minYear && maxYear ? `${minYear}â€“${maxYear}` : "â€”"}
-                </Badge>
-              </div>
-            </div>
-          </CardHeader>
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricStat label="Annual primary-energy consumption" value={annualConsumption} unit="TWh" year={liveYear("primary_energy_consumption")} />
+          <MetricStat label="Annual electricity generation" value={annualGeneration} unit="TWh" year={liveYear("electricity_generation")} />
+          <MetricStat label="Annual electricity demand" value={annualDemand} unit="TWh" year={liveYear("electricity_demand")} />
+          <MetricStat label="Selected metric" value={latest?.value ?? null} unit={metricMeta.unit ?? ""} year={latest?.year ?? null} />
+        </section>
 
-          <CardContent className="pt-0">
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <div className="rounded-xl border bg-white p-3">
-                <div className="text-[11px] text-slate-500">Latest</div>
-                <div className="mt-0.5 text-xs text-slate-500">
-                  {latest ? latest.year : "â€”"}
-                </div>
-                <div className="mt-1 text-xl font-bold text-slate-900">
-                  {latest
-                    ? fmtVal(latest.value, metricMeta.unit, metricMeta.fmt)
-                    : "â€”"}
-                </div>
-                <div className="mt-0.5 text-[11px] text-slate-500">
-                  {metricMeta.unit ?? ""}
-                </div>
-              </div>
-
-              <div className="rounded-xl border bg-white p-3">
-                <div className="text-[11px] text-slate-500">Change (Î”)</div>
-                <div className="mt-1 text-xl font-bold text-slate-900">
-                  {latestDelta === null
-                    ? "â€”"
-                    : fmtVal(latestDelta, metricMeta.unit, metricMeta.fmt)}
-                </div>
-                <div className="mt-1">
-                  {latestDelta === null ? (
-                    <Badge variant="secondary">Not enough data</Badge>
-                  ) : latestDelta >= 0 ? (
-                    <Badge className="bg-emerald-600 text-white">Up</Badge>
-                  ) : (
-                    <Badge className="bg-rose-600 text-white">Down</Badge>
-                  )}
-                </div>
-              </div>
-
-              <div className="rounded-xl border bg-white p-3">
-                <div className="text-[11px] text-slate-500">Rank</div>
-                <div className="mt-1 text-xl font-bold text-slate-900">
-                  {resp?.country_rank ? `#${resp.country_rank}` : "â€”"}
-                </div>
-                <div className="mt-0.5 text-[11px] text-slate-500">
-                  {resp?.total_countries
-                    ? `out of ${resp.total_countries}`
-                    : "â€”"}{" "}
-                  â€¢ {resp?.rankYear ?? "â€”"}
-                </div>
-              </div>
-
-              <div className="rounded-xl border bg-white p-3">
-                <div className="text-[11px] text-slate-500">Points</div>
-                <div className="mt-1 text-xl font-bold text-slate-900">
-                  {points}
-                </div>
-                <div className="mt-0.5 text-[11px] text-slate-500">
-                  {cleanSeries.length
-                    ? `clean: ${cleanSeries.length}`
-                    : "no data"}
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="grid grid-cols-12 gap-4">
-          <Card className="col-span-12 lg:col-span-8 shadow-sm bg-white/70 border border-white/60 rounded-2xl">
-            <CardHeader className="py-3">
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-                <div className="min-w-0">
-                  <CardTitle className="text-sm font-semibold text-slate-800">
-                    Trend (Line) + Î”%
+        <section className="grid grid-cols-12 gap-4">
+          <Card className="col-span-12 overflow-hidden rounded-2xl border-slate-200 bg-white/90 shadow-sm xl:col-span-8">
+            <CardHeader className="border-b border-slate-100 pb-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <BarChart3 className="h-5 w-5 text-violet-600" />
+                    Historical energy trend
                   </CardTitle>
-                  <div className="mt-0.5 text-[11px] text-slate-500">
-                    {safeText(metricMeta.label, 110)}
-                    {metricMeta.unit ? ` â€¢ ${metricMeta.unit}` : ""} â€¢ {country}
-                  </div>
+                  <div className="mt-1 text-xs text-slate-500">{metricMeta.label} • {country}</div>
                 </div>
-
                 <div className="flex flex-wrap items-center gap-2">
-                  {debug ? (
-                    <Badge className="bg-slate-900 text-white">debug=1</Badge>
-                  ) : null}
-                  {loading && !initialLoading ? (
-                    <Badge className="bg-slate-900 text-white">Loadingâ€¦</Badge>
-                  ) : null}
+                  <Badge variant="secondary">{response?.coverage?.min_year ?? "—"}–{response?.coverage?.max_year ?? "—"}</Badge>
+                  <Badge variant="secondary">{response?.coverage?.points ?? 0} points</Badge>
+                  {isRefreshing ? <Badge className="bg-violet-600 text-white">Refreshing…</Badge> : null}
                 </div>
               </div>
             </CardHeader>
 
-            <CardContent className="pt-0">
-              {err && !table.length && !loading ? (
-                <div className="rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                  {err}
-                </div>
-              ) : table.length === 0 && !loading ? (
-                <div className="rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                  No series for this selection.
+            <CardContent className="pt-4">
+              {lineData.length ? (
+                <div className="h-[360px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={lineData} margin={{ top: 10, right: 18, left: 8, bottom: 8 }}>
+                      <defs>
+                        <linearGradient id="energyLine" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" stopColor="#7c3aed" />
+                          <stop offset="100%" stopColor="#0ea5e9" />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis dataKey="year" tick={{ fontSize: 11 }} stroke="#64748b" />
+                      <YAxis domain={yDomain} tickFormatter={(value) => fmtCompact(Number(value), 1)} tick={{ fontSize: 11 }} stroke="#64748b" />
+                      <Tooltip
+                        labelFormatter={(label) => `Year: ${label}`}
+                        formatter={(value: any) => fmtValue(typeof value === "number" ? value : toNum(value), metricMeta.unit, metricMeta.fmt)}
+                      />
+                      <Line type="monotone" dataKey="value" stroke="url(#energyLine)" strokeWidth={3} dot={false} activeDot={{ r: 5 }} isAnimationActive={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
                 </div>
               ) : (
-                <div className="relative">
-                  {showOverlay ? (
-                    <LoadingOverlay label="Loading energy data..." />
-                  ) : null}
-
-                  <div
-                    className={
-                      showOverlay
-                        ? "pointer-events-none opacity-80 blur-[0.2px]"
-                        : ""
-                    }
-                  >
-                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                      <div className="h-[300px] rounded-lg border bg-white p-2">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart
-                            data={lineData}
-                            margin={{ left: 8, right: 10, top: 10, bottom: 10 }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="year" />
-                            <YAxis
-                              domain={yDomain as any}
-                              tickFormatter={(v) => fmtCompact(Number(v))}
-                            />
-                            <Tooltip
-                              labelFormatter={(l) => `Year: ${l}`}
-                              formatter={(v: any) =>
-                                fmtVal(
-                                  typeof v === "number" ? v : toNum(v),
-                                  metricMeta.unit,
-                                  metricMeta.fmt,
-                                )
-                              }
-                            />
-                            <Line
-                              type="monotone"
-                              dataKey="value"
-                              stroke={stableColorFromKey(
-                                metricMeta.key || metric,
-                              )}
-                              strokeWidth={2.5}
-                              dot={false}
-                              isAnimationActive={false}
-                            />
-                          </LineChart>
-                        </ResponsiveContainer>
-
-                        {debug ? (
-                          <div className="mt-2 text-[11px] text-slate-500">
-                            raw: {resp?.series?.length ?? 0} â€¢ clean:{" "}
-                            {cleanSeries.length} â€¢ lineData: {lineData.length} â€¢
-                            y: {Number(yDomain[0]).toFixed(3)} â†’{" "}
-                            {Number(yDomain[1]).toFixed(3)}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      <div className="rounded-lg border bg-white">
-                        <div className="max-h-[300px] overflow-y-auto overflow-x-hidden">
-                          <table className="min-w-full text-xs">
-                            <thead className="sticky top-0 bg-slate-50">
-                              <tr>
-                                <th className="px-3 py-2 text-left font-semibold text-slate-700">
-                                  Year
-                                </th>
-                                <th className="px-3 py-2 text-right font-semibold text-slate-700">
-                                  Value
-                                </th>
-                                <th className="px-3 py-2 text-right font-semibold text-slate-700">
-                                  Î”
-                                </th>
-                                <th className="px-3 py-2 text-right font-semibold text-slate-700">
-                                  Î”%
-                                </th>
-                              </tr>
-                            </thead>
-
-                            <tbody>
-                              {table
-                                .slice()
-                                .sort((a, b) => b.year - a.year)
-                                .map((r) => (
-                                  <tr key={r.year} className="border-t">
-                                    <td className="px-3 py-2 text-slate-700">
-                                      {r.year}
-                                    </td>
-                                    <td className="px-3 py-2 text-right font-semibold text-slate-900">
-                                      {fmtVal(
-                                        r.value,
-                                        metricMeta.unit,
-                                        metricMeta.fmt,
-                                      )}
-                                    </td>
-                                    <td className="px-3 py-2 text-right text-slate-700">
-                                      {r.delta === null
-                                        ? "â€”"
-                                        : fmtVal(
-                                            r.delta,
-                                            metricMeta.unit,
-                                            metricMeta.fmt,
-                                          )}
-                                    </td>
-                                    <td className="px-3 py-2 text-right">
-                                      <span
-                                        className={[
-                                          "inline-flex rounded-full border px-2 py-0.5 font-semibold",
-                                          r.deltaPct === null
-                                            ? "border-slate-200 text-slate-500"
-                                            : r.deltaPct >= 0
-                                              ? "border-emerald-200 text-emerald-700 bg-emerald-50"
-                                              : "border-rose-200 text-rose-700 bg-rose-50",
-                                        ].join(" ")}
-                                      >
-                                        {r.deltaPct === null
-                                          ? "â€”"
-                                          : `${r.deltaPct.toFixed(1)}%`}
-                                      </span>
-                                    </td>
-                                  </tr>
-                                ))}
-                            </tbody>
-                          </table>
-                        </div>
-
-                        <div className="border-t px-3 py-2 text-[11px] text-slate-500">
-                          Scroll for more rows
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-2 text-[11px] text-slate-500">
-                      Showing last {Math.min(40, lineData.length)} points â€¢{" "}
-                      {country} â€¢ {metricMeta.key}
-                    </div>
-                  </div>
+                <div className="flex h-[360px] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
+                  No historical series is available for this selection.
                 </div>
               )}
             </CardContent>
           </Card>
 
-          <Card className="col-span-12 lg:col-span-4 shadow-sm bg-white/70 border border-white/60 rounded-2xl overflow-hidden">
-            <CardHeader className="py-3">
-              <CardTitle className="text-sm font-semibold text-slate-800">
-                Top 10 â€¢ {resp?.rankYear ?? "â€”"}
+          <Card className="col-span-12 rounded-2xl border-slate-200 bg-white/90 shadow-sm xl:col-span-4">
+            <CardHeader className="border-b border-slate-100 pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Factory className="h-5 w-5 text-violet-600" />
+                Primary-energy mix
               </CardTitle>
-              <div className="text-[11px] text-slate-500">
-                {metricMeta.label}
-              </div>
+              <div className="text-xs text-slate-500">Latest available shares for {country}</div>
             </CardHeader>
 
-            <CardContent className="pt-0">
-              {loading && !initialLoading ? (
-                <div className="space-y-2 py-2">
-                  {Array.from({ length: 10 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="h-6 rounded bg-slate-200/70 animate-pulse"
-                    />
-                  ))}
-                </div>
+            <CardContent className="pt-4">
+              {mixData.length ? (
+                <>
+                  <div className="h-[250px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={mixData} dataKey="value" nameKey="name" innerRadius={62} outerRadius={98} paddingAngle={2}>
+                          {mixData.map((item, index) => (
+                            <Cell key={item.name} fill={MIX_COLORS[index % MIX_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value: any) => `${Number(value).toFixed(2)}%`} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="space-y-2">
+                    {mixData.map((item, index) => (
+                      <div key={item.name} className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2">
+                        <div className="flex items-center gap-2 text-sm text-slate-700">
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: MIX_COLORS[index % MIX_COLORS.length] }} />
+                          {item.name}
+                        </div>
+                        <div className="font-bold text-slate-950">{item.value.toFixed(2)}%</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
               ) : (
-                <div className="overflow-auto rounded-xl border border-slate-200/70 max-h-[340px] bg-white">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 sticky top-0 z-10">
-                      <tr className="text-slate-600">
-                        <th className="text-left p-2 w-10">#</th>
-                        <th className="text-left p-2">Country</th>
-                        <th className="text-right p-2">Value</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {top10.map((r) => {
-                        const active = r.country === country;
-                        return (
-                          <tr
-                            key={`${r.rank}-${r.country}`}
-                            className={[
-                              "border-t cursor-pointer transition",
-                              active
-                                ? "bg-slate-900/5"
-                                : "hover:bg-slate-900/5",
-                            ].join(" ")}
-                            onClick={() => setCountry(r.country)}
-                            title="Click to view this country"
-                          >
-                            <td className="p-2 text-slate-700">{r.rank}</td>
-                            <td className="p-2 text-slate-900 font-medium">
-                              {r.country}
-                            </td>
-                            <td className="p-2 text-right text-slate-800">
-                              {fmtVal(
-                                toNum(r.value),
-                                metricMeta.unit,
-                                metricMeta.fmt,
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      {!top10.length ? (
-                        <tr>
-                          <td className="p-3 text-slate-500" colSpan={3}>
-                            No ranking data for this year/metric.
+                <div className="flex h-[320px] items-center justify-center text-center text-sm text-slate-500">
+                  Energy-mix shares are not available for this country.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+
+        <section className="grid grid-cols-12 gap-4">
+          <Card className="col-span-12 rounded-2xl border-slate-200 bg-white/90 shadow-sm lg:col-span-7">
+            <CardHeader className="border-b border-slate-100 pb-3">
+              <CardTitle className="text-base">Country ranking • {response?.rankYear ?? "—"}</CardTitle>
+              <div className="text-xs text-slate-500">Top 10 for {metricMeta.label}</div>
+            </CardHeader>
+            <CardContent className="pt-4">
+              <div className="overflow-hidden rounded-xl border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-950 text-white">
+                    <tr>
+                      <th className="w-14 px-3 py-2.5 text-left">#</th>
+                      <th className="px-3 py-2.5 text-left">Country</th>
+                      <th className="px-3 py-2.5 text-right">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {top10.map((row) => {
+                      const active = row.country === country;
+                      return (
+                        <tr
+                          key={`${row.rank}-${row.country}`}
+                          onClick={() => setCountry(row.country)}
+                          className={`cursor-pointer border-t transition ${active ? "bg-violet-50" : "bg-white hover:bg-slate-50"}`}
+                        >
+                          <td className="px-3 py-2.5 text-slate-500">{row.rank}</td>
+                          <td className="px-3 py-2.5 font-semibold text-slate-900">{row.country}</td>
+                          <td className="px-3 py-2.5 text-right font-semibold text-slate-800">{fmtValue(toNum(row.value), metricMeta.unit, metricMeta.fmt)}</td>
+                        </tr>
+                      );
+                    })}
+                    {!top10.length ? (
+                      <tr><td colSpan={3} className="px-3 py-8 text-center text-slate-500">No ranking data is available.</td></tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+                <Badge variant="secondary">Selected rank: {response?.country_rank ? `#${response.country_rank}` : "not ranked"}</Badge>
+                <Badge variant="secondary">Countries: {response?.total_countries ?? "—"}</Badge>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="col-span-12 rounded-2xl border-slate-200 bg-white/90 shadow-sm lg:col-span-5">
+            <CardHeader className="border-b border-slate-100 pb-3">
+              <CardTitle className="text-base">Recent annual values</CardTitle>
+              <div className="text-xs text-slate-500">{metricMeta.label} • latest 12 observations</div>
+            </CardHeader>
+            <CardContent className="pt-4">
+              <div className="max-h-[390px] overflow-auto rounded-xl border border-slate-200">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-slate-100 text-slate-700">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Year</th>
+                      <th className="px-3 py-2 text-right">Value</th>
+                      <th className="px-3 py-2 text-right">YoY</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history
+                      .slice()
+                      .sort((a, b) => b.year - a.year)
+                      .slice(0, 12)
+                      .map((row) => (
+                        <tr key={row.year} className="border-t bg-white">
+                          <td className="px-3 py-2 text-slate-600">{row.year}</td>
+                          <td className="px-3 py-2 text-right font-semibold text-slate-900">{fmtValue(row.value, metricMeta.unit, metricMeta.fmt)}</td>
+                          <td className="px-3 py-2 text-right">
+                            <span className={`inline-flex rounded-full px-2 py-0.5 font-semibold ${
+                              row.deltaPct === null
+                                ? "bg-slate-100 text-slate-500"
+                                : row.deltaPct >= 0
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-rose-50 text-rose-700"
+                            }`}>
+                              {row.deltaPct === null ? "—" : `${row.deltaPct >= 0 ? "+" : ""}${row.deltaPct.toFixed(1)}%`}
+                            </span>
                           </td>
                         </tr>
-                      ) : null}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {debug && !loading ? (
-                <div className="mt-2 rounded-lg border bg-white px-3 py-2 text-[11px] text-slate-600">
-                  <div className="font-semibold text-slate-900">Debug</div>
-                  <div>API ok: {String(resp?.ok)}</div>
-                  <div>rankYear: {resp?.rankYear ?? "â€”"}</div>
-                  <div>top10: {top10.length}</div>
-                </div>
-              ) : null}
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-800">
+                Live figures are calculated estimates, not direct real-time meter readings. They use the latest available annual values and your browser&apos;s local clock.
+              </div>
             </CardContent>
           </Card>
-        </div>
-      </div>
+        </section>
+      </main>
     </div>
   );
 }
-
-
-
