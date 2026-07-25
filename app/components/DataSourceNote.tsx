@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { usePathname } from "next/navigation";
 import { cleanText } from "@/app/lib/cleanText";
@@ -6,6 +6,9 @@ import { cleanText } from "@/app/lib/cleanText";
 const SOURCE_NOTES = {
   home:
     "Data sources: World Bank World Development Indicators (WDI), World Bank Open Data, UNData, FAOSTAT, IMF public datasets, and Natural Earth / world-atlas boundaries. Updated periodically for analytical use.",
+
+  globalPulse:
+    "Global Pulse sources: GDELT global news search, ReliefWeb/OCHA, World Bank news, IMF, WTO and FAO official feeds, plus Wikimedia On This Day. Headlines remain owned by their original publishers and link to the original source.",
 
   debt:
     "Data sources: IMF World Economic Outlook (WEO) - General Government Gross Debt, IMF Global Debt Database, World Bank International Debt Statistics (IDS), and World Bank WDI debt indicators. Updated periodically for analytical use.",
@@ -32,6 +35,7 @@ const SOURCE_NOTES = {
 function getSourceNote(pathname: string) {
   const path = pathname.toLowerCase();
 
+  if (path.startsWith("/global-pulse")) return SOURCE_NOTES.globalPulse;
   if (path === "/" || path.startsWith("/world")) return SOURCE_NOTES.home;
   if (path.startsWith("/debt")) return SOURCE_NOTES.debt;
   if (path.startsWith("/energy")) return SOURCE_NOTES.energy;

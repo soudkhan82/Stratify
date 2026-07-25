@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -6,6 +6,7 @@ import AuthNavButton from "@/components/AuthNavButton";
 
 const NAV_ITEMS = [
   { label: "Home", href: "/" },
+  { label: "Global Pulse", href: "/global-pulse" },
   { label: "Monetary", href: "/monetary" },
   { label: "Fiscal", href: "/fiscal" },
   { label: "Debt", href: "/debt" },
@@ -15,6 +16,15 @@ const NAV_ITEMS = [
   { label: "History", href: "/history" },
   { label: "Corporate 500", href: "/corporate-intelligence" },
   { label: "Credits", href: "/credits" },
+];
+
+const MOBILE_ITEMS = [
+  { label: "Home", href: "/" },
+  { label: "Pulse", href: "/global-pulse" },
+  { label: "Monetary", href: "/monetary" },
+  { label: "FAO", href: "/faostat" },
+  { label: "History", href: "/history" },
+  { label: "IMF", href: "/imf-weo" },
 ];
 
 function isActivePath(pathname: string, href: string) {
@@ -63,7 +73,7 @@ function MobileNavLink({
     <Link
       href={href}
       className={[
-        "rounded-full px-3 py-2 text-xs font-black",
+        "shrink-0 rounded-full px-3 py-2 text-xs font-black",
         active
           ? "bg-violet-600 text-white shadow-md shadow-violet-200"
           : "bg-slate-100 text-slate-700",
@@ -85,7 +95,7 @@ export default function TopNav() {
             S
           </div>
 
-          <div className="leading-tight">
+          <div className="hidden leading-tight sm:block">
             <div className="text-lg font-black tracking-tight text-slate-950">
               Stratify
             </div>
@@ -95,8 +105,8 @@ export default function TopNav() {
           </div>
         </Link>
 
-        <div className="ml-auto hidden items-center gap-3 md:flex">
-          <nav className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 p-1.5 shadow-sm">
+        <div className="ml-auto hidden min-w-0 items-center gap-2 lg:flex">
+          <nav className="flex min-w-0 items-center gap-0.5 rounded-full border border-slate-200 bg-slate-50 p-1.5 shadow-sm">
             {NAV_ITEMS.map((item) => {
               const active = isActivePath(pathname, item.href);
 
@@ -105,7 +115,7 @@ export default function TopNav() {
                   key={item.href}
                   href={item.href}
                   className={[
-                    "rounded-full px-2.5 py-2 text-sm font-bold transition-all xl:px-3",
+                    "whitespace-nowrap rounded-full px-2 py-2 text-[12px] font-bold transition-all xl:px-2.5 xl:text-[13px] 2xl:px-3",
                     active
                       ? "bg-gradient-to-r from-violet-600 to-blue-600 text-white shadow-md shadow-violet-200"
                       : "text-slate-600 hover:bg-white hover:text-slate-950 hover:shadow-sm",
@@ -120,18 +130,21 @@ export default function TopNav() {
           <AuthNavButton />
         </div>
 
-        <div className="ml-auto flex items-center gap-2 md:hidden">
-          <MobileNavLink href="/" label="Home" pathname={pathname} />
-          <MobileNavLink
-            href="/monetary"
-            label="Monetary"
-            pathname={pathname}
-          />
-          <MobileNavLink href="/faostat" label="FAO" pathname={pathname} />
-          <MobileNavLink href="/history" label="History" pathname={pathname} />
-          <MobileNavLink href="/imf-weo" label="IMF" pathname={pathname} />
+        <div className="ml-auto flex min-w-0 flex-1 items-center gap-2 lg:hidden">
+          <nav className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {MOBILE_ITEMS.map((item) => (
+              <MobileNavLink
+                key={item.href}
+                href={item.href}
+                label={item.label}
+                pathname={pathname}
+              />
+            ))}
+          </nav>
 
-          <AuthNavButton />
+          <div className="shrink-0">
+            <AuthNavButton />
+          </div>
         </div>
       </div>
     </header>
