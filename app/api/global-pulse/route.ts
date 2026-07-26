@@ -23,8 +23,6 @@ import {
 } from "@/app/api/_lib/global-pulse/types";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 const VALID_TOPICS = new Set<PulseTopic>([
   "all",
@@ -41,7 +39,7 @@ const VALID_TOPICS = new Set<PulseTopic>([
   "history",
 ]);
 
-const CACHE_TTL_MS = 8 * 60 * 1000;
+const CACHE_TTL_MS = 10 * 60 * 1000;
 
 type CacheEntry = {
   expiresAt: number;
@@ -203,7 +201,7 @@ export async function GET(request: Request) {
         { ...cached.payload, cached: true },
         {
           headers: {
-            "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+            "Cache-Control": "public, s-maxage=600, stale-while-revalidate=3600",
             "X-Stratify-Cache": "HIT",
           },
         },
@@ -319,7 +317,7 @@ export async function GET(request: Request) {
       },
       {
         headers: {
-          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+          "Cache-Control": "public, s-maxage=600, stale-while-revalidate=3600",
           "X-Stratify-Cache": "MISS",
         },
       },

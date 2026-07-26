@@ -341,7 +341,7 @@ export async function fetchGdelt(args: {
     const response = await fetchWithTimeout(
       `https://api.gdeltproject.org/api/v2/doc/doc?${params.toString()}`,
       { next: { revalidate: 600 } },
-      15_000,
+      8_000,
     );
 
     const body = await response.text();
@@ -461,7 +461,7 @@ export async function fetchReliefWeb(args: {
         body: JSON.stringify(requestBody),
         next: { revalidate: 900 },
       },
-      15_000,
+      8_000,
     );
 
     const body = await response.text();
@@ -542,7 +542,7 @@ export async function fetchWorldBank(args: {
     const response = await fetchWithTimeout(
       `https://search.worldbank.org/api/v2/news?${params.toString()}`,
       { next: { revalidate: 1_800 } },
-      15_000,
+      8_000,
     );
 
     const body = await response.text();
@@ -653,40 +653,64 @@ function parseRss(xml: string, config: RssConfig, limit: number) {
     .filter((item): item is PulseItem => Boolean(item));
 }
 
-async function fetchRss(config: RssConfig, limit: number): Promise<SourceFetchResult> {
-  let lastError: Error | null = null;
-
-  for (const url of config.urls) {
-    try {
+async function fetchRss(
+  config: RssConfig,
+  limit: number,
+): Promise<SourceFetchResult> {
+  const attempts = await Promise.allSettled(
+    config.urls.map(async (url) => {
       const response = await fetchWithTimeout(
         url,
         { next: { revalidate: 1_800 } },
-        15_000,
+        8_000,
       );
+
       const body = await response.text();
-      if (!response.ok) throw new Error(errorMessage(response, body));
+
+      if (!response.ok) {
+        throw new Error(errorMessage(response, body));
+      }
 
       const items = parseRss(body, config, limit);
-      if (!items.length) throw new Error("Feed returned no readable items.");
 
+      if (!items.length) {
+        throw new Error("Feed returned no readable items.");
+      }
+
+      return items;
+    }),
+  );
+
+  for (const attempt of attempts) {
+    if (attempt.status === "fulfilled") {
       return {
         id: config.id,
         label: config.label,
         configured: true,
-        items,
+        items: attempt.value,
         error: null,
       };
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
     }
   }
+
+  const rejected = attempts.find(
+    (attempt) => attempt.status === "rejected",
+  );
+
+  const error =
+    rejected && rejected.status === "rejected"
+      ? rejected.reason
+      : new Error("Feed unavailable.");
 
   return {
     id: config.id,
     label: config.label,
     configured: true,
     items: [],
-    error: lastError ?? new Error("Feed unavailable."),
+    error:
+      error instanceof Error
+        ? error
+        : new Error(String(error)),
   };
 }
 
@@ -752,27 +776,47 @@ export async function fetchWikipediaOnThisDay(limit: number): Promise<SourceFetc
       `https://en.wikipedia.org/api/rest_v1/feed/onthisday/all/${month}/${day}`,
     ];
 
-    let payload: any = null;
-    let lastError: Error | null = null;
-
-    for (const url of urls) {
-      try {
+    const attempts = await Promise.allSettled(
+      urls.map(async (url) => {
         const response = await fetchWithTimeout(
           url,
           { next: { revalidate: 21_600 } },
-          15_000,
+          8_000,
         );
+
         const body = await response.text();
-        if (!response.ok) throw new Error(errorMessage(response, body));
-        payload = JSON.parse(body);
-        break;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-      }
+
+        if (!response.ok) {
+          throw new Error(errorMessage(response, body));
+        }
+
+        return JSON.parse(body);
+      }),
+    );
+
+    const successfulAttempt = attempts.find(
+      (attempt) => attempt.status === "fulfilled",
+    );
+
+    if (
+      !successfulAttempt ||
+      successfulAttempt.status !== "fulfilled"
+    ) {
+      const rejected = attempts.find(
+        (attempt) => attempt.status === "rejected",
+      );
+
+      const error =
+        rejected && rejected.status === "rejected"
+          ? rejected.reason
+          : new Error("Wikipedia feed unavailable.");
+
+      throw error instanceof Error
+        ? error
+        : new Error(String(error));
     }
 
-    if (!payload) throw lastError ?? new Error("Wikipedia feed unavailable.");
-
+    const payload: any = successfulAttempt.value;
     const events = [
       ...(Array.isArray(payload.selected) ? payload.selected : []),
       ...(Array.isArray(payload.events) ? payload.events : []),

@@ -608,18 +608,27 @@ export default function GlobalPulsePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [country, setCountry] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
-  const [payload, setPayload] = useState<PulseResponse>(EMPTY_RESPONSE);
+  const [feedPayload, setFeedPayload] =
+    useState<PulseResponse>(EMPTY_RESPONSE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedItem, setSelectedItem] = useState<PulseItem | null>(null);
+  const [selectedStory, setSelectedStory] = useState<PulseItem | null>(null);
 
-  const openStory = useCallback((item: PulseItem) => {
-    setSelectedItem(item);
-  }, []);
+  function isValidPulseItem(
+    item: PulseItem | null | undefined,
+  ): item is PulseItem {
+    if (!item) return false;
 
-  const closeStory = useCallback(() => {
-    setSelectedItem(null);
-  }, []);
+    const title = String(item.title ?? "").trim();
+    const url = String(item.url ?? "").trim();
+    const source = String(item.source ?? "").trim();
+
+    if (!title || !url) return false;
+    if (title === "[object Object]" || url === "[object Object]") return false;
+    if (source === "[object Object]") return false;
+
+    return true;
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -630,60 +639,152 @@ export default function GlobalPulsePage() {
 
       try {
         const params = new URLSearchParams({
-          topic,
+          // One reusable source pool powers every topic tab.
+          topic: "all",
           hours: String(hours),
-          limit: "72",
+          limit: "120",
         });
+
         if (searchQuery) params.set("q", searchQuery);
         if (country) params.set("country", country);
-        if (refreshToken) params.set("refresh", String(refreshToken));
 
-        const response = await fetch(`/api/global-pulse?${params.toString()}`, {
-          cache: "no-store",
-          signal: controller.signal,
-        });
+        // Only an explicit Refresh/Retry action bypasses the warm response.
+        if (refreshToken) {
+          params.set("refresh", String(refreshToken));
+        }
+
+        const response = await fetch(
+          `/api/global-pulse?${params.toString()}`,
+          {
+            signal: controller.signal,
+          },
+        );
+
         const json = (await response.json()) as PulseResponse;
-        if (!response.ok) throw new Error(json.error || "Unable to load Global Pulse.");
-        setPayload(json);
+
+        if (!response.ok) {
+          throw new Error(json.error || "Unable to load Global Pulse.");
+        }
+
+        setFeedPayload(json);
       } catch (loadError) {
         if (controller.signal.aborted) return;
+
         setError(
           loadError instanceof Error
             ? loadError.message
             : "Unable to load Global Pulse.",
         );
       } finally {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     }
 
     void load();
-    return () => controller.abort();
-  }, [topic, hours, searchQuery, country, refreshToken]);
 
-  const validItems = useMemo(
-    () => payload.items.filter(isDisplayableItem),
-    [payload.items],
-  );
-  const hero = isDisplayableItem(payload.hero)
-    ? payload.hero
-    : validItems.find((item) => item.imageUrl) ?? validItems[0] ?? null;
-  const secondaryStories = useMemo(
-    () => validItems.filter((item) => item.id !== hero?.id).slice(0, 3),
-    [validItems, hero?.id],
-  );
-  const remainingStories = useMemo(
-    () => validItems.filter((item) => item.id !== hero?.id).slice(3),
-    [validItems, hero?.id],
-  );
-  const validOfficialUpdates = useMemo(
-    () => payload.officialUpdates.filter(isDisplayableItem).slice(0, 6),
-    [payload.officialUpdates],
-  );
+    return () => controller.abort();
+  }, [
+    // Topic is intentionally excluded. Tabs filter the loaded pool locally.
+    hours,
+    searchQuery,
+    country,
+    refreshToken,
+  ]);
+
+  const payload = useMemo<PulseResponse>(() => {
+    const newsItems = feedPayload.items.filter(isValidPulseItem);
+    const historyItems =
+      feedPayload.todayInHistory.filter(isValidPulseItem);
+
+    const selectedItems =
+      topic === "history"
+        ? historyItems
+        : topic === "all"
+          ? newsItems
+          : newsItems.filter(
+              (item) =>
+                item.topic === topic ||
+                item.topics.includes(
+                  topic as Exclude<PulseTopic, "all">,
+                ),
+            );
+
+    const selectedHero =
+      selectedItems.find((item) => item.imageUrl) ??
+      selectedItems.find((item) => item.isOfficial) ??
+      selectedItems[0] ??
+      null;
+
+    const selectedOfficialUpdates =
+      selectedItems.filter((item) => item.isOfficial);
+
+    return {
+      ...feedPayload,
+      filters: {
+        ...feedPayload.filters,
+        topic,
+      },
+      counts: {
+        ...feedPayload.counts,
+        total: selectedItems.length,
+        official: selectedOfficialUpdates.length,
+        publishers:
+          selectedItems.length - selectedOfficialUpdates.length,
+      },
+      hero: selectedHero,
+      items: selectedItems,
+      officialUpdates: selectedOfficialUpdates,
+      todayInHistory: historyItems,
+    };
+  }, [feedPayload, topic]);
+
+  // These aliases are intentionally retained because the current JSX uses them
+  // to suppress malformed [object Object] cards.
   const validHistoryItems = useMemo(
-    () => payload.todayInHistory.filter(isDisplayableItem).slice(0, 4),
+    () => payload.todayInHistory.filter(isValidPulseItem),
     [payload.todayInHistory],
   );
+
+  const validOfficialUpdates = useMemo(
+    () => payload.officialUpdates.filter(isValidPulseItem),
+    [payload.officialUpdates],
+  );
+
+  const hero = payload.hero;
+  const secondaryStories = useMemo(
+    () =>
+      payload.items
+        .filter(
+          (item) =>
+            item.id !== hero?.id &&
+            isValidPulseItem(item),
+        )
+        .slice(0, 3),
+    [payload.items, hero?.id],
+  );
+
+  const remainingStories = useMemo(
+    () =>
+      payload.items
+        .filter(
+          (item) =>
+            item.id !== hero?.id &&
+            isValidPulseItem(item),
+        )
+        .slice(3),
+    [payload.items, hero?.id],
+  );
+
+  function openStory(item: PulseItem) {
+    if (!isValidPulseItem(item)) return;
+    setSelectedStory(item);
+  }
+
+  function closeStory() {
+    setSelectedStory(null);
+  }
 
   function applySearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -829,29 +930,9 @@ export default function GlobalPulsePage() {
         </div>
       </div>
 
-      {loading && payload.items.length > 0 ? (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm"
-          role="status"
-          aria-live="polite"
-          aria-label="Refreshing Global Pulse"
-        >
-          <div className="flex min-w-[290px] flex-col items-center rounded-[28px] border border-white/70 bg-white px-8 py-7 text-center shadow-2xl">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-indigo-50 text-indigo-700">
-              <Loader2 className="h-9 w-9 animate-spin" />
-            </div>
-            <div className="mt-4 text-xl font-black text-slate-950">
-              Refreshing Global Pulse
-            </div>
-            <p className="mt-1 text-sm font-semibold text-slate-600">
-              Updating stories, source health and intelligence signals...
-            </p>
-          </div>
-        </div>
-      ) : null}
 
       <div className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 lg:px-8">
-        {loading && !payload.items.length ? (
+        {loading && !feedPayload.items.length && !feedPayload.todayInHistory.length ? (
           <div className="flex min-h-[480px] flex-col items-center justify-center rounded-[28px] border border-slate-200 bg-white text-center shadow-sm">
             <Loader2 className="h-11 w-11 animate-spin text-indigo-700" />
             <div className="mt-4 text-xl font-black text-slate-950">
@@ -1123,7 +1204,7 @@ export default function GlobalPulsePage() {
         )}
       </div>
 
-      <NewsDetailModal item={selectedItem} onClose={closeStory} />
+      <NewsDetailModal item={selectedStory} onClose={closeStory} />
     </main>
   );
 }
