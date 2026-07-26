@@ -118,7 +118,7 @@ export default function AuthNavButton() {
       setLoggingOut(true);
       await supabase.auth.signOut();
       setUser(null);
-      router.replace("/login");
+      router.replace("/");
       router.refresh();
     } finally {
       setLoggingOut(false);
@@ -137,7 +137,7 @@ export default function AuthNavButton() {
   if (!user) {
     return (
       <a
-        href="/login"
+        href="/#sign-in"
         className="inline-flex h-10 items-center justify-center rounded-full bg-violet-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-violet-700"
       >
         Sign in

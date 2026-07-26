@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_PATHS = new Set([
+  "/landing",
   "/login",
   "/auth/callback",
 ]);
@@ -22,9 +23,11 @@ function copyResponseCookies(
   source: NextResponse,
   destination: NextResponse,
 ) {
-  source.cookies.getAll().forEach(({ name, value, ...options }) => {
-    destination.cookies.set(name, value, options);
-  });
+  source.cookies.getAll().forEach(
+    ({ name, value, ...options }) => {
+      destination.cookies.set(name, value, options);
+    },
+  );
 }
 
 export async function updateSession(request: NextRequest) {
@@ -40,6 +43,7 @@ export async function updateSession(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
+
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => {
             request.cookies.set(name, value);
@@ -49,61 +53,118 @@ export async function updateSession(request: NextRequest) {
             request,
           });
 
-          cookiesToSet.forEach(({ name, value, options }) => {
-            supabaseResponse.cookies.set(name, value, options);
-          });
+          cookiesToSet.forEach(
+            ({ name, value, options }) => {
+              supabaseResponse.cookies.set(
+                name,
+                value,
+                options,
+              );
+            },
+          );
         },
       },
     },
   );
 
   const pathname = request.nextUrl.pathname;
-  const authCode = request.nextUrl.searchParams.get("code");
+  const authCode =
+    request.nextUrl.searchParams.get("code");
 
+  /*
+   * Recover if an OAuth code ever lands on the wrong application path.
+   * The origin is deliberately preserved.
+   */
   if (authCode && pathname !== "/auth/callback") {
     const callbackUrl = request.nextUrl.clone();
     callbackUrl.pathname = "/auth/callback";
-    callbackUrl.search = "";
-    callbackUrl.searchParams.set("code", authCode);
 
-    const callbackResponse = NextResponse.redirect(callbackUrl);
-    copyResponseCookies(supabaseResponse, callbackResponse);
-    return callbackResponse;
+    const response = NextResponse.redirect(callbackUrl);
+    copyResponseCookies(supabaseResponse, response);
+
+    return response;
   }
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const publicPath = isPublicPath(pathname);
+  /*
+   * SIGNED-OUT EXPERIENCE
+   */
+  if (!user) {
+    /*
+     * Old /login URLs redirect to the root landing page.
+     */
+    if (pathname === "/login") {
+      const rootUrl = request.nextUrl.clone();
+      rootUrl.pathname = "/";
 
-  // Mandatory sign-in: every application page requires a valid Google/Supabase user.
-  if (!user && !publicPath) {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/login";
-    loginUrl.search = "";
-    loginUrl.searchParams.set(
-      "next",
-      `${pathname}${request.nextUrl.search}`,
-    );
+      const response = NextResponse.redirect(rootUrl);
+      copyResponseCookies(supabaseResponse, response);
 
-    const redirectResponse = NextResponse.redirect(loginUrl);
-    copyResponseCookies(supabaseResponse, redirectResponse);
-    return redirectResponse;
+      return response;
+    }
+
+    /*
+     * Keep "/" visible in the browser but internally render /landing.
+     */
+    if (pathname === "/") {
+      const landingUrl = request.nextUrl.clone();
+      landingUrl.pathname = "/landing";
+
+      const response = NextResponse.rewrite(landingUrl);
+      copyResponseCookies(supabaseResponse, response);
+
+      return response;
+    }
+
+    /*
+     * Protected modules return to the root landing page and retain
+     * their intended destination.
+     */
+    if (!isPublicPath(pathname)) {
+      const rootUrl = request.nextUrl.clone();
+
+      const requestedDestination =
+        `${pathname}${request.nextUrl.search}`;
+
+      rootUrl.pathname = "/";
+      rootUrl.search = "";
+      rootUrl.searchParams.set(
+        "next",
+        requestedDestination,
+      );
+
+      const response = NextResponse.redirect(rootUrl);
+      copyResponseCookies(supabaseResponse, response);
+
+      return response;
+    }
+
+    return supabaseResponse;
   }
 
-  // A signed-in user should not remain on the login screen.
-  if (user && pathname === "/login") {
+  /*
+   * SIGNED-IN EXPERIENCE
+   *
+   * "/" remains the existing authenticated world-map dashboard.
+   */
+  if (
+    pathname === "/login" ||
+    pathname === "/landing"
+  ) {
     const nextPath = safeNextPath(
       request.nextUrl.searchParams.get("next"),
     );
 
-    const redirectResponse = NextResponse.redirect(
+    const response = NextResponse.redirect(
       new URL(nextPath, request.url),
     );
 
-    copyResponseCookies(supabaseResponse, redirectResponse);
-    return redirectResponse;
+    copyResponseCookies(supabaseResponse, response);
+
+    return response;
   }
 
   return supabaseResponse;

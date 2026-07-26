@@ -1,0 +1,1913 @@
+
+====================================================================================================
+STRATIFY AUTHENTICATION AND ROUTING DUMP
+====================================================================================================
+Generated: 2026-07-26 16:40:50
+Project: C:\NextJS\stratify
+
+====================================================================================================
+FILE: package.json
+====================================================================================================
+{
+  "name": "stratify",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build --turbopack",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-scroll-area": "^1.2.10",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-separator": "^1.1.8",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@supabase/ssr": "^0.12.0",
+    "@supabase/supabase-js": "^2.110.0",
+    "@tanstack/react-query": "^5.89.0",
+    "@vnedyalk0v/react19-simple-maps": "^1.2.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "d3-interpolate": "^3.0.1",
+    "d3-scale": "^4.0.2",
+    "d3-scale-chromatic": "^3.1.0",
+    "i18n-iso-countries": "^7.14.0",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.544.0",
+    "mapbox-gl": "^3.21.0",
+    "maplibre-gl": "^5.7.2",
+    "next": "^16.1.4",
+    "pg": "^8.17.2",
+    "radix-ui": "^1.4.3",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-leaflet": "^5.0.0",
+    "react-map-gl": "^8.1.0",
+    "recharts": "^3.2.1",
+    "tailwind-merge": "^3.4.0",
+    "world-countries": "^5.1.0",
+    "zod": "^4.1.9"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/leaflet": "^1.9.21",
+    "@types/mapbox-gl": "^3.4.1",
+    "@types/node": "^20",
+    "@types/pg": "^8.16.0",
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.66",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.7",
+    "mapshaper": "^0.6.113",
+    "tailwindcss": "^4",
+    "tw-animate-css": "^1.3.8",
+    "typescript": "^5"
+  }
+}
+
+
+====================================================================================================
+FILE: proxy.ts
+====================================================================================================
+import { type NextRequest } from "next/server";
+import { updateSession } from "@/lib/supabase/proxy";
+
+export async function proxy(request: NextRequest) {
+  return updateSession(request);
+}
+
+export const config = {
+  matcher: [
+    "/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map|woff|woff2)$).*)",
+  ],
+};
+
+====================================================================================================
+FILE: app\page.tsx
+====================================================================================================
+// app/page.tsx
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+
+import StratifyMap, { StratifyMapRow } from "@/app/components/StratifyMap";
+import VitalStatsList, { StatSection } from "@/app/components/VitalStatsList";
+
+import { Button } from "@/components/ui/button";
+
+/* =======================
+   Types
+======================= */
+
+type MapRow = {
+  iso3: string;
+  country: string;
+  region: string | null;
+  value: number;
+};
+
+type MapApiResponse = {
+  rows: MapRow[];
+  error?: string;
+};
+
+type SelectOption = {
+  value: string;
+  label: string;
+};
+
+/* =======================
+   Config
+======================= */
+
+const TOPO_URL =
+  "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+
+const REGIONS = [
+  "World",
+  "Sub-Saharan Africa",
+  "Europe & Central Asia",
+  "Middle East & North Africa",
+  "South Asia",
+  "East Asia & Pacific",
+  "Latin America & Caribbean",
+  "North America",
+] as const;
+
+const INDICATORS: Array<{ code: string; label: string; unit?: string }> = [
+  { code: "SP.POP.TOTL", label: "Population" },
+  { code: "NY.GDP.MKTP.CD", label: "GDP (current US$)", unit: "US$" },
+  { code: "SP.POP.GROW", label: "Population Growth", unit: "%" },
+  { code: "SP.DYN.LE00.IN", label: "Life Expectancy", unit: "years" },
+  { code: "SP.URB.TOTL.IN.ZS", label: "Urban Population", unit: "%" },
+  { code: "EG.ELC.ACCS.ZS", label: "Access to Electricity", unit: "%" },
+];
+
+const DEFAULT_INDICATOR = "SP.POP.TOTL";
+
+/* =======================
+   Helpers
+======================= */
+
+function n(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : Number(v) || 0;
+}
+
+function fmt(v: number): string {
+  if (!Number.isFinite(v)) return "â€”";
+  if (Math.abs(v) >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
+  if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
+  return v.toLocaleString();
+}
+
+function toRegionParam(r: string): string | null {
+  return r === "World" ? null : r;
+}
+
+/* =======================
+   Opaque Dropdown
+======================= */
+
+function OpaqueDropdown({
+  value,
+  options,
+  widthClass,
+  onChange,
+}: {
+  value: string;
+  options: SelectOption[];
+  widthClass: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+  const selected = options.find((x) => x.value === value);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        wrapperRef.current &&
+        !wrapperRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={wrapperRef} className={`relative ${widthClass}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-9 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 text-left text-sm font-medium text-slate-800 shadow-sm outline-none transition hover:bg-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+      >
+        <span className="truncate">{selected?.label ?? "Select"}</span>
+
+        <svg
+          className={`h-4 w-4 shrink-0 text-slate-500 transition ${
+            open ? "rotate-180" : ""
+          }`}
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path
+            fillRule="evenodd"
+            d="M5.23 7.21a.75.75 0 011.06.02L10 11.17l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+            clipRule="evenodd"
+          />
+        </svg>
+      </button>
+
+      {open ? (
+        <div className="absolute left-0 top-[42px] z-[99999] max-h-[340px] w-full overflow-y-auto rounded-xl border border-slate-200 bg-white text-slate-800 shadow-2xl ring-1 ring-black/5">
+          {options.map((option) => {
+            const active = option.value === value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium transition ${
+                  active
+                    ? "bg-indigo-50 text-indigo-700"
+                    : "bg-white text-slate-800 hover:bg-slate-50"
+                }`}
+              >
+                <span>{option.label}</span>
+
+                {active ? (
+                  <span className="text-xs font-bold text-indigo-600">âœ“</span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* =======================
+   Page
+======================= */
+
+export default function Page() {
+  const router = useRouter();
+
+  const [region, setRegion] = useState<string>("World");
+  const [indicator, setIndicator] = useState<string>(DEFAULT_INDICATOR);
+
+  const [rows, setRows] = useState<MapRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const [selectedIso3, setSelectedIso3] = useState<string | null>(null);
+
+  const regionParam = useMemo(() => toRegionParam(region), [region]);
+
+  const regionOptions: SelectOption[] = useMemo(
+    () => REGIONS.map((r) => ({ value: r, label: r })),
+    [],
+  );
+
+  const indicatorOptions: SelectOption[] = useMemo(
+    () => INDICATORS.map((x) => ({ value: x.code, label: x.label })),
+    [],
+  );
+
+  const indicatorMeta = useMemo(() => {
+    return (
+      INDICATORS.find((x) => x.code === indicator) ?? {
+        code: indicator,
+        label: indicator,
+      }
+    );
+  }, [indicator]);
+
+  const indicatorLabel = indicatorMeta.label;
+  const indicatorUnit = indicatorMeta.unit;
+
+  useEffect(() => {
+    let alive = true;
+
+    async function load() {
+      setLoading(true);
+      setErr(null);
+
+      try {
+        const qp = new URLSearchParams();
+        qp.set("indicator", indicator);
+        if (regionParam) qp.set("region", regionParam);
+
+        const res = await fetch(`/api/map?${qp.toString()}`, {
+          cache: "no-store",
+        });
+
+        const json = (await res.json()) as MapApiResponse;
+        if (!res.ok) throw new Error(json?.error ?? "Failed to load map data");
+
+        if (!alive) return;
+
+        const safeRows = Array.isArray(json.rows) ? json.rows : [];
+        setRows(safeRows);
+        setSelectedIso3(null);
+      } catch (e: unknown) {
+        if (!alive) return;
+        setErr(e instanceof Error ? e.message : "Failed to load map");
+        setRows([]);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+
+    load();
+
+    return () => {
+      alive = false;
+    };
+  }, [indicator, regionParam]);
+
+  const mapRows: StratifyMapRow[] = useMemo(
+    () =>
+      (rows ?? []).map((r) => ({
+        iso3: String(r.iso3 ?? "").toUpperCase(),
+        country: String(r.country ?? ""),
+        region: r.region ?? null,
+        value: n(r.value),
+      })),
+    [rows],
+  );
+
+  function handleSelectIso3(iso3: string) {
+    const up = String(iso3 ?? "").toUpperCase();
+    if (!up) return;
+
+    setSelectedIso3(up);
+
+    router.push(
+      `/world/country/${encodeURIComponent(up)}?indicator=${encodeURIComponent(
+        indicator,
+      )}&dataset=wdi`,
+    );
+  }
+
+  const stats: StatSection[] = useMemo(() => {
+    if (!selectedIso3) {
+      return [
+        {
+          title: "World",
+          rows: [
+            { label: "Indicator", value: indicatorLabel },
+            { label: "Region scope", value: region },
+            { label: "Countries", value: String(mapRows.length) },
+          ],
+        },
+      ];
+    }
+
+    const row = mapRows.find((r) => r.iso3 === selectedIso3) ?? null;
+
+    return [
+      {
+        title: "Selection",
+        rows: [
+          { label: "Country", value: row?.country ?? selectedIso3 },
+          { label: "ISO3", value: selectedIso3 },
+          { label: "Region", value: row?.region ?? "â€”" },
+          {
+            label: indicatorLabel,
+            value: `${fmt(n(row?.value))}${
+              indicatorUnit ? ` ${indicatorUnit}` : ""
+            }`,
+          },
+        ],
+      },
+    ];
+  }, [mapRows, selectedIso3, indicatorLabel, indicatorUnit, region]);
+
+  return (
+    <main className="relative min-h-screen bg-slate-100">
+      <div className="pointer-events-none fixed inset-0 z-0">
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{
+            backgroundImage: "url('/people_bg.png')",
+            transform: "scale(1.02)",
+            filter: "saturate(1.15) contrast(1.08) brightness(0.92)",
+            opacity: 0.48,
+          }}
+        />
+        <div className="absolute inset-0 bg-black/25" />
+        <div className="absolute inset-0 bg-gradient-to-b from-white/90 via-white/76 to-white/62" />
+      </div>
+
+      <div className="relative z-10 min-h-screen">
+        <div className="mx-auto max-w-7xl space-y-5 px-4 py-7">
+          <section className="relative z-[100] rounded-[28px] border border-white/70 bg-white/75 p-5 shadow-xl backdrop-blur-xl">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+              <div>
+                <div className="stratify-eyebrow">Stratify Analytics</div>
+
+                <h1 className="stratify-hero-title mt-2">
+                  World Intelligence Dashboard
+                </h1>
+
+                <p className="stratify-hero-text mt-4">
+                  Explore trusted global indicators, country profiles, and
+                  development insights through a clean analytics portal built
+                  for fast comparison and decision-making.
+                </p>
+
+                <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-700">
+                  Stratify  turns World Bank, FAO, fiscal, debt, energy, and
+                  macro datasets into structured country intelligence.
+                </p>
+              </div>
+
+              <div className="relative z-[9999] flex flex-wrap items-center gap-2">
+                <OpaqueDropdown
+                  value={region}
+                  options={regionOptions}
+                  widthClass="w-[240px]"
+                  onChange={setRegion}
+                />
+
+                <OpaqueDropdown
+                  value={indicator}
+                  options={indicatorOptions}
+                  widthClass="w-[320px]"
+                  onChange={setIndicator}
+                />
+
+                <Button
+                  variant="secondary"
+                  className="h-9 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+                  disabled={loading}
+                  onClick={() => {
+                    setRegion("World");
+                    setIndicator(DEFAULT_INDICATOR);
+                    setSelectedIso3(null);
+                  }}
+                >
+                  Reset
+                </Button>
+              </div>
+            </div>
+          </section>
+
+          {err ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50/90 p-3 text-sm font-semibold text-red-700 backdrop-blur">
+              {err}
+            </div>
+          ) : null}
+
+          <section className="relative z-10 grid grid-cols-12 gap-4">
+            <div className="col-span-12 lg:col-span-8">
+              {loading ? (
+                <div className="flex h-[560px] items-center justify-center rounded-3xl border border-white/70 bg-white/70 shadow-xl backdrop-blur-xl">
+                  <div className="flex min-w-[260px] flex-col items-center rounded-3xl border border-slate-200 bg-slate-950/90 px-8 py-7 text-white shadow-xl">
+                    <div className="mb-4 h-11 w-11 animate-spin rounded-full border-[3px] border-white/20 border-t-white" />
+                    <div className="text-base font-bold">
+                      Loading dashboard...
+                    </div>
+                    <div className="mt-1 text-xs font-medium text-white/60">
+                      Fetching global indicator data
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-3xl border border-white/70 bg-white/65 shadow-xl backdrop-blur-xl">
+                  <StratifyMap
+                    rows={mapRows}
+                    topoJsonUrl={TOPO_URL}
+                    selectedIso3={selectedIso3}
+                    onSelectIso3={handleSelectIso3}
+                    indicatorLabel={indicatorLabel}
+                    indicatorUnit={indicatorUnit}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="col-span-12 lg:col-span-4">
+              <div className="overflow-hidden rounded-3xl border border-white/70 bg-white/75 shadow-xl backdrop-blur-xl">
+                <VitalStatsList
+                  sections={stats}
+                  region={selectedIso3 ?? region}
+                  subtitle={
+                    selectedIso3
+                      ? "Opening selected country..."
+                      : "Click a country to open profile"
+                  }
+                />
+              </div>
+            </div>
+          </section>
+
+          <div className="h-2" />
+        </div>
+      </div>
+    </main>
+  );
+}
+
+
+====================================================================================================
+FILE: app\login\page.tsx
+====================================================================================================
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  ArrowRight,
+  BarChart3,
+  Building2,
+  ChevronLeft,
+  ChevronRight,
+  Database,
+  Globe2,
+  History,
+  Loader2,
+  Newspaper,
+  ShieldCheck,
+  Sparkles,
+  Zap,
+} from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+
+type Snapshot = {
+  image: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  href: string;
+};
+
+const SNAPSHOTS: Snapshot[] = [
+  {
+    image: "/landing/world-intelligence-dashboard.png",
+    eyebrow: "World Intelligence Dashboard",
+    title: "Start with the world. Drill into every country.",
+    description:
+      "Compare global indicators on an interactive map, then open detailed national intelligence profiles.",
+    href: "/",
+  },
+  {
+    image: "/landing/global-pulse.png",
+    eyebrow: "Global Pulse",
+    title: "Live news, official updates and historical context.",
+    description:
+      "Follow the forces shaping the geo-social economy through a fast, visual intelligence feed.",
+    href: "/global-pulse",
+  },
+  {
+    image: "/landing/country-intelligence.png",
+    eyebrow: "Country Intelligence",
+    title: "Economic context beyond a single number.",
+    description:
+      "Move from population and GDP to macroeconomic, trade and business context in one profile.",
+    href: "/world",
+  },
+  {
+    image: "/landing/history-explorer.png",
+    eyebrow: "History & Events Explorer",
+    title: "Understand today through the timelines behind it.",
+    description:
+      "Explore conflicts, civilizations and historical records with timeline and frequency-driven discovery.",
+    href: "/history",
+  },
+  {
+    image: "/landing/one-platform.png",
+    eyebrow: "One Platform",
+    title: "Global insights across economics, energy and society.",
+    description:
+      "Bring fiscal, debt, energy, agriculture, monetary and corporate intelligence into one connected workspace.",
+    href: "/",
+  },
+];
+
+const BRIEFINGS = [
+  {
+    category: "Geo-economy",
+    title: "Follow trade, inflation and policy signals without losing the global context.",
+    icon: Newspaper,
+  },
+  {
+    category: "Energy",
+    title: "Compare transition indicators, production, access and long-term energy trends.",
+    icon: Zap,
+  },
+  {
+    category: "History",
+    title: "Connect present-day developments with conflicts, timelines and turning points.",
+    icon: History,
+  },
+  {
+    category: "Corporate",
+    title: "Explore companies, sectors, headquarters and enriched business profiles.",
+    icon: Building2,
+  },
+];
+
+const FEATURES = [
+  {
+    icon: Globe2,
+    title: "Global coverage",
+    text: "Move from a world map to detailed country intelligence.",
+  },
+  {
+    icon: Database,
+    title: "Trusted sources",
+    text: "Public datasets organized for faster comparison and discovery.",
+  },
+  {
+    icon: BarChart3,
+    title: "Decision-ready visuals",
+    text: "Turn complex indicators into clear maps, trends and rankings.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Secure access",
+    text: "Enter through Google authentication and continue to your dashboard.",
+  },
+];
+
+function safeNextPath(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return "/";
+  }
+
+  return value;
+}
+
+export default function LoginPage() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [slideIndex, setSlideIndex] = useState(0);
+  const [briefIndex, setBriefIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setSlideIndex((current) => (current + 1) % SNAPSHOTS.length);
+    }, 5600);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setBriefIndex((current) => (current + 1) % BRIEFINGS.length);
+    }, 3600);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  async function signInWithGoogle() {
+    setLoading(true);
+    setError("");
+
+    try {
+      const supabase = createClient();
+      const nextPath = safeNextPath(
+        new URLSearchParams(window.location.search).get("next"),
+      );
+
+      document.cookie = `stratify_auth_next=${encodeURIComponent(nextPath)}; Path=/; Max-Age=600; SameSite=Lax`;
+
+      const { error: signInError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
+        },
+      });
+
+      if (signInError) {
+        throw signInError;
+      }
+    } catch (signInError) {
+      setError(
+        signInError instanceof Error
+          ? signInError.message
+          : "Google sign-in could not be started.",
+      );
+      setLoading(false);
+    }
+  }
+
+  function previousSlide() {
+    setSlideIndex((current) =>
+      current === 0 ? SNAPSHOTS.length - 1 : current - 1,
+    );
+  }
+
+  function nextSlide() {
+    setSlideIndex((current) => (current + 1) % SNAPSHOTS.length);
+  }
+
+  const activeSlide = SNAPSHOTS[slideIndex];
+
+  return (
+    <div className="stratify-login-shell relative min-h-[calc(100vh-78px)] overflow-hidden bg-[#030718] text-white">
+      <div
+        className="pointer-events-none absolute inset-0 opacity-35"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(124,58,237,.14) 1px, transparent 1px), linear-gradient(90deg, rgba(56,189,248,.10) 1px, transparent 1px)",
+          backgroundSize: "58px 58px",
+          maskImage:
+            "linear-gradient(to bottom, black 0%, rgba(0,0,0,.75) 55%, transparent 100%)",
+        }}
+      />
+      <div className="pointer-events-none absolute -left-40 top-8 h-[520px] w-[520px] rounded-full bg-violet-600/20 blur-[130px]" />
+      <div className="pointer-events-none absolute -right-36 top-32 h-[560px] w-[560px] rounded-full bg-cyan-500/15 blur-[145px]" />
+
+      <section className="relative mx-auto grid max-w-[1500px] gap-8 px-5 pb-10 pt-10 lg:grid-cols-[0.82fr_1.18fr] lg:items-center lg:px-8 lg:pb-14 lg:pt-14">
+        <div className="relative z-10">
+          <div className="inline-flex items-center gap-2 rounded-full border border-violet-300/25 bg-violet-400/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.22em] text-violet-100 shadow-[0_0_30px_rgba(124,58,237,.12)]">
+            <Sparkles className="h-3.5 w-3.5" />
+            Global intelligence. One secure entry.
+          </div>
+
+          <h1 className="mt-6 max-w-3xl text-4xl font-black leading-[0.98] tracking-[-0.045em] text-white sm:text-5xl lg:text-[68px]">
+            Enter the world of
+            <span className="block bg-gradient-to-r from-cyan-300 via-blue-400 to-violet-400 bg-clip-text text-transparent">
+              connected intelligence.
+            </span>
+          </h1>
+
+          <p className="mt-6 max-w-2xl text-base font-medium leading-7 text-slate-300 sm:text-lg">
+            Explore global indicators, country profiles, breaking developments,
+            history, energy, fiscal intelligence and corporate insights through
+            one fast, visual analytics platform.
+          </p>
+
+          <div className="mt-8 max-w-xl rounded-[26px] border border-white/10 bg-white/[0.055] p-3 shadow-[0_28px_90px_rgba(0,0,0,.34)] backdrop-blur-xl">
+            <button
+              type="button"
+              onClick={signInWithGoogle}
+              disabled={loading}
+              className="stratify-google-button group flex w-full items-center justify-center gap-3 rounded-[19px] bg-white px-5 py-4 text-sm font-black text-slate-950 shadow-[0_12px_35px_rgba(255,255,255,.12)] transition hover:-translate-y-0.5 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-65"
+            >
+              {loading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <span className="grid h-7 w-7 place-items-center rounded-full border border-slate-200 bg-white text-base font-black">
+                  <span className="bg-gradient-to-br from-blue-600 via-red-500 to-amber-400 bg-clip-text text-transparent">
+                    G
+                  </span>
+                </span>
+              )}
+              {loading ? "Opening Google sign-in..." : "Continue with Google"}
+              {!loading ? (
+                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+              ) : null}
+            </button>
+
+            <p className="px-3 pb-1 pt-3 text-center text-xs font-semibold leading-5 text-slate-300">
+              Enter the world of data-driven discovery, global context and
+              smarter decisions.
+            </p>
+
+            {error ? (
+              <div className="mt-3 rounded-2xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-100">
+                {error}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-7 grid max-w-2xl grid-cols-2 gap-3 sm:grid-cols-4">
+            {FEATURES.map((feature) => {
+              const Icon = feature.icon;
+
+              return (
+                <div
+                  key={feature.title}
+                  className="rounded-2xl border border-white/10 bg-white/[0.045] p-3.5 backdrop-blur-md"
+                >
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-200">
+                    <Icon className="h-4.5 w-4.5" />
+                  </div>
+                  <div className="mt-3 text-sm font-black text-white">
+                    {feature.title}
+                  </div>
+                  <div className="mt-1 text-[11px] font-medium leading-4 text-slate-400">
+                    {feature.text}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="relative min-w-0">
+          <div className="absolute -inset-4 rounded-[40px] bg-gradient-to-r from-violet-600/20 via-blue-500/10 to-cyan-400/20 blur-2xl" />
+
+          <div className="relative overflow-hidden rounded-[32px] border border-white/15 bg-[#071026] p-2 shadow-[0_38px_110px_rgba(0,0,0,.55)]">
+            <div className="relative aspect-[16/9] overflow-hidden rounded-[25px] bg-slate-950">
+              {SNAPSHOTS.map((slide, index) => (
+                <img
+                  key={slide.image}
+                  src={slide.image}
+                  alt={slide.title}
+                  className={`absolute inset-0 h-full w-full object-cover transition duration-700 ${
+                    index === slideIndex
+                      ? "scale-100 opacity-100"
+                      : "scale-[1.025] opacity-0"
+                  }`}
+                />
+              ))}
+
+              <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-[#020617]/10 to-transparent" />
+              <div className="absolute inset-x-0 bottom-0 p-5 sm:p-7">
+                <div className="inline-flex rounded-full border border-white/20 bg-black/35 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100 backdrop-blur-md">
+                  {activeSlide.eyebrow}
+                </div>
+                <h2 className="mt-3 max-w-3xl text-xl font-black leading-tight text-white sm:text-3xl">
+                  {activeSlide.title}
+                </h2>
+                <p className="mt-2 hidden max-w-2xl text-sm font-medium leading-6 text-slate-200 sm:block">
+                  {activeSlide.description}
+                </p>
+                <a
+                  href={activeSlide.href}
+                  className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-black text-white backdrop-blur-md transition hover:bg-white/20"
+                >
+                  Explore after sign-in
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </a>
+              </div>
+
+              <button
+                type="button"
+                onClick={previousSlide}
+                aria-label="Previous snapshot"
+                className="absolute left-3 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full border border-white/20 bg-black/35 text-white backdrop-blur-md transition hover:bg-black/60"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={nextSlide}
+                aria-label="Next snapshot"
+                className="absolute right-3 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full border border-white/20 bg-black/35 text-white backdrop-blur-md transition hover:bg-black/60"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between gap-4 px-3 pb-2 pt-4">
+              <div className="flex gap-2">
+                {SNAPSHOTS.map((slide, index) => (
+                  <button
+                    key={slide.image}
+                    type="button"
+                    onClick={() => setSlideIndex(index)}
+                    aria-label={`Open snapshot ${index + 1}`}
+                    className={`h-1.5 rounded-full transition-all ${
+                      index === slideIndex
+                        ? "w-10 bg-violet-400"
+                        : "w-4 bg-white/25 hover:bg-white/45"
+                    }`}
+                  />
+                ))}
+              </div>
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                {String(slideIndex + 1).padStart(2, "0")} / {String(SNAPSHOTS.length).padStart(2, "0")}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="relative border-y border-white/10 bg-white/[0.035]">
+        <div className="mx-auto grid max-w-[1500px] gap-5 px-5 py-6 lg:grid-cols-[0.34fr_0.66fr] lg:px-8">
+          <div>
+            <div className="text-[11px] font-black uppercase tracking-[0.22em] text-violet-300">
+              Crisp intelligence
+            </div>
+            <h2 className="mt-2 text-2xl font-black tracking-tight text-white">
+              See what is moving the world.
+            </h2>
+            <p className="mt-2 max-w-lg text-sm font-medium leading-6 text-slate-400">
+              A rotating preview of the themes and analytical journeys waiting
+              inside Stratify.
+            </p>
+          </div>
+
+          <div className="relative min-h-[132px] overflow-hidden rounded-[24px] border border-white/10 bg-[#071026]/80 p-5 shadow-[0_20px_55px_rgba(0,0,0,.25)]">
+            {BRIEFINGS.map((brief, index) => {
+              const Icon = brief.icon;
+
+              return (
+                <div
+                  key={brief.category}
+                  className={`absolute inset-0 flex items-center gap-4 p-5 transition duration-500 ${
+                    index === briefIndex
+                      ? "translate-y-0 opacity-100"
+                      : "translate-y-4 opacity-0"
+                  }`}
+                >
+                  <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-violet-300/20 bg-violet-400/10 text-violet-200">
+                    <Icon className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">
+                      {brief.category}
+                    </div>
+                    <div className="mt-2 max-w-3xl text-lg font-black leading-6 text-white sm:text-xl">
+                      {brief.title}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            <div className="absolute bottom-3 right-4 flex gap-1.5">
+              {BRIEFINGS.map((brief, index) => (
+                <button
+                  key={brief.category}
+                  type="button"
+                  onClick={() => setBriefIndex(index)}
+                  aria-label={`Open ${brief.category} briefing`}
+                  className={`h-1.5 rounded-full transition-all ${
+                    index === briefIndex ? "w-7 bg-cyan-300" : "w-2 bg-white/20"
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="relative mx-auto max-w-[1500px] px-5 py-9 lg:px-8 lg:py-12">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-300">
+              Inside Stratify
+            </div>
+            <h2 className="mt-2 text-3xl font-black tracking-tight text-white">
+              From a world map to a complete intelligence journey.
+            </h2>
+          </div>
+          <div className="inline-flex items-center gap-2 text-sm font-bold text-slate-400">
+            <ShieldCheck className="h-4 w-4 text-emerald-300" />
+            Google-authenticated access
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          {[
+            {
+              number: "01",
+              title: "Discover",
+              text: "Start with global maps, rankings and cross-country comparisons.",
+            },
+            {
+              number: "02",
+              title: "Understand",
+              text: "Open country, history, fiscal, energy and corporate context.",
+            },
+            {
+              number: "03",
+              title: "Decide",
+              text: "Turn connected evidence into clearer questions and smarter decisions.",
+            },
+          ].map((item) => (
+            <div
+              key={item.number}
+              className="rounded-[24px] border border-white/10 bg-white/[0.045] p-5 backdrop-blur-md"
+            >
+              <div className="text-xs font-black tracking-[0.2em] text-violet-300">
+                {item.number}
+              </div>
+              <div className="mt-4 text-xl font-black text-white">{item.title}</div>
+              <div className="mt-2 text-sm font-medium leading-6 text-slate-400">
+                {item.text}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+      {/* STRATIFY LANDING CONTRAST LOCK — DO NOT REMOVE */}
+      <style>{`
+        /*
+         * Route-scoped rules intentionally use !important.
+         * This prevents global theme styles from turning landing-page
+         * text dark on the navy background.
+         */
+        .stratify-login-shell {
+          color: #f8fafc !important;
+        }
+
+        .stratify-login-shell .text-white {
+          color: #ffffff !important;
+        }
+
+        .stratify-login-shell .text-slate-200 {
+          color: #e2e8f0 !important;
+        }
+
+        .stratify-login-shell .text-slate-300 {
+          color: #dbeafe !important;
+        }
+
+        .stratify-login-shell .text-slate-400 {
+          color: #cbd5e1 !important;
+        }
+
+        .stratify-login-shell .text-violet-100 {
+          color: #ede9fe !important;
+        }
+
+        .stratify-login-shell .text-violet-200 {
+          color: #ddd6fe !important;
+        }
+
+        .stratify-login-shell .text-violet-300 {
+          color: #c4b5fd !important;
+        }
+
+        .stratify-login-shell .text-cyan-100 {
+          color: #cffafe !important;
+        }
+
+        .stratify-login-shell .text-cyan-200 {
+          color: #a5f3fc !important;
+        }
+
+        .stratify-login-shell .text-cyan-300 {
+          color: #67e8f9 !important;
+        }
+
+        .stratify-login-shell .text-emerald-300 {
+          color: #6ee7b7 !important;
+        }
+
+        .stratify-login-shell .text-rose-100 {
+          color: #ffe4e6 !important;
+        }
+
+        /*
+         * The Google sign-in button has a white background,
+         * so its foreground must remain dark.
+         */
+        .stratify-login-shell .stratify-google-button {
+          color: #020617 !important;
+        }
+
+        .stratify-login-shell .stratify-google-button .text-slate-950 {
+          color: #020617 !important;
+        }
+      `}</style>
+    </div>
+  );
+}
+
+
+====================================================================================================
+FILE: app\auth\callback\route.ts
+====================================================================================================
+import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+
+function safeNextPath(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return "/";
+  }
+
+  return value;
+}
+
+export async function GET(request: Request) {
+  const requestUrl = new URL(request.url);
+  const code = requestUrl.searchParams.get("code");
+  const cookieStore = await cookies();
+  const cookieNextValue =
+    cookieStore.get("stratify_auth_next")?.value ?? null;
+
+  let decodedCookieNext: string | null = cookieNextValue;
+
+  if (cookieNextValue) {
+    try {
+      decodedCookieNext = decodeURIComponent(cookieNextValue);
+    } catch {
+      decodedCookieNext = null;
+    }
+  }
+
+  const nextPath = safeNextPath(
+    decodedCookieNext || requestUrl.searchParams.get("next"),
+  );
+
+  if (!code) {
+    const loginUrl = new URL("/login", requestUrl.origin);
+    loginUrl.searchParams.set("error", "missing_oauth_code");
+    return NextResponse.redirect(loginUrl);
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+  if (error || !data.user) {
+    const loginUrl = new URL("/login", requestUrl.origin);
+    loginUrl.searchParams.set("error", "google_signin_failed");
+    return NextResponse.redirect(loginUrl);
+  }
+
+  const provider =
+    data.user.app_metadata?.provider ||
+    data.user.identities?.[0]?.provider ||
+    "google";
+
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  const ipAddress =
+    forwardedFor?.split(",")?.[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    null;
+
+  const userAgent = request.headers.get("user-agent") || null;
+  const now = new Date().toISOString();
+
+  // Visitor logging must never block a successful login.
+  const loggingResults = await Promise.allSettled([
+    supabase.from("profiles").upsert(
+      {
+        id: data.user.id,
+        email: data.user.email,
+        full_name:
+          data.user.user_metadata?.full_name ||
+          data.user.user_metadata?.name ||
+          null,
+        avatar_url:
+          data.user.user_metadata?.avatar_url ||
+          data.user.user_metadata?.picture ||
+          null,
+        provider,
+        last_login_at: now,
+      },
+      {
+        onConflict: "id",
+      },
+    ),
+    supabase.from("user_login_events").insert({
+      user_id: data.user.id,
+      email: data.user.email,
+      provider,
+      ip_address: ipAddress,
+      user_agent: userAgent,
+    }),
+  ]);
+
+  loggingResults.forEach((result, index) => {
+    if (result.status === "rejected") {
+      console.error(
+        index === 0
+          ? "PROFILE VISITOR LOGGING FAILED"
+          : "LOGIN EVENT LOGGING FAILED",
+        result.reason,
+      );
+    }
+  });
+
+  const response = NextResponse.redirect(
+    new URL(nextPath, requestUrl.origin),
+  );
+
+  response.cookies.set("stratify_auth_next", "", {
+    path: "/",
+    maxAge: 0,
+  });
+
+  return response;
+}
+
+====================================================================================================
+FILE: lib\supabase\client.ts
+====================================================================================================
+import { createBrowserClient } from '@supabase/ssr';
+
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+  );
+}
+
+
+====================================================================================================
+FILE: lib\supabase\server.ts
+====================================================================================================
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+
+export async function createClient() {
+  const cookieStore = await cookies();
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options);
+            });
+          } catch {
+            // Safe to ignore in Server Components.
+          }
+        },
+      },
+    }
+  );
+}
+
+
+====================================================================================================
+FILE: lib\supabase\proxy.ts
+====================================================================================================
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
+
+const PUBLIC_PATHS = new Set([
+  "/login",
+  "/auth/callback",
+]);
+
+function isPublicPath(pathname: string) {
+  return PUBLIC_PATHS.has(pathname);
+}
+
+function safeNextPath(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return "/";
+  }
+
+  return value;
+}
+
+function copyResponseCookies(
+  source: NextResponse,
+  destination: NextResponse,
+) {
+  source.cookies.getAll().forEach(({ name, value, ...options }) => {
+    destination.cookies.set(name, value, options);
+  });
+}
+
+export async function updateSession(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({
+    request,
+  });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => {
+            request.cookies.set(name, value);
+          });
+
+          supabaseResponse = NextResponse.next({
+            request,
+          });
+
+          cookiesToSet.forEach(({ name, value, options }) => {
+            supabaseResponse.cookies.set(name, value, options);
+          });
+        },
+      },
+    },
+  );
+
+  const pathname = request.nextUrl.pathname;
+  const authCode = request.nextUrl.searchParams.get("code");
+
+  if (authCode && pathname !== "/auth/callback") {
+    const callbackUrl = request.nextUrl.clone();
+    callbackUrl.pathname = "/auth/callback";
+    callbackUrl.search = "";
+    callbackUrl.searchParams.set("code", authCode);
+
+    const callbackResponse = NextResponse.redirect(callbackUrl);
+    copyResponseCookies(supabaseResponse, callbackResponse);
+    return callbackResponse;
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const publicPath = isPublicPath(pathname);
+
+  // Mandatory sign-in: every application page requires a valid Google/Supabase user.
+  if (!user && !publicPath) {
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.search = "";
+    loginUrl.searchParams.set(
+      "next",
+      `${pathname}${request.nextUrl.search}`,
+    );
+
+    const redirectResponse = NextResponse.redirect(loginUrl);
+    copyResponseCookies(supabaseResponse, redirectResponse);
+    return redirectResponse;
+  }
+
+  // A signed-in user should not remain on the login screen.
+  if (user && pathname === "/login") {
+    const nextPath = safeNextPath(
+      request.nextUrl.searchParams.get("next"),
+    );
+
+    const redirectResponse = NextResponse.redirect(
+      new URL(nextPath, request.url),
+    );
+
+    copyResponseCookies(supabaseResponse, redirectResponse);
+    return redirectResponse;
+  }
+
+  return supabaseResponse;
+}
+
+====================================================================================================
+FILE: components\AuthNavButton.tsx
+====================================================================================================
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+
+type AuthUser = {
+  email: string | null;
+  fullName: string | null;
+  avatarUrl: string | null;
+};
+
+function initialsFromUser(user: AuthUser) {
+  const nameParts = String(user.fullName || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (nameParts.length >= 2) {
+    return `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase();
+  }
+
+  if (nameParts.length === 1) {
+    return nameParts[0].slice(0, 2).toUpperCase();
+  }
+
+  return String(user.email || "U").slice(0, 1).toUpperCase();
+}
+
+function firstNameFromUser(user: AuthUser) {
+  const fullName = String(user.fullName || "").trim();
+
+  if (fullName) {
+    return fullName.split(/\s+/)[0];
+  }
+
+  return String(user.email || "User").split("@")[0];
+}
+
+export default function AuthNavButton() {
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+
+  const [loading, setLoading] = useState(true);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadUser() {
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+
+      if (!mounted) return;
+
+      if (!authUser) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      const metadataName =
+        authUser.user_metadata?.full_name ||
+        authUser.user_metadata?.name ||
+        null;
+
+      const metadataAvatar =
+        authUser.user_metadata?.picture ||
+        authUser.user_metadata?.avatar_url ||
+        null;
+
+      let profileName: string | null = null;
+      let profileAvatar: string | null = null;
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name, avatar_url")
+        .eq("id", authUser.id)
+        .maybeSingle();
+
+      if (profile) {
+        profileName = profile.full_name || null;
+        profileAvatar = profile.avatar_url || null;
+      }
+
+      if (!mounted) return;
+
+      setAvatarFailed(false);
+      setUser({
+        email: authUser.email ?? null,
+        fullName: metadataName || profileName,
+        avatarUrl: metadataAvatar || profileAvatar,
+      });
+      setLoading(false);
+    }
+
+    void loadUser();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      void loadUser();
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  async function handleLogout() {
+    if (loggingOut) return;
+
+    try {
+      setLoggingOut(true);
+      await supabase.auth.signOut();
+      setUser(null);
+      router.replace("/login");
+      router.refresh();
+    } finally {
+      setLoggingOut(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-10 w-[152px] animate-pulse items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-2">
+        <div className="h-7 w-7 rounded-full bg-slate-200" />
+        <div className="h-3 w-16 rounded bg-slate-200" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <a
+        href="/login"
+        className="inline-flex h-10 items-center justify-center rounded-full bg-violet-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-violet-700"
+      >
+        Sign in
+      </a>
+    );
+  }
+
+  const displayName = firstNameFromUser(user);
+  const initials = initialsFromUser(user);
+  const showAvatar = Boolean(user.avatarUrl) && !avatarFailed;
+
+  return (
+    <div
+      className="flex h-11 items-center rounded-full border bg-white p-1 shadow-sm"
+      style={{ borderColor: "#dbe3ef" }}
+      title={user.email || displayName}
+    >
+      <div className="flex min-w-0 items-center gap-2 pl-0.5 pr-2">
+        {showAvatar ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={user.avatarUrl!}
+            alt={`${displayName} profile`}
+            referrerPolicy="no-referrer"
+            onError={() => setAvatarFailed(true)}
+            className="h-8 w-8 shrink-0 rounded-full border border-slate-200 bg-slate-100 object-cover"
+          />
+        ) : (
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-black text-white"
+            style={{
+              background:
+                "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
+            }}
+            aria-label={`${displayName} initials`}
+          >
+            {initials}
+          </div>
+        )}
+
+        <div className="hidden min-w-0 leading-tight lg:block">
+          <div
+            className="max-w-[88px] truncate text-[12px] font-black"
+            style={{ color: "#172033" }}
+          >
+            {displayName}
+          </div>
+          <div
+            className="text-[9px] font-bold uppercase tracking-[0.08em]"
+            style={{ color: "#16a34a" }}
+          >
+            Signed in
+          </div>
+        </div>
+      </div>
+
+      <div className="h-6 w-px bg-slate-200" />
+
+      <button
+        type="button"
+        onClick={handleLogout}
+        disabled={loggingOut}
+        className="ml-1 inline-flex h-8 items-center justify-center gap-1.5 rounded-full px-2.5 text-[11px] font-black transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+        style={{ color: "#be123c" }}
+        aria-label="Sign out of Stratify"
+      >
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          fill="none"
+          className="h-3.5 w-3.5"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M10 17l5-5-5-5" />
+          <path d="M15 12H3" />
+          <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+        </svg>
+
+        <span className="hidden xl:inline">
+          {loggingOut ? "Signing out" : "Logout"}
+        </span>
+      </button>
+    </div>
+  );
+}
+
+====================================================================================================
+FILE: app\components\TopNav.tsx
+====================================================================================================
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import AuthNavButton from "@/components/AuthNavButton";
+
+const NAV_ITEMS = [
+  { label: "Home", href: "/" },
+  { label: "Global Pulse", href: "/global-pulse" },
+  { label: "Monetary", href: "/monetary" },
+  { label: "Fiscal", href: "/fiscal" },
+  { label: "Debt", href: "/debt" },
+  { label: "Energy", href: "/energy" },
+  { label: "FAO", href: "/faostat" },
+  { label: "IMF (WEO)", href: "/imf-weo" },
+  { label: "History", href: "/history" },
+  { label: "Corporate 500", href: "/corporate-intelligence" },
+  { label: "Credits", href: "/credits" },
+];
+
+const MOBILE_ITEMS = [
+  { label: "Home", href: "/" },
+  { label: "Pulse", href: "/global-pulse" },
+  { label: "Monetary", href: "/monetary" },
+  { label: "FAO", href: "/faostat" },
+  { label: "History", href: "/history" },
+  { label: "IMF", href: "/imf-weo" },
+];
+
+function isActivePath(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
+
+  if (href === "/faostat") {
+    return (
+      pathname === "/faostat" ||
+      pathname.startsWith("/faostat/") ||
+      pathname.includes("dataset=faostat") ||
+      pathname.includes("dataset=fao")
+    );
+  }
+
+  if (href === "/imf-weo") {
+    return (
+      pathname === "/imf-weo" ||
+      pathname.startsWith("/imf-weo/") ||
+      pathname.includes("dataset=weo")
+    );
+  }
+
+  if (href === "/history") {
+    return pathname === "/history" || pathname.startsWith("/history/");
+  }
+
+  if (href === "/monetary") {
+    return pathname === "/monetary" || pathname.startsWith("/monetary/");
+  }
+
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function MobileNavLink({
+  href,
+  label,
+  pathname,
+}: {
+  href: string;
+  label: string;
+  pathname: string;
+}) {
+  const active = isActivePath(pathname, href);
+
+  return (
+    <Link
+      href={href}
+      className={[
+        "shrink-0 rounded-full px-3 py-2 text-xs font-black",
+        active
+          ? "bg-violet-600 text-white shadow-md shadow-violet-200"
+          : "bg-slate-100 text-slate-700",
+      ].join(" ")}
+    >
+      {label}
+    </Link>
+  );
+}
+
+export default function TopNav() {
+  const pathname = usePathname() || "/";
+
+  return (
+    <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 shadow-sm backdrop-blur-xl">
+      <div className="mx-auto flex h-[72px] w-full max-w-[1480px] items-center gap-4 px-4 sm:px-6 lg:px-8">
+        <Link href="/" className="flex shrink-0 items-center gap-2">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-blue-600 text-lg font-black text-white shadow-lg shadow-violet-200">
+            S
+          </div>
+
+          <div className="hidden leading-tight sm:block">
+            <div className="text-lg font-black tracking-tight text-slate-950">
+              Stratify
+            </div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+              Analytics
+            </div>
+          </div>
+        </Link>
+
+        <div className="ml-auto hidden min-w-0 items-center gap-2 lg:flex">
+          <nav className="flex min-w-0 items-center gap-0.5 rounded-full border border-slate-200 bg-slate-50 p-1.5 shadow-sm">
+            {NAV_ITEMS.map((item) => {
+              const active = isActivePath(pathname, item.href);
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={[
+                    "whitespace-nowrap rounded-full px-2 py-2 text-[12px] font-bold transition-all xl:px-2.5 xl:text-[13px] 2xl:px-3",
+                    active
+                      ? "bg-gradient-to-r from-violet-600 to-blue-600 text-white shadow-md shadow-violet-200"
+                      : "text-slate-600 hover:bg-white hover:text-slate-950 hover:shadow-sm",
+                  ].join(" ")}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+
+          <AuthNavButton />
+        </div>
+
+        <div className="ml-auto flex min-w-0 flex-1 items-center gap-2 lg:hidden">
+          <nav className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {MOBILE_ITEMS.map((item) => (
+              <MobileNavLink
+                key={item.href}
+                href={item.href}
+                label={item.label}
+                pathname={pathname}
+              />
+            ))}
+          </nav>
+
+          <div className="shrink-0">
+            <AuthNavButton />
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+
+====================================================================================================
+AUTHENTICATION AND REDIRECT SEARCH RESULTS
+====================================================================================================
+
+--- SEARCH: signInWithOAuth ---
+app\login\page.tsx:160: const { error: signInError } = await supabase.auth.signInWithOAuth({
+
+--- SEARCH: redirectTo ---
+app\login\page.tsx:163: redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
+
+--- SEARCH: auth/callback ---
+app\login\page.tsx:163: redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
+lib\supabase\proxy.ts:6: "/auth/callback",
+lib\supabase\proxy.ts:63: if (authCode && pathname !== "/auth/callback") {
+lib\supabase\proxy.ts:65: callbackUrl.pathname = "/auth/callback";
+
+--- SEARCH: google_signin_failed ---
+app\auth\callback\route.ts:45: loginUrl.searchParams.set("error", "google_signin_failed");
+
+--- SEARCH: worldstats360.com ---
+app\api\_lib\global-pulse\sources.ts:183: "User-Agent": "StratifyGlobalPulse/1.0 (+https://worldstats360.com)",
+app\api\_lib\global-pulse\utils.ts:470: "Stratify-Global-Pulse/1.0 (+https://worldstats360.com)",
+app\api\corporate-intelligence\global\import\route.ts:558: "Stratify Analytics Corporate Intelligence Bot/1.0 (https://worldstats360.com)",
+app\api\faostat\enrichment\route.ts:61: "WorldStats360/1.0 FAOSTAT-country-enrichment https://worldstats360.com";
+app\api\monetary\_category.ts:51: "User-Agent": "Stratify Monetary API https://worldstats360.com",
+app\api\monetary\countries\route.ts:73: "User-Agent": "Stratify Monetary Countries API https://worldstats360.com",
+app\api\monetary\overview\route.ts:122: "User-Agent": "Stratify Monetary API https://worldstats360.com"
+
+--- SEARCH: localhost:3000 ---
+No matches.
+
+--- SEARCH: NEXT_PUBLIC_SITE_URL ---
+No matches.
+
+--- SEARCH: NEXT_PUBLIC_APP_URL ---
+No matches.
+
+--- SEARCH: SITE_URL ---
+No matches.
+
+--- SEARCH: APP_URL ---
+No matches.
+
+--- SEARCH: window.location.origin ---
+app\login\page.tsx:163: redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
+
+--- SEARCH: request.nextUrl.origin ---
+No matches.
+
+--- SEARCH: request.url ---
+app\api\global-pulse\route.ts:187: const { searchParams } = new URL(request.url);
+app\auth\callback\route.ts:14: const requestUrl = new URL(request.url);
+lib\supabase\proxy.ts:102: new URL(nextPath, request.url),
+
+--- SEARCH: new URL ---
+app\api\_lib\global-pulse\sources.ts:120: const parsed = baseUrl ? new URL(decodeHtmlAttribute(raw), baseUrl) : new URL(decodeHtmlAttribute(raw));
+app\api\_lib\global-pulse\sources.ts:332: const params = new URLSearchParams({
+app\api\_lib\global-pulse\sources.ts:531: const params = new URLSearchParams({
+app\api\_lib\global-pulse\utils.ts:243: const url = new URL(raw);
+app\api\corporate-intelligence\directory\route.ts:98: const { searchParams } = new URL(req.url);
+app\api\corporate-intelligence\global\import\route.ts:546: const body = new URLSearchParams({
+app\api\corporate-intelligence\quote\route.ts:111: const { searchParams } = new URL(req.url);
+app\api\corporate-intelligence\summary\route.ts:60: const { searchParams } = new URL(req.url);
+app\api\debt\route.ts:20: const { searchParams } = new URL(req.url);
+app\api\energy\route.ts:72: const { searchParams } = new URL(req.url);
+app\api\faostat\areas\search\route.ts:17: const { searchParams } = new URL(req.url);
+app\api\faostat\country\route.ts:43: const { searchParams } = new URL(req.url);
+app\api\faostat\enrichment\route.ts:173: const qs = new URLSearchParams({
+app\api\faostat\enrichment\route.ts:259: const { searchParams } = new URL(req.url);
+app\api\faostat\items\elements\route.ts:14: const { searchParams } = new URL(req.url);
+app\api\faostat\items\meta\route.ts:14: const { searchParams } = new URL(req.url);
+app\api\faostat\items\products\route.ts:22: const { searchParams } = new URL(req.url);
+app\api\faostat\items\search\route.ts:18: const { searchParams } = new URL(req.url);
+app\api\faostat\items\top-areas\route.ts:22: const { searchParams } = new URL(req.url);
+app\api\faostat\items\trend\route.ts:21: const { searchParams } = new URL(req.url);
+app\api\faostat\module\route.ts:21: const { searchParams } = new URL(req.url);
+app\api\faostat\overview\route.ts:54: const { searchParams } = new URL(req.url);
+app\api\faostat\production-insights\route.ts:60: const { searchParams } = new URL(req.url);
+app\api\faostat\trade-insights\route.ts:68: const { searchParams } = new URL(req.url);
+app\api\faostat\trend\route.ts:10: const { searchParams } = new URL(req.url);
+app\api\fiscal\expenditure\route.ts:29: const { searchParams } = new URL(req.url);
+app\api\fiscal\overall-balance\route.ts:29: const { searchParams } = new URL(req.url);
+app\api\fiscal\primary-balance\route.ts:29: const { searchParams } = new URL(req.url);
+app\api\fiscal\revenue\route.ts:29: const { searchParams } = new URL(req.url);
+app\api\global-pulse\route.ts:91: const parsed = new URL(value);
+app\api\global-pulse\route.ts:187: const { searchParams } = new URL(request.url);
+app\api\history\event-detail\route.ts:51: const url = new URL(articleUrl);
+app\api\history\event-detail\route.ts:96: const searchUrl = new URL(`${WIKI_ORIGIN}/w/api.php`);
+app\api\history\event-detail\route.ts:115: const url = new URL(`${WIKI_ORIGIN}/w/api.php`);
+app\api\history\event-detail\route.ts:130: const url = new URL(`${WIKI_ORIGIN}/w/api.php`);
+app\api\history\event-detail\route.ts:181: const { searchParams } = new URL(req.url);
+app\api\history\events\route.ts:460: const url = new URL(`${WIKI_ORIGIN}/w/api.php`);
+app\api\history\events\route.ts:589: const { searchParams } = new URL(req.url);
+app\api\history\on-this-day\route.ts:460: const url = new URL(`${WIKI_ORIGIN}/w/api.php`);
+app\api\history\on-this-day\route.ts:589: const { searchParams } = new URL(req.url);
+app\api\history\route.ts:423: const url = new URL(`${WIKI_ORIGIN}/w/api.php`);
+app\api\history\route.ts:463: const { searchParams } = new URL(req.url);
+app\api\history\source-records\route.ts:803: const url = new URL(`${WIKI_ORIGIN}/w/api.php`);
+app\api\history\source-records\route.ts:1216: return new URL(href, WIKI_ORIGIN).toString();
+app\api\history\source-records\route.ts:1362: const { searchParams } = new URL(req.url);
+app\api\history\source-records\route.ts:1970: const { searchParams } = new URL(req.url);
+app\api\history\source-records\route.ts:2568: const { searchParams } = new URL(req.url);
+app\api\history\source-records\route.ts:3038: return new URL(href, WIKI_ORIGIN).toString();
+app\api\history\source-records\route.ts:3217: const { searchParams } = new URL(req.url);
+app\api\history\source-records\route.ts:3344: const { searchParams } = new URL(req.url);
+app\api\imf\weo\country\route.ts:58: const { searchParams } = new URL(req.url);
+app\api\map\route.ts:90: const { searchParams } = new URL(req.url);
+app\api\monetary\_category.ts:104: const { searchParams } = new URL(req.url);
+app\api\monetary\overview\route.ts:293: const { searchParams } = new URL(req.url);
+app\api\wdi\country\route.ts:72: const { searchParams } = new URL(req.url);
+app\api\wiki\country\route.ts:192: const url = new URL(WIKI_API);
+app\api\wiki\country\route.ts:230: const url = new URL(WIKI_API);
+app\api\wiki\country\route.ts:925: const { searchParams } = new URL(req.url);
+app\auth\callback\route.ts:14: const requestUrl = new URL(request.url);
+app\auth\callback\route.ts:35: const loginUrl = new URL("/login", requestUrl.origin);
+app\auth\callback\route.ts:44: const loginUrl = new URL("/login", requestUrl.origin);
+app\auth\callback\route.ts:105: new URL(nextPath, requestUrl.origin),
+app\debt\page.tsx:177: const params = new URLSearchParams();
+app\energy\page.tsx:272: const params = new URLSearchParams({ country, metric });
+app\fiscal\_components\FiscalMetricPage.tsx:172: const params = new URLSearchParams();
+app\global-pulse\page.tsx:112: const parsed = new URL(value);
+app\global-pulse\page.tsx:641: const params = new URLSearchParams({
+app\history\components\EventDetailDialog.tsx:82: const qs = new URLSearchParams();
+app\history\page.tsx:787: const qs = new URLSearchParams();
+app\history\page.tsx:882: const qs = new URLSearchParams();
+app\lib\rpc\faostat.ts:18: const sp = new URLSearchParams(window.location.search);
+app\lib\rpc\faostat.ts:158: const qs = new URLSearchParams({
+app\lib\rpc\faostat.ts:174: const qs = new URLSearchParams({
+app\login\page.tsx:155: new URLSearchParams(window.location.search).get("next"),
+app\page.tsx:221: const qp = new URLSearchParams();
+app\world\components\CountryWikiCard.tsx:751: const qs = new URLSearchParams();
+app\world\components\FaostatTab.tsx:749: const qs = new URLSearchParams({
+app\world\country\[iso3]\_components\DatasetTabs.tsx:24: const params = new URLSearchParams(searchParams.toString());
+app\world\country\[iso3]\_components\IMFWeoPanel.tsx:172: const params = new URLSearchParams(searchParams.toString());
+app\world\country\[iso3]\_components\IMFWeoPanel.tsx:232: const params = new URLSearchParams(searchParams.toString());
+app\world\country\[iso3]\page.tsx:325: const params = new URLSearchParams();
+app\world\country\[iso3]\page.tsx:704: const params = new URLSearchParams(search.toString());
+app\world\country\[iso3]\page.tsx:743: const params = new URLSearchParams(search.toString());
+app\world\country\[iso3]\page.tsx:759: const params = new URLSearchParams(search.toString());
+lib\supabase\proxy.ts:102: new URL(nextPath, request.url),
+
+--- SEARCH: /login ---
+app\auth\callback\route.ts:35: const loginUrl = new URL("/login", requestUrl.origin);
+app\auth\callback\route.ts:44: const loginUrl = new URL("/login", requestUrl.origin);
+components\AuthNavButton.tsx:121: router.replace("/login");
+components\AuthNavButton.tsx:140: href="/login"
+lib\supabase\proxy.ts:5: "/login",
+lib\supabase\proxy.ts:83: loginUrl.pathname = "/login";
+lib\supabase\proxy.ts:96: if (user && pathname === "/login") {
+
+--- SEARCH: /landing ---
+app\api\landing\route.ts:1: // app/api/landing/route.ts
+app\login\page.tsx:31: image: "/landing/world-intelligence-dashboard.png",
+app\login\page.tsx:39: image: "/landing/global-pulse.png",
+app\login\page.tsx:47: image: "/landing/country-intelligence.png",
+app\login\page.tsx:55: image: "/landing/history-explorer.png",
+app\login\page.tsx:63: image: "/landing/one-platform.png",
+
+====================================================================================================
+RELEVANT ENVIRONMENT VARIABLES
+====================================================================================================
+
+--- .env.local ---
+NEXT_PUBLIC_SUPABASE_URL=https://cncqutypqouhvgunttkb.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=[REDACTED]
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=[REDACTED]
+NEXT_PUBLIC_SITE_URL=http://localhost:3000

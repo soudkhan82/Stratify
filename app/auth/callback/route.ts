@@ -10,40 +10,90 @@ function safeNextPath(value: string | null) {
   return value;
 }
 
+function getRequestOrigin(request: Request) {
+  const requestUrl = new URL(request.url);
+
+  const forwardedHost = request.headers
+    .get("x-forwarded-host")
+    ?.split(",")[0]
+    ?.trim();
+
+  const forwardedProtocol = request.headers
+    .get("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim();
+
+  const host =
+    forwardedHost ||
+    request.headers.get("host") ||
+    requestUrl.host;
+
+  const protocol =
+    forwardedProtocol ||
+    requestUrl.protocol.replace(":", "");
+
+  return `${protocol}://${host}`;
+}
+
+function authFailureRedirect(
+  origin: string,
+  errorCode: string,
+) {
+  const target = new URL("/", origin);
+  target.searchParams.set("auth_error", errorCode);
+
+  return NextResponse.redirect(target);
+}
+
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
+  const requestOrigin = getRequestOrigin(request);
   const code = requestUrl.searchParams.get("code");
+
   const cookieStore = await cookies();
-  const cookieNextValue =
+  const storedNext =
     cookieStore.get("stratify_auth_next")?.value ?? null;
 
-  let decodedCookieNext: string | null = cookieNextValue;
+  let decodedNext: string | null = storedNext;
 
-  if (cookieNextValue) {
+  if (storedNext) {
     try {
-      decodedCookieNext = decodeURIComponent(cookieNextValue);
+      decodedNext = decodeURIComponent(storedNext);
     } catch {
-      decodedCookieNext = null;
+      decodedNext = null;
     }
   }
 
-  const nextPath = safeNextPath(
-    decodedCookieNext || requestUrl.searchParams.get("next"),
-  );
+  const nextPath = safeNextPath(decodedNext);
 
   if (!code) {
-    const loginUrl = new URL("/login", requestUrl.origin);
-    loginUrl.searchParams.set("error", "missing_oauth_code");
-    return NextResponse.redirect(loginUrl);
+    console.error("SUPABASE OAUTH CALLBACK: missing code", {
+      requestOrigin,
+      requestUrl: requestUrl.toString(),
+    });
+
+    return authFailureRedirect(
+      requestOrigin,
+      "missing_oauth_code",
+    );
   }
 
   const supabase = await createClient();
-  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+  const { data, error } =
+    await supabase.auth.exchangeCodeForSession(code);
 
   if (error || !data.user) {
-    const loginUrl = new URL("/login", requestUrl.origin);
-    loginUrl.searchParams.set("error", "google_signin_failed");
-    return NextResponse.redirect(loginUrl);
+    console.error("SUPABASE OAUTH EXCHANGE FAILED", {
+      requestOrigin,
+      message: error?.message ?? "No authenticated user returned",
+      error,
+    });
+
+    return authFailureRedirect(
+      requestOrigin,
+      "google_signin_failed",
+    );
   }
 
   const provider =
@@ -52,15 +102,20 @@ export async function GET(request: Request) {
     "google";
 
   const forwardedFor = request.headers.get("x-forwarded-for");
+
   const ipAddress =
     forwardedFor?.split(",")?.[0]?.trim() ||
     request.headers.get("x-real-ip") ||
     null;
 
-  const userAgent = request.headers.get("user-agent") || null;
+  const userAgent =
+    request.headers.get("user-agent") || null;
+
   const now = new Date().toISOString();
 
-  // Visitor logging must never block a successful login.
+  /*
+   * Visitor logging must never block successful authentication.
+   */
   const loggingResults = await Promise.allSettled([
     supabase.from("profiles").upsert(
       {
@@ -81,6 +136,7 @@ export async function GET(request: Request) {
         onConflict: "id",
       },
     ),
+
     supabase.from("user_login_events").insert({
       user_id: data.user.id,
       email: data.user.email,
@@ -102,7 +158,7 @@ export async function GET(request: Request) {
   });
 
   const response = NextResponse.redirect(
-    new URL(nextPath, requestUrl.origin),
+    new URL(nextPath, requestOrigin),
   );
 
   response.cookies.set("stratify_auth_next", "", {
