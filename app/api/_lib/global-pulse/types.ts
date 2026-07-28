@@ -34,6 +34,12 @@ export type PulseItem = {
   sourceType: PulseSourceType;
   title: string;
   summary: string | null;
+  /**
+   * Long-form text supplied directly by the configured public API/feed.
+   * This is intentionally not populated by scraping arbitrary publisher pages.
+   */
+  content?: string | null;
+  contentKind?: "full" | "source-extract" | "summary";
   url: string;
   imageUrl: string | null;
   publishedAt: string | null;

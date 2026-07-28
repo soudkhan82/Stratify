@@ -84,6 +84,29 @@ function readableText(value: unknown, maxLength = 520) {
   return text;
 }
 
+
+function readableArticleText(value: unknown, maxLength = 40_000) {
+  if (typeof value !== "string") return "";
+
+  const text = value
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t\f\v]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (
+    !text ||
+    /^(?:\[object\s+[^\]]+\]|undefined|null|nan|n\/a|none)$/i.test(text) ||
+    /\[object\s+Object\]/i.test(text)
+  ) {
+    return "";
+  }
+
+  if (!maxLength || text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 3)).trim()}...`;
+}
+
 function validHttpUrl(value: unknown) {
   if (typeof value !== "string" || !value.trim()) return null;
 
@@ -110,6 +133,17 @@ function sanitizeItem(item: PulseItem): PulseItem | null {
     source,
     url,
     summary: readableText(item.summary, 520) || null,
+    content: readableArticleText(item.content, 40_000) || null,
+    contentKind:
+      item.contentKind === "full" ||
+      item.contentKind === "source-extract" ||
+      item.contentKind === "summary"
+        ? item.contentKind
+        : item.content
+          ? "source-extract"
+          : item.summary
+            ? "summary"
+            : undefined,
     imageUrl: validHttpUrl(item.imageUrl),
     publishedAt:
       item.publishedAt && Number.isFinite(new Date(item.publishedAt).getTime())

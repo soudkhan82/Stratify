@@ -8,7 +8,7 @@ const SOURCE_NOTES = {
     "Data sources: World Bank World Development Indicators (WDI), World Bank Open Data, UNData, FAOSTAT, IMF public datasets, and Natural Earth / world-atlas boundaries. Updated periodically for analytical use.",
 
   globalPulse:
-    "Global Pulse sources: GDELT global news search, ReliefWeb/OCHA, World Bank news, IMF, WTO and FAO official feeds, plus Wikimedia On This Day. Headlines remain owned by their original publishers and link to the original source.",
+    "Global Pulse sources: GDELT global news search, ReliefWeb/OCHA, World Bank news, IMF, WTO and FAO official feeds, plus Wikimedia On This Day. Source attribution is retained and the internal reader loads available article text inside Stratify without external news buttons.",
 
   debt:
     "Data sources: IMF World Economic Outlook (WEO) - General Government Gross Debt, IMF Global Debt Database, World Bank International Debt Statistics (IDS), and World Bank WDI debt indicators. Updated periodically for analytical use.",
@@ -56,3 +56,4 @@ export default function DataSourceNote() {
     </div>
   );
 }
+

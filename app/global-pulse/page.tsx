@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -11,7 +11,6 @@ import {
   CheckCircle2,
   Clock3,
   Database,
-  ExternalLink,
   Globe2,
   History,
   Landmark,
@@ -94,6 +93,28 @@ function readableText(value: unknown) {
   if (typeof value !== "string") return "";
 
   const text = value.replace(/\s+/g, " ").trim();
+  if (
+    !text ||
+    /^(?:\[object\s+[^\]]+\]|undefined|null|nan|n\/a|none)$/i.test(text) ||
+    /\[object\s+Object\]/i.test(text)
+  ) {
+    return "";
+  }
+
+  return text;
+}
+
+
+function readableArticleText(value: unknown) {
+  if (typeof value !== "string") return "";
+
+  const text = value
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t\f\v]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
   if (
     !text ||
     /^(?:\[object\s+[^\]]+\]|undefined|null|nan|n\/a|none)$/i.test(text) ||
@@ -388,6 +409,52 @@ function HistoryCard({ item, onOpen }: { item: PulseItem; onOpen: OpenStory }) {
   );
 }
 
+type ArticleReaderResponse = {
+  ok: boolean;
+  content: string;
+  contentKind: "reader" | "source-extract" | "summary";
+  wordCount: number;
+  cached?: boolean;
+  error?: string;
+};
+
+
+type ArticleBlock = {
+  kind: "heading" | "paragraph" | "bullet";
+  text: string;
+};
+
+function buildArticleBlocks(value: string): ArticleBlock[] {
+  const paragraphs = value
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  return paragraphs.map((paragraph, index) => {
+    if (/^[•*-]\s+/.test(paragraph)) {
+      return {
+        kind: "bullet" as const,
+        text: paragraph.replace(/^[•*-]\s+/, "").trim(),
+      };
+    }
+
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    const nextParagraph = paragraphs[index + 1] ?? "";
+    const nextLooksLikeBody = nextParagraph.length >= 120;
+    const noSentenceEnding = !/[.!?]$/.test(paragraph);
+    const likelyHeading =
+      paragraph.length <= 120 &&
+      words.length <= 16 &&
+      noSentenceEnding &&
+      nextLooksLikeBody;
+
+    return {
+      kind: likelyHeading ? ("heading" as const) : ("paragraph" as const),
+      text: paragraph,
+    };
+  });
+}
+
 function NewsDetailModal({
   item,
   onClose,
@@ -395,6 +462,14 @@ function NewsDetailModal({
   item: PulseItem | null;
   onClose: () => void;
 }) {
+  const [articleText, setArticleText] = useState("");
+  const [articleKind, setArticleKind] = useState<
+    ArticleReaderResponse["contentKind"]
+  >("summary");
+  const [articleWordCount, setArticleWordCount] = useState(0);
+  const [articleLoading, setArticleLoading] = useState(false);
+  const [articleError, setArticleError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!item) return;
 
@@ -413,11 +488,108 @@ function NewsDetailModal({
     };
   }, [item, onClose]);
 
+  useEffect(() => {
+    if (!item) {
+      setArticleText("");
+      setArticleKind("summary");
+      setArticleWordCount(0);
+      setArticleLoading(false);
+      setArticleError(null);
+      return;
+    }
+
+    const currentItem = item;
+    const controller = new AbortController();
+    const inlineContent =
+      readableArticleText(currentItem.content) ||
+      readableArticleText(currentItem.summary);
+    const inlineWordCount = inlineContent
+      ? inlineContent.split(/\s+/).filter(Boolean).length
+      : 0;
+
+    setArticleText(inlineContent);
+    setArticleKind(
+      currentItem.contentKind === "full" ||
+      currentItem.contentKind === "source-extract"
+        ? "source-extract"
+        : "summary",
+    );
+    setArticleWordCount(inlineWordCount);
+    setArticleError(null);
+
+    const feedAlreadyHasFullBody =
+      currentItem.contentKind === "full" && inlineContent.length >= 1_200;
+
+    if (feedAlreadyHasFullBody || !validHttpUrl(currentItem.url)) {
+      setArticleLoading(false);
+      return () => controller.abort();
+    }
+
+    setArticleLoading(true);
+
+    async function loadArticle() {
+      try {
+        const response = await fetch("/api/global-pulse/article", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: currentItem.url,
+            title: currentItem.title,
+            sourceId: currentItem.sourceId,
+            fallbackText: inlineContent,
+          }),
+          signal: controller.signal,
+        });
+
+        const payload = (await response.json()) as ArticleReaderResponse;
+        if (controller.signal.aborted) return;
+
+        const fetchedText = readableArticleText(payload.content);
+        const useFetchedText =
+          fetchedText.length >= Math.max(360, inlineContent.length + 80) ||
+          (inlineContent.length < 600 && fetchedText.length > inlineContent.length);
+        const finalText = useFetchedText ? fetchedText : inlineContent || fetchedText;
+
+        setArticleText(finalText);
+        setArticleKind(useFetchedText ? payload.contentKind : "summary");
+        setArticleWordCount(
+          useFetchedText
+            ? payload.wordCount
+            : finalText.split(/\s+/).filter(Boolean).length,
+        );
+        setArticleError(
+          payload.ok || finalText.length >= 700
+            ? null
+            : payload.error ?? "A longer article body was not available.",
+        );
+      } catch (loadError) {
+        if (controller.signal.aborted) return;
+        setArticleError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Unable to load the article inside Stratify.",
+        );
+      } finally {
+        if (!controller.signal.aborted) setArticleLoading(false);
+      }
+    }
+
+    void loadArticle();
+    return () => controller.abort();
+  }, [item]);
+
   if (!item) return null;
 
   const relativeTime = formatRelative(item.publishedAt);
   const countries = item.countries.map(readableText).filter(Boolean).slice(0, 6);
-  const summary = readableText(item.summary);
+  const articleBlocks = buildArticleBlocks(articleText);
+  const contentHeading =
+    articleKind === "reader"
+      ? "Complete article"
+      : articleKind === "source-extract"
+        ? "Source report"
+        : "Article details";
+  const waitingForFullArticle = articleLoading && articleText.length < 700;
 
   return (
     <div
@@ -431,7 +603,7 @@ function NewsDetailModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="global-pulse-detail-title"
-        className="relative max-h-[90vh] w-full max-w-[980px] overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-2xl"
+        className="relative max-h-[92vh] w-full max-w-[1040px] overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-2xl"
       >
         <button
           type="button"
@@ -442,7 +614,7 @@ function NewsDetailModal({
           <X className="h-5 w-5" />
         </button>
 
-        <div className="max-h-[90vh] overflow-y-auto">
+        <div className="max-h-[92vh] overflow-y-auto">
           {item.imageUrl && validHttpUrl(item.imageUrl) ? (
             <div className="relative h-[230px] overflow-hidden bg-slate-100 sm:h-[320px]">
               <img
@@ -494,15 +666,79 @@ function NewsDetailModal({
                   {item.sourceCountry}
                 </span>
               ) : null}
+              {articleWordCount > 0 ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <BookOpen className="h-4 w-4 text-indigo-600" />
+                  {articleWordCount.toLocaleString()} words
+                </span>
+              ) : null}
             </div>
 
-            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
-              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-indigo-700">
-                Story summary
+            <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:px-6">
+                <div className="inline-flex items-center gap-2 text-sm font-black text-slate-900">
+                  <BookOpen className="h-4 w-4 text-indigo-700" />
+                  {contentHeading}
+                </div>
+                {articleLoading ? (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white px-3 py-1 text-[11px] font-black text-indigo-700">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Loading complete article
+                  </span>
+                ) : null}
               </div>
-              <p className="mt-2 whitespace-pre-line text-sm font-medium leading-7 text-slate-700 sm:text-[15px]">
-                {summary || "A detailed summary was not supplied by this source. Use the original-source button below for the complete report."}
-              </p>
+
+              <div className="px-4 py-5 sm:px-7 sm:py-7">
+                {waitingForFullArticle ? (
+                  <div className="flex min-h-[220px] flex-col items-center justify-center text-center">
+                    <Loader2 className="h-10 w-10 animate-spin text-indigo-700" />
+                    <div className="mt-4 text-base font-black text-slate-900">
+                      Retrieving the full public article
+                    </div>
+                    <p className="mt-1 max-w-md text-sm font-medium leading-6 text-slate-500">
+                      The reader is loading the article body inside Stratify rather than sending you to another website.
+                    </p>
+                  </div>
+                ) : articleBlocks.length ? (
+                  <article className="space-y-5 text-[15px] font-medium leading-7 text-slate-700">
+                    {articleBlocks.map((block, index) => {
+                      const key = `${index}-${block.text.slice(0, 32)}`;
+
+                      if (block.kind === "heading") {
+                        return (
+                          <h3
+                            key={key}
+                            className="pt-2 text-lg font-black leading-7 tracking-tight text-slate-950 first:pt-0"
+                          >
+                            {block.text}
+                          </h3>
+                        );
+                      }
+
+                      if (block.kind === "bullet") {
+                        return (
+                          <div key={key} className="flex gap-3 pl-1">
+                            <span className="mt-[11px] h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-600" />
+                            <p className="min-w-0">{block.text}</p>
+                          </div>
+                        );
+                      }
+
+                      return <p key={key}>{block.text}</p>;
+                    })}
+                  </article>
+                ) : (
+                  <p className="text-sm font-medium leading-7 text-slate-600 sm:text-[15px]">
+                    No readable article body was returned by this source.
+                  </p>
+                )}
+
+                {articleError && !articleLoading ? (
+                  <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold leading-5 text-amber-900">
+                    {articleError}
+                  </div>
+                ) : null}
+              </div>
             </div>
 
             {countries.length ? (
@@ -520,7 +756,7 @@ function NewsDetailModal({
             ) : null}
 
             <p className="mt-5 text-xs font-semibold leading-5 text-slate-400">
-              This preview uses the headline, image and summary supplied by the listed source. The original publisher remains the authoritative source.
+              Source attribution is retained. Articles are loaded and displayed inside Stratify; no external news button is shown.
             </p>
 
             <div className="mt-6 flex flex-col-reverse gap-2 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-end">
@@ -540,16 +776,6 @@ function NewsDetailModal({
                 {item.moduleLabel}
                 <ArrowUpRight className="h-4 w-4" />
               </Link>
-
-              <a
-                href={item.url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-indigo-700"
-              >
-                Open original source
-                <ExternalLink className="h-4 w-4" />
-              </a>
             </div>
           </div>
         </div>

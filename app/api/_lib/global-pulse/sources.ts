@@ -1,6 +1,7 @@
 import { PulseItem, PulseSourceId, PulseTopic } from "./types";
 import {
   cleanText,
+  decodeEntities,
   fetchWithTimeout,
   freshnessScore,
   moduleForTopic,
@@ -91,6 +92,66 @@ function extractPlainText(value: unknown, maxLength = 520): string {
   }
 
   return text;
+}
+
+
+function extractArticleText(value: unknown, maxLength = 40_000): string {
+  const visited = new Set<object>();
+
+  function visit(input: unknown, depth: number): string {
+    if (input === null || input === undefined || depth > 5) return "";
+
+    if (typeof input === "string") return input;
+    if (typeof input === "number" || typeof input === "bigint") {
+      return String(input);
+    }
+    if (typeof input === "boolean") return "";
+
+    if (Array.isArray(input)) {
+      return input
+        .map((entry) => visit(entry, depth + 1))
+        .filter(Boolean)
+        .join("\n\n");
+    }
+
+    if (typeof input === "object") {
+      if (visited.has(input)) return "";
+      visited.add(input);
+
+      const record = input as Record<string, unknown>;
+      for (const key of TEXT_KEYS) {
+        if (!(key in record)) continue;
+        const resolved = visit(record[key], depth + 1);
+        if (resolved) return resolved;
+      }
+    }
+
+    return "";
+  }
+
+  const raw = visit(value, 0);
+  if (!raw) return "";
+
+  const text = decodeEntities(raw)
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<\/(?:p|div|section|article|h[1-6]|blockquote|ul|ol|table|tr)>/gi, "\n\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<li\b[^>]*>/gi, "\n• ")
+    .replace(/<\/li>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t\f\v]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (!text || INVALID_TEXT_PATTERN.test(text) || /\[object\s+Object\]/i.test(text)) {
+    return "";
+  }
+
+  if (!maxLength || text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 3)).trim()}...`;
 }
 
 function imageFromMarkup(value: unknown): string | null {
@@ -250,6 +311,8 @@ function baseItem(args: {
   sourceType: PulseItem["sourceType"];
   title: unknown;
   summary?: unknown;
+  content?: unknown;
+  contentKind?: PulseItem["contentKind"];
   url: unknown;
   imageUrl?: unknown;
   publishedAt?: unknown;
@@ -266,7 +329,11 @@ function baseItem(args: {
   const url = safeUrl(extractPlainText(args.url, 2_048));
   if (title.length < 8 || !url) return null;
 
-  const summary = extractPlainText(args.summary, 520) || null;
+  const content = extractArticleText(args.content, 40_000) || null;
+  const summary =
+    extractPlainText(args.summary, 520) ||
+    extractPlainText(content, 520) ||
+    null;
   const publishedAt = toIsoDate(extractPlainText(args.publishedAt, 120) || null);
   const classified = normalizeTopic(
     title,
@@ -285,6 +352,12 @@ function baseItem(args: {
     sourceType: args.sourceType,
     title,
     summary,
+    content,
+    contentKind: content
+      ? args.contentKind ?? "source-extract"
+      : summary
+        ? "summary"
+        : undefined,
     url,
     imageUrl,
     publishedAt,
@@ -483,6 +556,8 @@ export async function fetchReliefWeb(args: {
           sourceType: "institution",
           title: cleanText(fields.title),
           summary: cleanText(fields.body, 520),
+          content: fields.body,
+          contentKind: "full",
           url: String(fields.url_alias ?? fields.url ?? ""),
           publishedAt: String(fields.date?.original ?? fields.date?.created ?? ""),
           fallbackTopic: "crises",
@@ -568,6 +643,14 @@ export async function fetchWorldBank(args: {
             row?.abstract ??
             row?.description ??
             null,
+          content:
+            row?.content ??
+            row?.content_1000?.["cdata!"] ??
+            row?.content_1000 ??
+            row?.abstract ??
+            row?.description ??
+            null,
+          contentKind: "source-extract",
           url:
             row?.url ??
             row?.url_friendly ??
@@ -620,11 +703,17 @@ function parseRss(xml: string, config: RssConfig, limit: number) {
         xmlTag(block, "link") ||
         xmlAttribute(block, "link", "href") ||
         xmlTag(block, "guid");
+      const encodedContent =
+        xmlTag(block, "content:encoded") ||
+        xmlTag(block, "content");
       const summary =
         xmlTag(block, "description") ||
         xmlTag(block, "summary") ||
-        xmlTag(block, "content:encoded") ||
-        xmlTag(block, "content");
+        encodedContent;
+      const content =
+        encodedContent ||
+        xmlTag(block, "description") ||
+        xmlTag(block, "summary");
       const publishedAt =
         xmlTag(block, "pubDate") ||
         xmlTag(block, "published") ||
@@ -642,6 +731,8 @@ function parseRss(xml: string, config: RssConfig, limit: number) {
         sourceType: "official",
         title,
         summary,
+        content,
+        contentKind: "source-extract",
         url: link,
         imageUrl,
         publishedAt,
@@ -835,6 +926,8 @@ export async function fetchWikipediaOnThisDay(limit: number): Promise<SourceFetc
           sourceType: "knowledge",
           title: cleanText(event?.text) || cleanText(page?.normalizedtitle ?? page?.title),
           summary: page?.extract ?? page?.description ?? null,
+          content: page?.extract ?? page?.description ?? null,
+          contentKind: "source-extract",
           url,
           imageUrl:
             page?.thumbnail?.source ?? page?.originalimage?.source ?? null,
