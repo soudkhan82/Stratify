@@ -245,7 +245,7 @@ async function fetchArticleImage(articleUrl: string) {
         },
         next: { revalidate: 21_600 },
       },
-      2_500,
+      6_000,
     );
 
     if (!response.ok) return null;
@@ -414,7 +414,7 @@ export async function fetchGdelt(args: {
     const response = await fetchWithTimeout(
       `https://api.gdeltproject.org/api/v2/doc/doc?${params.toString()}`,
       { next: { revalidate: 600 } },
-      4_500,
+      8_000,
     );
 
     const body = await response.text();
@@ -534,7 +534,7 @@ export async function fetchReliefWeb(args: {
         body: JSON.stringify(requestBody),
         next: { revalidate: 900 },
       },
-      4_500,
+      8_000,
     );
 
     const body = await response.text();
@@ -617,7 +617,7 @@ export async function fetchWorldBank(args: {
     const response = await fetchWithTimeout(
       `https://search.worldbank.org/api/v2/news?${params.toString()}`,
       { next: { revalidate: 1_800 } },
-      4_500,
+      8_000,
     );
 
     const body = await response.text();
@@ -753,7 +753,7 @@ async function fetchRss(
       const response = await fetchWithTimeout(
         url,
         { next: { revalidate: 1_800 } },
-        4_500,
+        8_000,
       );
 
       const body = await response.text();
@@ -871,8 +871,8 @@ export async function fetchWikipediaOnThisDay(limit: number): Promise<SourceFetc
       urls.map(async (url) => {
         const response = await fetchWithTimeout(
           url,
-          { next: { revalidate: 43_200 } },
-          4_500,
+          { next: { revalidate: 21_600 } },
+          8_000,
         );
 
         const body = await response.text();
@@ -931,8 +931,7 @@ export async function fetchWikipediaOnThisDay(limit: number): Promise<SourceFetc
           url,
           imageUrl:
             page?.thumbnail?.source ?? page?.originalimage?.source ?? null,
-          // Historical events are not "published just now". Keep this null so the UI uses the event year.
-          publishedAt: null,
+          publishedAt: new Date().toISOString(),
           fallbackTopic: "history",
           isOfficial: false,
           baseScore: 42,

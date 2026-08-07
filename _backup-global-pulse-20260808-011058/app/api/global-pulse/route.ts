@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import {
+  enrichMissingImages,
   fetchFao,
   fetchGdelt,
   fetchImf,
@@ -38,7 +39,7 @@ const VALID_TOPICS = new Set<PulseTopic>([
   "history",
 ]);
 
-const CACHE_TTL_MS = 30 * 60 * 1000;
+const CACHE_TTL_MS = 10 * 60 * 1000;
 
 type CacheEntry = {
   expiresAt: number;
@@ -222,7 +223,7 @@ export async function GET(request: Request) {
     const q = cleanText(searchParams.get("q"), 80);
     const country = cleanText(searchParams.get("country"), 80);
     const hours = intParam(searchParams.get("hours"), 168, 24, 168);
-    const limit = intParam(searchParams.get("limit"), 48, 20, 72);
+    const limit = intParam(searchParams.get("limit"), 72, 20, 120);
     const forceRefresh = searchParams.has("refresh");
 
     pruneCache();
@@ -234,7 +235,7 @@ export async function GET(request: Request) {
         { ...cached.payload, cached: true },
         {
           headers: {
-            "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=21600",
+            "Cache-Control": "public, s-maxage=600, stale-while-revalidate=3600",
             "X-Stratify-Cache": "HIT",
           },
         },
@@ -245,13 +246,13 @@ export async function GET(request: Request) {
 
     const [gdelt, reliefweb, worldBank, imf, wto, fao, wikipedia] =
       await Promise.all([
-        fetchGdelt({ topic, q, country, hours, limit: Math.min(48, limit) }),
+        fetchGdelt({ topic, q, country, hours, limit: Math.min(80, limit) }),
         fetchReliefWeb({ topic, q, country, hours, limit: perSource }),
         fetchWorldBank({ q, country, limit: perSource }),
         fetchImf(perSource),
         fetchWto(perSource),
         fetchFao(perSource),
-        fetchWikipediaOnThisDay(6),
+        fetchWikipediaOnThisDay(12),
       ]);
 
     const rawResults = [gdelt, reliefweb, worldBank, imf, wto, fao, wikipedia];
@@ -263,7 +264,7 @@ export async function GET(request: Request) {
     }));
 
     const wikipediaResult = results.find((result) => result.id === "wikipedia");
-    const todayInHistory = (wikipediaResult?.items ?? []).slice(0, 6);
+    const todayInHistory = (wikipediaResult?.items ?? []).slice(0, 8);
 
     const baseAllNews = dedupeItems(
       results
@@ -273,9 +274,12 @@ export async function GET(request: Request) {
         .sort(sortNews),
     );
 
-    // Do not scrape publisher pages for missing images during the initial feed request.
-    // Feed-provided images render immediately; article pages are only fetched after a user opens a story.
-    const allNews = baseAllNews.sort(sortNews);
+    const allNews = (
+      await enrichMissingImages(
+        baseAllNews,
+        Math.min(18, Math.max(12, limit)),
+      )
+    ).sort(sortNews);
 
     const filteredItems = allNews
       .filter((item) => topicMatches(item, topic))
@@ -347,7 +351,7 @@ export async function GET(request: Request) {
       },
       {
         headers: {
-          "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=21600",
+          "Cache-Control": "public, s-maxage=600, stale-while-revalidate=3600",
           "X-Stratify-Cache": "MISS",
         },
       },

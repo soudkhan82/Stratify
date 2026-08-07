@@ -242,7 +242,7 @@ function SectionHeader({
 type OpenStory = (item: PulseItem) => void;
 
 function HeroStory({ item, onOpen }: { item: PulseItem; onOpen: OpenStory }) {
-  const relativeTime = item.topic === "history" ? null : formatRelative(item.publishedAt);
+  const relativeTime = formatRelative(item.publishedAt);
 
   return (
     <article className="stratify-dark-surface group relative min-h-[430px] overflow-hidden rounded-[30px] border border-slate-200 bg-slate-950 shadow-xl shadow-slate-300/40">
@@ -251,7 +251,6 @@ function HeroStory({ item, onOpen }: { item: PulseItem; onOpen: OpenStory }) {
           src={item.imageUrl}
           alt=""
           className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-[1.03]"
-          decoding="async"
           referrerPolicy="no-referrer"
         />
       ) : (
@@ -265,7 +264,7 @@ function HeroStory({ item, onOpen }: { item: PulseItem; onOpen: OpenStory }) {
           <TopicBadge topic={item.topic} />
         </div>
 
-        <h1 className="max-w-4xl text-[26px] font-black leading-[1.12] tracking-[-0.03em] text-white sm:text-[30px]">
+        <h1 className="max-w-4xl text-3xl font-black leading-tight tracking-[-0.035em] text-white sm:text-4xl">
           {item.title}
         </h1>
 
@@ -330,7 +329,6 @@ function StoryCard({
             alt=""
             className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.035]"
             loading="lazy"
-            decoding="async"
             referrerPolicy="no-referrer"
             onError={(event) => {
               const media = event.currentTarget.parentElement;
@@ -353,7 +351,7 @@ function StoryCard({
         <h3
           className={[
             "mt-3 font-black leading-[1.25] tracking-tight text-slate-950",
-            compact ? "line-clamp-2 text-[13px]" : "line-clamp-3 text-[14px]",
+            compact ? "line-clamp-2 text-[15px]" : "line-clamp-3 text-[16px]",
           ].join(" ")}
         >
           {item.title}
@@ -387,54 +385,25 @@ function StoryCard({
 }
 
 function HistoryCard({ item, onOpen }: { item: PulseItem; onOpen: OpenStory }) {
-  const hasImage = Boolean(item.imageUrl && validHttpUrl(item.imageUrl));
-
   return (
     <button
       type="button"
       onClick={() => onOpen(item)}
-      aria-label={`Open historical event: ${item.title}`}
-      className="group w-full overflow-hidden rounded-[18px] border border-slate-200 bg-white text-left shadow-sm transition hover:border-violet-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-violet-400"
+      className="w-full rounded-[22px] border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-4 text-left shadow-sm transition hover:border-violet-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-violet-400"
     >
-      <div className="flex min-w-0 gap-3 p-3">
-        {hasImage ? (
-          <div className="h-[68px] w-[82px] shrink-0 overflow-hidden rounded-xl bg-slate-100">
-            <img
-              src={item.imageUrl!}
-              alt=""
-              className="h-full w-full object-cover"
-              loading="lazy"
-              decoding="async"
-              referrerPolicy="no-referrer"
-              onError={(event) => {
-                const media = event.currentTarget.parentElement;
-                if (media) media.style.display = "none";
-              }}
-            />
-          </div>
-        ) : (
-          <div className="flex h-[68px] w-[54px] shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
-            <History className="h-5 w-5" />
-          </div>
-        )}
-
-        <div className="min-w-0 flex-1">
-          <div className="text-[9px] font-black uppercase tracking-[0.14em] text-violet-700">
-            {formatYear(item.year)}
-          </div>
-
-          <h3 className="mt-1 line-clamp-2 text-[13px] font-extrabold leading-[1.35] tracking-[-0.01em] text-slate-900">
-            {item.title}
-          </h3>
-
-          <div className="mt-2 flex items-center justify-between gap-2">
-            <span className="text-[10px] font-bold text-slate-500">Wikipedia</span>
-            <span className="inline-flex items-center gap-1 text-[10px] font-black text-violet-700">
-              Details
-              <Newspaper className="h-3 w-3" />
-            </span>
-          </div>
-        </div>
+      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-violet-700">
+        <History className="h-4 w-4" />
+        {formatYear(item.year)}
+      </div>
+      <h3 className="mt-2 line-clamp-3 text-[15px] font-black leading-5 text-slate-950">
+        {item.title}
+      </h3>
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <span className="text-[11px] font-bold text-slate-500">Wikipedia</span>
+        <span className="inline-flex items-center gap-1 text-xs font-black text-violet-700">
+          Details
+          <Newspaper className="h-3.5 w-3.5" />
+        </span>
       </div>
     </button>
   );
@@ -446,18 +415,6 @@ type ArticleReaderResponse = {
   contentKind: "reader" | "source-extract" | "summary";
   wordCount: number;
   cached?: boolean;
-  error?: string;
-};
-
-type HistoryDetailResponse = {
-  ok: boolean;
-  title?: string;
-  displayTitle?: string;
-  description?: string;
-  summary?: string;
-  extract?: string;
-  overview?: string;
-  sections?: Array<{ title: string; content: string }>;
   error?: string;
 };
 
@@ -560,67 +517,18 @@ function NewsDetailModal({
     setArticleWordCount(inlineWordCount);
     setArticleError(null);
 
+    const feedAlreadyHasFullBody =
+      currentItem.contentKind === "full" && inlineContent.length >= 1_200;
+
+    if (feedAlreadyHasFullBody || !validHttpUrl(currentItem.url)) {
+      setArticleLoading(false);
+      return () => controller.abort();
+    }
+
     setArticleLoading(true);
 
     async function loadArticle() {
       try {
-        // Wikipedia history cards use the purpose-built Wikipedia API route.
-        // This avoids feeding MediaWiki/Parsoid HTML into the generic article scraper.
-        if (currentItem.topic === "history" || currentItem.sourceId === "wikipedia") {
-          const params = new URLSearchParams({
-            articleUrl: currentItem.url,
-            fallbackTitle: currentItem.title,
-          });
-
-          const response = await fetch(
-            `/api/history/event-detail?${params.toString()}`,
-            {
-              signal: controller.signal,
-            },
-          );
-
-          const payload = (await response.json()) as HistoryDetailResponse;
-          if (controller.signal.aborted) return;
-
-          const overview = readableArticleText(
-            payload.overview || payload.extract || payload.summary || inlineContent,
-          );
-
-          const sectionText = Array.isArray(payload.sections)
-            ? payload.sections
-                .map((section) => {
-                  const heading = readableText(section.title);
-                  const content = readableArticleText(section.content);
-                  if (!heading || !content) return "";
-                  return `${heading}\n\n${content}`;
-                })
-                .filter(Boolean)
-                .join("\n\n")
-            : "";
-
-          const finalText = [overview, sectionText].filter(Boolean).join("\n\n");
-
-          setArticleText(finalText || inlineContent);
-          setArticleKind("source-extract");
-          setArticleWordCount(
-            (finalText || inlineContent).split(/\s+/).filter(Boolean).length,
-          );
-          setArticleError(
-            response.ok && payload.ok
-              ? null
-              : payload.error ?? "Wikipedia context is temporarily unavailable.",
-          );
-          return;
-        }
-
-        const feedAlreadyHasFullBody =
-          currentItem.contentKind === "full" && inlineContent.length >= 1_200;
-
-        if (feedAlreadyHasFullBody || !validHttpUrl(currentItem.url)) {
-          setArticleLoading(false);
-          return;
-        }
-
         const response = await fetch("/api/global-pulse/article", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -672,21 +580,16 @@ function NewsDetailModal({
 
   if (!item) return null;
 
-  const relativeTime =
-    item.topic === "history" ? null : formatRelative(item.publishedAt);
+  const relativeTime = formatRelative(item.publishedAt);
   const countries = item.countries.map(readableText).filter(Boolean).slice(0, 6);
   const articleBlocks = buildArticleBlocks(articleText);
   const contentHeading =
-    item.topic === "history"
-      ? "Wikipedia context"
-      : articleKind === "reader"
-        ? "Complete article"
-        : articleKind === "source-extract"
-          ? "Source report"
-          : "Article details";
-  const waitingForFullArticle =
-    articleLoading &&
-    articleText.length < (item.topic === "history" ? 180 : 700);
+    articleKind === "reader"
+      ? "Complete article"
+      : articleKind === "source-extract"
+        ? "Source report"
+        : "Article details";
+  const waitingForFullArticle = articleLoading && articleText.length < 700;
 
   return (
     <div
@@ -718,7 +621,6 @@ function NewsDetailModal({
                 src={item.imageUrl}
                 alt=""
                 className="h-full w-full object-cover"
-                decoding="async"
                 referrerPolicy="no-referrer"
                 onError={(event) => {
                   const media = event.currentTarget.parentElement;
@@ -742,7 +644,7 @@ function NewsDetailModal({
 
             <h2
               id="global-pulse-detail-title"
-              className="mt-4 text-[22px] font-black leading-[1.18] tracking-[-0.02em] text-slate-950 sm:text-[26px]"
+              className="mt-4 text-2xl font-black leading-tight tracking-[-0.025em] text-slate-950 sm:text-3xl"
             >
               {item.title}
             </h2>
@@ -791,14 +693,10 @@ function NewsDetailModal({
                   <div className="flex min-h-[220px] flex-col items-center justify-center text-center">
                     <Loader2 className="h-10 w-10 animate-spin text-indigo-700" />
                     <div className="mt-4 text-base font-black text-slate-900">
-                      {item.topic === "history"
-                        ? "Loading clean Wikipedia context"
-                        : "Retrieving the full public article"}
+                      Retrieving the full public article
                     </div>
                     <p className="mt-1 max-w-md text-sm font-medium leading-6 text-slate-500">
-                      {item.topic === "history"
-                        ? "Stratify is loading the event summary and key sections without Wikipedia markup."
-                        : "The reader is loading the article body inside Stratify rather than sending you to another website."}
+                      The reader is loading the article body inside Stratify rather than sending you to another website.
                     </p>
                   </div>
                 ) : articleBlocks.length ? (
@@ -960,46 +858,17 @@ export default function GlobalPulsePage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    const clientCacheKey = `stratify:global-pulse:v4:${hours}:${searchQuery}:${country}`;
 
     async function load() {
-      let hydratedFromClientCache = false;
-
-      if (!refreshToken) {
-        try {
-          const raw = window.sessionStorage.getItem(clientCacheKey);
-          if (raw) {
-            const cached = JSON.parse(raw) as {
-              savedAt?: number;
-              payload?: PulseResponse;
-            };
-
-            if (
-              cached.payload &&
-              cached.savedAt &&
-              Date.now() - cached.savedAt < 30 * 60 * 1000
-            ) {
-              setFeedPayload(cached.payload);
-              setLoading(false);
-              hydratedFromClientCache = true;
-            }
-          }
-        } catch {
-          // Session cache is a speed optimization only.
-        }
-      }
-
-      if (!hydratedFromClientCache) {
-        setLoading(true);
-      }
+      setLoading(true);
       setError(null);
 
       try {
         const params = new URLSearchParams({
-          // One compact reusable source pool powers every topic tab.
+          // One reusable source pool powers every topic tab.
           topic: "all",
           hours: String(hours),
-          limit: "48",
+          limit: "120",
         });
 
         if (searchQuery) params.set("q", searchQuery);
@@ -1024,15 +893,6 @@ export default function GlobalPulsePage() {
         }
 
         setFeedPayload(json);
-
-        try {
-          window.sessionStorage.setItem(
-            clientCacheKey,
-            JSON.stringify({ savedAt: Date.now(), payload: json }),
-          );
-        } catch {
-          // Ignore storage quota/privacy mode errors.
-        }
       } catch (loadError) {
         if (controller.signal.aborted) return;
 
@@ -1424,16 +1284,16 @@ export default function GlobalPulsePage() {
               </div>
 
               <aside className="space-y-5 xl:sticky xl:top-[164px]">
-                <section className="rounded-[22px] border border-slate-200 bg-white p-3.5 shadow-sm">
+                <section className="rounded-[24px] border border-violet-200 bg-white p-4 shadow-sm">
                   <SectionHeader
                     icon={BookOpen}
                     eyebrow="Wikipedia"
                     title="Today in History"
                     description="Daily context from Wikipedia's On This Day feed."
                   />
-                  <div className="space-y-2.5">
+                  <div className="space-y-3">
                     {validHistoryItems.length ? (
-                      validHistoryItems.slice(0, 5).map((item) => (
+                      validHistoryItems.map((item) => (
                         <HistoryCard key={item.id} item={item} onOpen={openStory} />
                       ))
                     ) : (
@@ -1472,7 +1332,6 @@ export default function GlobalPulsePage() {
                                     alt=""
                                     className="h-full w-full object-cover"
                                     loading="lazy"
-                                    decoding="async"
                                     referrerPolicy="no-referrer"
                                     onError={(event) => {
                                       const media = event.currentTarget.parentElement;
@@ -1490,7 +1349,7 @@ export default function GlobalPulsePage() {
                                 <button
                                   type="button"
                                   onClick={() => openStory(item)}
-                                  className="mt-1.5 line-clamp-2 block w-full text-left text-[13px] font-extrabold leading-[1.4] text-slate-900 transition hover:text-indigo-700 focus:outline-none focus:text-indigo-700"
+                                  className="mt-1.5 line-clamp-3 block w-full text-left text-sm font-black leading-5 text-slate-900 transition hover:text-indigo-700 focus:outline-none focus:text-indigo-700"
                                 >
                                   {item.title}
                                 </button>

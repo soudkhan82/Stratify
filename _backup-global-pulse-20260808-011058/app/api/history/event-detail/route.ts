@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
-export const revalidate = 86_400;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const WIKI_ORIGIN = "https://en.wikipedia.org";
 
@@ -72,7 +73,7 @@ async function fetchJson(url: string) {
       Accept: "application/json",
       "User-Agent": "Stratify-History-Module/1.0",
     },
-    next: { revalidate: 86_400 },
+    cache: "no-store",
   });
 
   if (!response.ok) return null;
@@ -150,30 +151,29 @@ async function fetchSections(title: string): Promise<WikiSection[]> {
   const useful = rawSections
     .filter((section: any) => Number(section?.toclevel || 0) <= 2)
     .filter((section: any) => !skip.has(String(section?.line || "").toLowerCase().trim()))
-    .slice(0, 4);
+    .slice(0, 5);
 
-  // Fetch useful sections in parallel. The previous sequential loop made each
-  // Wikipedia detail popup wait for several network round trips.
-  const resolved = await Promise.all(
-    useful.map(async (section: any) => {
-      const index = String(section.index || "");
-      const heading = cleanText(section.line || "");
-      if (!index || !heading) return null;
+  const sections: WikiSection[] = [];
 
-      const content = await fetchSectionText(title, index);
-      if (!content || content.length <= 80) return null;
+  for (const section of useful) {
+    const index = String(section.index || "");
+    const heading = cleanText(section.line || "");
 
-      return {
+    if (!index || !heading) continue;
+
+    const content = await fetchSectionText(title, index);
+
+    if (content && content.length > 80) {
+      sections.push({
         title: heading,
-        content:
-          content.length > 1_600
-            ? `${content.slice(0, 1_600).trim()}...`
-            : content,
-      } satisfies WikiSection;
-    }),
-  );
+        content: content.length > 900 ? `${content.slice(0, 900).trim()}...` : content,
+      });
+    }
 
-  return resolved.filter((section): section is WikiSection => Boolean(section));
+    if (sections.length >= 4) break;
+  }
+
+  return sections;
 }
 
 export async function GET(req: Request) {
@@ -246,6 +246,13 @@ export async function GET(req: Request) {
         sections,
         details: sections,
         articleDetails: sections,
+        sourceLinks: [
+          {
+            label: "Open Wikipedia",
+            url: finalArticleUrl,
+          },
+        ],
+
         meta: {
           route: "history/event-detail",
           source: "wikipedia-rest-summary-and-parse-sections",
@@ -254,7 +261,7 @@ export async function GET(req: Request) {
       },
       {
         headers: {
-          "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800",
+          "Cache-Control": "no-store, no-cache, must-revalidate",
         },
       }
     );
@@ -270,3 +277,4 @@ export async function GET(req: Request) {
     );
   }
 }
+
