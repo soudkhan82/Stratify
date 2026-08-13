@@ -15,7 +15,6 @@ type Props = {
   indicatorUnit: string; // can be "—" or empty
 
   wdiError: string | null;
-  faoError: string | null;
 
   onBack: () => void;
   onDebug: () => void;
@@ -35,7 +34,6 @@ export default function CountryHeader({
   indicatorCode,
   indicatorUnit,
   wdiError,
-  faoError,
   onBack,
   onDebug,
 }: Props) {
@@ -98,16 +96,11 @@ export default function CountryHeader({
             )}
           </div>
 
-          {wdiError || faoError ? (
+          {wdiError ? (
             <div className="mt-2 flex flex-wrap gap-2">
               {wdiError ? (
                 <Badge className="bg-rose-600 text-white">
                   WDI: {wdiError}
-                </Badge>
-              ) : null}
-              {faoError ? (
-                <Badge className="bg-rose-600 text-white">
-                  FAOSTAT: {faoError}
                 </Badge>
               ) : null}
             </div>

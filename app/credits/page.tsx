@@ -33,7 +33,7 @@ export default function CreditsPage() {
                 designed to bring trusted global datasets into one clean, fast,
                 and decision-ready platform. It combines country profiles,
                 development indicators, debt sustainability, energy insights,
-                fiscal metrics, FAOSTAT data, and corporate intelligence into a
+                fiscal metrics, monetary intelligence, and corporate intelligence into a
                 structured dashboard experience for analysts, researchers,
                 policymakers, and business users.
               </p>
@@ -69,7 +69,7 @@ export default function CreditsPage() {
               </h3>
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 Built around public and curated global datasets for structured
-                economic, fiscal, agricultural, and development analysis.
+                economic, fiscal, corporate, and development analysis.
               </p>
             </div>
 

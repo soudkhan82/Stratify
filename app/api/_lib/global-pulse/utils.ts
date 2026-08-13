@@ -293,7 +293,10 @@ export function moduleForTopic(topic: Exclude<PulseTopic, "all">) {
     case "energy":
       return { moduleHref: "/energy", moduleLabel: "Explore Energy Data" };
     case "food":
-      return { moduleHref: "/faostat", moduleLabel: "Explore FAOSTAT" };
+      return {
+        moduleHref: "/global-pulse",
+        moduleLabel: "Food & Agriculture News",
+      };
     case "trade":
       return {
         moduleHref: "/corporate-intelligence",

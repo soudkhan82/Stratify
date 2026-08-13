@@ -1,4 +1,4 @@
-﻿// app/page.tsx
+// app/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -342,7 +342,7 @@ export default function Page() {
                 </p>
 
                 <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-700">
-                  Stratify  turns World Bank, FAO, fiscal, debt, energy, and
+                  Stratify  turns World Bank, IMF, fiscal, debt, energy, and
                   macro datasets into structured country intelligence.
                 </p>
               </div>

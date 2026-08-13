@@ -11,7 +11,6 @@ const NAV_ITEMS = [
   { label: "Fiscal", href: "/fiscal" },
   { label: "Debt", href: "/debt" },
   { label: "Energy", href: "/energy" },
-  { label: "FAO", href: "/faostat" },
   { label: "IMF (WEO)", href: "/imf-weo" },
   { label: "History", href: "/history" },
   { label: "Corporate 500", href: "/corporate-intelligence" },
@@ -22,22 +21,12 @@ const MOBILE_ITEMS = [
   { label: "Home", href: "/" },
   { label: "Pulse", href: "/global-pulse" },
   { label: "Monetary", href: "/monetary" },
-  { label: "FAO", href: "/faostat" },
   { label: "History", href: "/history" },
   { label: "IMF", href: "/imf-weo" },
 ];
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
-
-  if (href === "/faostat") {
-    return (
-      pathname === "/faostat" ||
-      pathname.startsWith("/faostat/") ||
-      pathname.includes("dataset=faostat") ||
-      pathname.includes("dataset=fao")
-    );
-  }
 
   if (href === "/imf-weo") {
     return (

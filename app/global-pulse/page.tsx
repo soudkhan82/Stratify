@@ -21,7 +21,6 @@ import {
   ShieldCheck,
   Sparkles,
   TrendingUp,
-  Wheat,
   X,
   XCircle,
   Zap,
@@ -1534,7 +1533,6 @@ export default function GlobalPulsePage() {
                   {[
                     ["Energy", "/energy", Zap],
                     ["Monetary", "/monetary", Building2],
-                    ["FAOSTAT", "/faostat", Wheat],
                     ["History", "/history", History],
                     ["World Data", "/world", Globe2],
                   ].map(([label, href, Icon]) => {

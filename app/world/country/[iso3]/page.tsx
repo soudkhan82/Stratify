@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -14,25 +14,10 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
-
-import { faostatApi } from "@/app/lib/rpc/faostat";
-import type {
-  OverviewPayload,
-  TopPayload,
-  TradeInsights,
-} from "@/app/lib/rpc/faostat";
-
 import WdiTab, {
   type WdiResponse,
   parseWdiResponse,
 } from "@/app/world/components/WdiTab";
-
-import FaostatTab, {
-  type FaoModule,
-  isTopKind,
-} from "@/app/world/components/FaostatTab";
-
-import type { ProductionInsights } from "@/app/world/components/FaostatTab";
 import WeoTab from "@/app/world/components/WeoTab";
 
 /* ---------------- helper ---------------- */
@@ -579,8 +564,7 @@ export default function CountryProfilePage() {
   const iso3 = String(rawIso3 ?? "").toUpperCase();
 
   const initialTab = (search.get("dataset") || "wdi").toLowerCase();
-  const safeInitialTab =
-    initialTab === "faostat" || initialTab === "weo" ? initialTab : "wdi";
+  const safeInitialTab = initialTab === "weo" ? "weo" : "wdi";
 
   const rawIndicator = (search.get("indicator") || "").trim();
 
@@ -593,9 +577,7 @@ export default function CountryProfilePage() {
     return rawIndicator || DEFAULT_WDI_INDICATOR;
   }, [rawIndicator, safeInitialTab]);
 
-  const [tab, setTab] = useState<"wdi" | "faostat" | "weo">(
-    safeInitialTab as "wdi" | "faostat" | "weo",
-  );
+  const [tab, setTab] = useState<"wdi" | "weo">(safeInitialTab);
 
   const [sidebarSearch, setSidebarSearch] = useState("");
   const [tabSwitchLoading, setTabSwitchLoading] = useState(false);
@@ -649,54 +631,6 @@ export default function CountryProfilePage() {
     };
   }, [iso3, normalizedIndicator, tab]);
 
-  /* ---------------- FAOSTAT ---------------- */
-
-  const [faoModule, setFaoModule] = useState<FaoModule>("");
-  const [faoLoading, setFaoLoading] = useState(false);
-
-  const [tradeTopN, setTradeTopN] = useState(10);
-  const [tradeYears, setTradeYears] = useState(10);
-
-  const [faoOverview, setFaoOverview] = useState<OverviewPayload | null>(null);
-  const [faoTop, setFaoTop] = useState<TopPayload | null>(null);
-  const [trade, setTrade] = useState<TradeInsights | null>(null);
-  const [prod, setProd] = useState<ProductionInsights | null>(null);
-
-  async function loadFao(next: FaoModule) {
-    setFaoModule(next);
-    setFaoLoading(true);
-
-    setFaoOverview(null);
-    setFaoTop(null);
-    setTrade(null);
-    setProd(null);
-
-    try {
-      if (next === "overview") {
-        setFaoOverview(await faostatApi.overview(iso3));
-        return;
-      }
-
-      if (next === "trade-import" || next === "trade-export") {
-        const kind = next === "trade-import" ? "import" : "export";
-        setTrade(
-          await faostatApi.tradeInsights(iso3, kind, tradeTopN, tradeYears),
-        );
-        return;
-      }
-
-      if (next === "prod-insights") {
-        return;
-      }
-
-      if (isTopKind(next)) {
-        setFaoTop(await faostatApi.module(iso3, next, 10));
-        return;
-      }
-    } finally {
-      setFaoLoading(false);
-    }
-  }
 
   /* ---------------- url sync ---------------- */
 
@@ -750,7 +684,7 @@ export default function CountryProfilePage() {
   }
 
   function handleTabChange(nextTab: string) {
-    const next = nextTab as "wdi" | "faostat" | "weo";
+    const next = nextTab as "wdi" | "weo";
 
     setTabSwitchLoading(true);
     setTab(next);
@@ -797,9 +731,6 @@ export default function CountryProfilePage() {
           item.indicator.toLowerCase().includes(q),
       );
     }
-
-    if (tab === "faostat") return [];
-
     if (!q) return WDI_QUICK_PICKS;
 
     return WDI_QUICK_PICKS.filter(
@@ -852,20 +783,7 @@ export default function CountryProfilePage() {
               >
                 WDI
               </RTabs.Trigger>
-
-              <RTabs.Trigger
-                value="faostat"
-                className={cx(
-                  "rounded-2xl px-5 py-3 text-sm font-semibold outline-none transition-all duration-200",
-                  "data-[state=active]:bg-gradient-to-r data-[state=active]:from-emerald-700 data-[state=active]:to-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-lg",
-                  "data-[state=inactive]:bg-white data-[state=inactive]:text-slate-600",
-                  "border border-slate-200 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900",
-                )}
-              >
-                Food &amp; Agriculture Org
-              </RTabs.Trigger>
-
-              <RTabs.Trigger
+<RTabs.Trigger
                 value="weo"
                 className={cx(
                   "rounded-2xl px-5 py-3 text-sm font-semibold outline-none transition-all duration-200",
@@ -900,20 +818,7 @@ export default function CountryProfilePage() {
               </div>
 
               <div className="flex-1 overflow-y-auto px-5 py-5">
-                {tab === "faostat" ? (
-                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
-                    <div className="text-sm font-semibold text-emerald-900">
-                      Food &amp; Agriculture Org
-                    </div>
-
-                    <p className="mt-2 text-sm leading-6 text-emerald-800/90">
-                      FAO modules are loaded from the main content area. Use the
-                      FAO cards and module selectors on the right to explore
-                      overview, trade, and production insights.
-                    </p>
-                  </div>
-                ) : (
-                  <>
+                <>
                     <label className="mb-2 block text-sm font-semibold text-slate-700">
                       Indicator search
                     </label>
@@ -1048,8 +953,7 @@ export default function CountryProfilePage() {
                       </>
                     )}
                   </>
-                )}
-              </div>
+                </div>
             </div>
           </aside>
 
@@ -1075,31 +979,6 @@ export default function CountryProfilePage() {
                   )}
                 </>
               )}
-
-              {!tabSwitchLoading && tab === "faostat" && (
-                <>
-                  {faoLoading ? (
-                    <LoaderCard label="Food & Agriculture Org data" />
-                  ) : (
-                    <FaostatTab
-                      iso3={iso3}
-                      showExternalEnrichment
-                      faoModule={faoModule}
-                      onPickModule={loadFao}
-                      loading={faoLoading}
-                      overview={faoOverview}
-                      top={faoTop}
-                      trade={trade}
-                      tradeTopN={tradeTopN}
-                      tradeYears={tradeYears}
-                      setTradeTopN={setTradeTopN}
-                      setTradeYears={setTradeYears}
-                      prod={prod}
-                    />
-                  )}
-                </>
-              )}
-
               {!tabSwitchLoading && tab === "weo" && (
                 <WeoTab iso3={iso3} initialIndicator={normalizedIndicator} />
               )}
