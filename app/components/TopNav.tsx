@@ -7,10 +7,9 @@ import AuthNavButton from "@/components/AuthNavButton";
 const NAV_ITEMS = [
   { label: "Home", href: "/" },
   { label: "Global Pulse", href: "/global-pulse" },
-  { label: "Monetary", href: "/monetary" },
-  { label: "Fiscal", href: "/fiscal" },
-  { label: "Debt", href: "/debt" },
+  { label: "Macro & Finance", href: "/macro-finance" },
   { label: "Energy", href: "/energy" },
+  { label: "FAO", href: "/faostat" },
   { label: "IMF (WEO)", href: "/imf-weo" },
   { label: "History", href: "/history" },
   { label: "Corporate 500", href: "/corporate-intelligence" },
@@ -20,13 +19,36 @@ const NAV_ITEMS = [
 const MOBILE_ITEMS = [
   { label: "Home", href: "/" },
   { label: "Pulse", href: "/global-pulse" },
-  { label: "Monetary", href: "/monetary" },
+  { label: "Macro", href: "/macro-finance" },
+  { label: "FAO", href: "/faostat" },
   { label: "History", href: "/history" },
   { label: "IMF", href: "/imf-weo" },
 ];
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
+
+  if (href === "/macro-finance") {
+    return (
+      pathname === "/macro-finance" ||
+      pathname.startsWith("/macro-finance/") ||
+      pathname === "/monetary" ||
+      pathname.startsWith("/monetary/") ||
+      pathname === "/fiscal" ||
+      pathname.startsWith("/fiscal/") ||
+      pathname === "/debt" ||
+      pathname.startsWith("/debt/")
+    );
+  }
+
+  if (href === "/faostat") {
+    return (
+      pathname === "/faostat" ||
+      pathname.startsWith("/faostat/") ||
+      pathname.includes("dataset=faostat") ||
+      pathname.includes("dataset=fao")
+    );
+  }
 
   if (href === "/imf-weo") {
     return (
@@ -38,10 +60,6 @@ function isActivePath(pathname: string, href: string) {
 
   if (href === "/history") {
     return pathname === "/history" || pathname.startsWith("/history/");
-  }
-
-  if (href === "/monetary") {
-    return pathname === "/monetary" || pathname.startsWith("/monetary/");
   }
 
   return pathname === href || pathname.startsWith(`${href}/`);
