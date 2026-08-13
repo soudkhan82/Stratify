@@ -219,6 +219,29 @@ const MONETARY_CODES = {
   marketCap: "CM.MKT.LCAP.GD.ZS",
 } as const;
 
+const MONETARY_DESCRIPTIONS: Record<string, string> = {
+  "FM.LBL.BMNY.GD.ZS": "Money circulating in the economy, including cash and bank deposits, shown relative to the size of the economy.",
+  "FM.LBL.BMNY.ZG": "Year-on-year change in broad money. Faster growth means more liquidity and can also add inflation pressure.",
+  "FS.AST.PRVT.GD.ZS": "Credit provided by banks to the private sector, measured relative to GDP. It shows how strongly banking finance supports businesses and households.",
+  "FR.INR.LEND": "Average rate banks charge borrowers. Higher lending rates usually mean more expensive business and consumer financing.",
+  "FR.INR.DPST": "Average rate paid by banks on deposits. It reflects what savers earn by keeping money in banks.",
+  "FR.INR.RINR": "Interest rate after adjusting for inflation. Positive real rates generally mean savings keep purchasing power better than inflation erodes it.",
+  "PA.NUS.FCRF": "Local-currency units needed to buy one US dollar. A higher value generally indicates a weaker local currency.",
+  "FI.RES.TOTL.CD": "Foreign reserve assets held by the central bank, including gold, used to support imports, debt payments and currency stability.",
+  "FI.RES.XGLD.CD": "Foreign reserve assets excluding gold. Useful when you want to focus on liquid external buffers apart from gold holdings.",
+  "FB.AST.NPER.ZS": "Share of bank loans that are not being repaid on time. Higher values suggest rising stress in the banking system.",
+  "CM.MKT.LCAP.GD.ZS": "Market value of listed domestic companies as a share of GDP. It indicates the relative size of the stock market in the economy.",
+  "CM.MKT.TRAD.GD.ZS": "Total value of shares traded during the year relative to GDP. It signals how active the equity market is.",
+  "CM.MKT.TRNR": "Trading activity compared with average market capitalization. Higher turnover usually means stronger liquidity in the stock market.",
+};
+
+function monetaryDefinition(code?: string, label?: string) {
+  if (code && MONETARY_DESCRIPTIONS[code]) return MONETARY_DESCRIPTIONS[code];
+  return label
+    ? `${label} is one of the monetary or financial indicators used to understand liquidity, banking conditions, market depth or external stability.`
+    : "This indicator helps explain monetary conditions, banking health, or external sector strength for the selected country.";
+}
+
 function asNumber(value: unknown): number | null {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
@@ -1038,10 +1061,9 @@ export default function MacroFinancePage() {
               <MetricCard label="Total reserves" value={metricValue(reserves.value, "US$")} meta={`${reserves.year ?? "—"} · current US$`} icon={<Database className="h-5 w-5" />} tone="emerald" />
               <MetricCard label="NPL ratio" value={metricValue(npl.value, "%")} meta={`${npl.year ?? "—"} · loans`} icon={<Activity className="h-5 w-5" />} tone="rose" />
               <MetricCard label="Market cap / GDP" value={metricValue(marketCap.value, "%")} meta={`${marketCap.year ?? "—"} · equity market`} icon={<Building2 className="h-5 w-5" />} tone="sky" />
-              <MetricCard label="Coverage" value={`${bundle.monetary?.coverage?.available_latest_values ?? 0}/${bundle.monetary?.coverage?.requested_indicators ?? 0}`} meta="Indicators with latest values" icon={<Database className="h-5 w-5" />} tone="slate" />
             </div>
 
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.65fr)_360px]">
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.38fr)_minmax(360px,0.95fr)]">
               <Panel
                 title={selectedMonetary?.label ?? "Monetary trend"}
                 subtitle={`${selectedMonetary?.unit ?? ""} · ${countryName}`}
@@ -1049,7 +1071,7 @@ export default function MacroFinancePage() {
                   <select
                     value={selectedMonetaryCode}
                     onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setSelectedMonetaryCode(event.target.value)}
-                    className="h-9 max-w-[260px] rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-300"
+                    className="h-9 max-w-[280px] rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-300"
                   >
                     {(bundle.monetary?.indicators ?? []).map((item) => (
                       <option key={item.code} value={item.code}>{item.label}</option>
@@ -1057,6 +1079,17 @@ export default function MacroFinancePage() {
                   </select>
                 }
               >
+                <div className="border-b border-slate-100 bg-slate-50/70 px-4 py-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-[11px] font-black text-indigo-700 ring-1 ring-indigo-100">i</div>
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">What it means</div>
+                      <p className="mt-0.5 text-xs font-medium leading-5 text-slate-600">
+                        {monetaryDefinition(selectedMonetary?.code, selectedMonetary?.label)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
                 <div className="h-[390px] px-2 pb-3 pt-4 sm:px-4">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={selectedMonetarySeries} margin={{ top: 8, right: 18, bottom: 4, left: 8 }}>
@@ -1070,65 +1103,90 @@ export default function MacroFinancePage() {
                 </div>
               </Panel>
 
-              <Panel title="Indicator coverage" subtitle="What is actually available for this country">
-                <div className="p-5">
-                  <div className="rounded-2xl bg-slate-950 p-5 text-white">
-                    <div className="text-[11px] font-bold uppercase tracking-[0.13em] text-slate-400">Available</div>
-                    <div className="mt-2 text-4xl font-black tracking-tight">
-                      {bundle.monetary?.coverage?.available_latest_values ?? 0}
-                      <span className="ml-1 text-lg text-slate-400">/ {bundle.monetary?.coverage?.requested_indicators ?? 0}</span>
+              <Panel
+                title="Historical records"
+                subtitle={`${selectedMonetary?.label ?? "Monetary indicator"} · ${selectedMonetary?.unit ?? ""}`}
+              >
+                <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-3">
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">Latest value</div>
+                      <div className="mt-1 text-lg font-black text-slate-950">{metricValue(asNumber(selectedMonetary?.latestValue), selectedMonetary?.unit ?? "")}</div>
                     </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
-                      <div
-                        className="h-full rounded-full bg-indigo-400"
-                        style={{
-                          width: `${Math.min(100, ((bundle.monetary?.coverage?.available_latest_values ?? 0) / Math.max(1, bundle.monetary?.coverage?.requested_indicators ?? 1)) * 100)}%`,
-                        }}
-                      />
+                    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">Latest year</div>
+                      <div className="mt-1 text-lg font-black text-slate-950">{selectedMonetary?.latestYear ?? "—"}</div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">Data points</div>
+                      <div className="mt-1 text-lg font-black text-slate-950">{selectedMonetary?.availablePoints ?? selectedMonetarySeries.length}</div>
                     </div>
                   </div>
-                  <div className="mt-4 space-y-2">
-                    {Object.entries(bundle.monetary?.groups ?? {}).map(([group, rows]) => {
-                      const available = (rows ?? []).filter((row) => row.latestValue !== null).length;
-                      return (
-                        <div key={group} className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
-                          <span className="text-xs font-semibold text-slate-600">{group}</span>
-                          <span className="text-xs font-black text-slate-900">{available}/{rows.length}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
+                </div>
+                <div className="max-h-[450px] overflow-auto">
+                  <table className="w-full">
+                    <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                      <tr>
+                        <th className="px-4 py-3 text-left">Year</th>
+                        <th className="px-4 py-3 text-right">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {selectedMonetarySeries.length ? (
+                        [...selectedMonetarySeries].reverse().map((point) => (
+                          <tr key={point.year} className="transition hover:bg-slate-50">
+                            <td className="px-4 py-2.5 text-xs font-bold text-slate-600">{point.year}</td>
+                            <td className="px-4 py-2.5 text-right text-sm font-black tabular-nums text-slate-950">
+                              {metricValue(point.value, selectedMonetary?.unit ?? "")}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={2} className="px-4 py-8 text-center text-sm font-medium text-slate-500">
+                            No historical records available for this indicator.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </Panel>
             </div>
 
-            <Panel title="Monetary indicator catalogue" subtitle="Latest observed value for each World Bank monetary / financial series">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[820px] text-left">
-                  <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                    <tr>
-                      <th className="px-5 py-3">Indicator</th>
-                      <th className="px-4 py-3">Category</th>
-                      <th className="px-4 py-3">Latest year</th>
-                      <th className="px-4 py-3 text-right">Latest value</th>
-                      <th className="px-5 py-3 text-right">Points</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {(bundle.monetary?.indicators ?? []).map((row) => (
-                      <tr key={row.code} className="hover:bg-slate-50/70">
-                        <td className="px-5 py-3.5">
-                          <div className="text-sm font-bold text-slate-900">{row.label}</div>
-                          <div className="mt-0.5 text-[11px] font-mono text-slate-400">{row.code}</div>
-                        </td>
-                        <td className="px-4 py-3.5 text-xs font-semibold text-slate-600">{row.category}</td>
-                        <td className="px-4 py-3.5 text-xs font-semibold text-slate-600">{row.latestYear ?? "—"}</td>
-                        <td className="px-4 py-3.5 text-right text-sm font-black tabular-nums text-slate-900">{metricValue(asNumber(row.latestValue), row.unit ?? "")}</td>
-                        <td className="px-5 py-3.5 text-right text-xs font-semibold text-slate-500">{row.availablePoints ?? 0}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <Panel title="Monetary indicator glossary" subtitle="Plain-English guide for the indicators available in this country view">
+              <div className="grid gap-3 p-4 md:grid-cols-2 2xl:grid-cols-3">
+                {(bundle.monetary?.indicators ?? []).map((row) => (
+                  <button
+                    key={row.code}
+                    type="button"
+                    onClick={() => setSelectedMonetaryCode(row.code)}
+                    className={`rounded-2xl border p-4 text-left transition ${
+                      selectedMonetaryCode === row.code
+                        ? "border-indigo-200 bg-indigo-50/70 shadow-sm"
+                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-black leading-5 text-slate-950">{row.label}</div>
+                        <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
+                          {row.category} · {row.unit ?? "No unit"}
+                        </div>
+                      </div>
+                      <div className="shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-600">
+                        {row.latestYear ?? "—"}
+                      </div>
+                    </div>
+                    <p className="mt-2 text-xs font-medium leading-5 text-slate-600">
+                      {monetaryDefinition(row.code, row.label)}
+                    </p>
+                    <div className="mt-3 flex items-center justify-between text-[11px]">
+                      <span className="font-semibold text-slate-400">Latest value</span>
+                      <span className="font-black text-slate-900">{metricValue(asNumber(row.latestValue), row.unit ?? "")}</span>
+                    </div>
+                  </button>
+                ))}
               </div>
             </Panel>
           </div>
