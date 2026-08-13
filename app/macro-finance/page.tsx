@@ -162,6 +162,7 @@ type ExplorerMetric = {
   label: string;
   unit: string;
   domain: "Monetary" | "Fiscal" | "Debt";
+  description: string;
   series: SeriesPoint[];
 };
 
@@ -644,16 +645,86 @@ export default function MacroFinancePage() {
       .sort((a, b) => a.year - b.year);
 
     return [
-      { key: "money-supply", label: "Broad money", unit: "% of GDP", domain: "Monetary", series: monetarySeries(MONETARY_CODES.moneySupply) },
-      { key: "money-growth", label: "Broad money growth", unit: "annual %", domain: "Monetary", series: monetarySeries(MONETARY_CODES.moneyGrowth) },
-      { key: "lending-rate", label: "Lending interest rate", unit: "%", domain: "Monetary", series: monetarySeries(MONETARY_CODES.lendingRate) },
-      { key: "exchange-rate", label: "Official exchange rate", unit: "LCU per US$", domain: "Monetary", series: monetarySeries(MONETARY_CODES.exchangeRate) },
-      { key: "reserves", label: "Total reserves", unit: "US$", domain: "Monetary", series: monetarySeries(MONETARY_CODES.reserves) },
-      { key: "revenue", label: "Government revenue", unit: "% of GDP", domain: "Fiscal", series: fiscalSeries(bundle.revenue) },
-      { key: "expenditure", label: "Government expenditure", unit: "% of GDP", domain: "Fiscal", series: fiscalSeries(bundle.expenditure) },
-      { key: "primary", label: "Primary balance", unit: "% of GDP", domain: "Fiscal", series: fiscalSeries(bundle.primary) },
-      { key: "overall", label: "Overall balance (proxy)", unit: "% of GDP", domain: "Fiscal", series: fiscalSeries(bundle.overall) },
-      { key: "debt", label: "General government gross debt", unit: "% of GDP", domain: "Debt", series: debtSeries },
+      {
+        key: "money-supply",
+        label: "Broad money",
+        unit: "% of GDP",
+        domain: "Monetary",
+        description: "Money circulating in the economy, including cash and bank deposits, shown relative to the size of the economy.",
+        series: monetarySeries(MONETARY_CODES.moneySupply),
+      },
+      {
+        key: "money-growth",
+        label: "Broad money growth",
+        unit: "annual %",
+        domain: "Monetary",
+        description: "Year-on-year change in broad money. Faster growth means more liquidity and can also add inflation pressure.",
+        series: monetarySeries(MONETARY_CODES.moneyGrowth),
+      },
+      {
+        key: "lending-rate",
+        label: "Lending interest rate",
+        unit: "%",
+        domain: "Monetary",
+        description: "The interest rate banks charge borrowers, giving a practical view of financing and credit costs in the economy.",
+        series: monetarySeries(MONETARY_CODES.lendingRate),
+      },
+      {
+        key: "exchange-rate",
+        label: "Official exchange rate",
+        unit: "LCU per US$",
+        domain: "Monetary",
+        description: "Local-currency units needed to buy one US dollar. A higher value normally indicates a weaker local currency.",
+        series: monetarySeries(MONETARY_CODES.exchangeRate),
+      },
+      {
+        key: "reserves",
+        label: "Total reserves",
+        unit: "US$",
+        domain: "Monetary",
+        description: "Foreign-currency reserve assets held by the central bank and monetary authorities to support external payments and stability.",
+        series: monetarySeries(MONETARY_CODES.reserves),
+      },
+      {
+        key: "revenue",
+        label: "Government revenue",
+        unit: "% of GDP",
+        domain: "Fiscal",
+        description: "Government income from taxes and other receipts before borrowing, expressed as a share of GDP.",
+        series: fiscalSeries(bundle.revenue),
+      },
+      {
+        key: "expenditure",
+        label: "Government expenditure",
+        unit: "% of GDP",
+        domain: "Fiscal",
+        description: "Total government spending on services, transfers, investment and other outlays, expressed as a share of GDP.",
+        series: fiscalSeries(bundle.expenditure),
+      },
+      {
+        key: "primary",
+        label: "Primary balance",
+        unit: "% of GDP",
+        domain: "Fiscal",
+        description: "Government revenue minus non-interest spending. It shows the fiscal position before the cost of servicing existing debt.",
+        series: fiscalSeries(bundle.primary),
+      },
+      {
+        key: "overall",
+        label: "Overall balance (proxy)",
+        unit: "% of GDP",
+        domain: "Fiscal",
+        description: "Government revenue minus total expenditure, including interest costs. Negative values indicate a fiscal deficit.",
+        series: fiscalSeries(bundle.overall),
+      },
+      {
+        key: "debt",
+        label: "General government gross debt",
+        unit: "% of GDP",
+        domain: "Debt",
+        description: "Outstanding general-government liabilities before deducting financial assets, measured relative to GDP.",
+        series: debtSeries,
+      },
     ];
   }, [bundle]);
 
@@ -1279,98 +1350,127 @@ export default function MacroFinancePage() {
         ) : null}
 
         {view === "explorer" ? (
-          <div className="mt-5 space-y-5">
-            <div className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
-              <Panel title="Metric selector" subtitle="Use one clean explorer instead of scattered detail pages">
-                <div className="p-4">
+          <div className="mt-5">
+            <div className="grid gap-4 xl:grid-cols-[290px_minmax(0,1fr)]">
+              <Panel title="Indicator guide" subtitle="Choose a metric · plain-English definitions included">
+                <div className="max-h-[650px] overflow-y-auto p-3">
                   <div className="space-y-1.5">
                     {explorerMetrics.map((item) => (
                       <button
                         key={item.key}
                         type="button"
                         onClick={() => setExplorerKey(item.key)}
-                        className={`flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition ${
+                        className={`w-full rounded-xl px-3 py-2.5 text-left transition ${
                           explorerKey === item.key
-                            ? "bg-slate-950 text-white"
-                            : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+                            ? "bg-slate-950 text-white shadow-sm"
+                            : "border border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-50"
                         }`}
                       >
-                        <div>
-                          <div className="text-xs font-bold">{item.label}</div>
-                          <div className={`mt-0.5 text-[10px] font-semibold ${explorerKey === item.key ? "text-slate-400" : "text-slate-400"}`}>{item.domain} · {item.unit}</div>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-xs font-black leading-5">{item.label}</div>
+                            <div
+                              className={`mt-0.5 text-[10px] font-bold uppercase tracking-[0.08em] ${
+                                explorerKey === item.key ? "text-slate-400" : "text-slate-400"
+                              }`}
+                            >
+                              {item.domain} · {item.unit}
+                            </div>
+                          </div>
+                          <ArrowRight className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${explorerKey === item.key ? "text-white" : "text-slate-300"}`} />
                         </div>
-                        <ArrowRight className="h-3.5 w-3.5" />
+                        <p
+                          className={`mt-1.5 line-clamp-2 text-[10.5px] font-medium leading-[15px] ${
+                            explorerKey === item.key ? "text-slate-300" : "text-slate-500"
+                          }`}
+                        >
+                          {item.description}
+                        </p>
                       </button>
                     ))}
                   </div>
                 </div>
               </Panel>
 
-              <Panel
-                title={selectedExplorer?.label ?? "Data explorer"}
-                subtitle={`${countryName} · ${selectedExplorer?.unit ?? ""}`}
-                action={
-                  <button
-                    type="button"
-                    onClick={() =>
-                      downloadCsv(
-                        `macro_finance_${country}_${selectedExplorer?.key ?? "metric"}.csv`,
-                        (selectedExplorer?.series ?? []).map((point) => ({
-                          country: countryName,
-                          iso3: country,
-                          domain: selectedExplorer?.domain,
-                          metric: selectedExplorer?.label,
-                          unit: selectedExplorer?.unit,
-                          year: point.year,
-                          value: point.value,
-                        })),
-                      )
-                    }
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    CSV
-                  </button>
-                }
-              >
-                <div className="h-[400px] px-2 pb-3 pt-4 sm:px-4">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={selectedExplorer?.series ?? []} margin={{ top: 8, right: 18, bottom: 4, left: 8 }}>
-                      <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 5" vertical={false} />
-                      <XAxis dataKey="year" tick={{ fill: "#64748b", fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={28} />
-                      <YAxis tick={{ fill: "#64748b", fontSize: 11 }} axisLine={false} tickLine={false} width={62} tickFormatter={(value: any) => compactNumber(Number(value), 1)} />
-                      <Tooltip formatter={(value: any) => [compactNumber(Number(value), 2), selectedExplorer?.unit ?? ""]} labelFormatter={(label: any) => `Year ${label}`} />
-                      <Line connectNulls type="monotone" dataKey="value" stroke="#4f46e5" strokeWidth={2.8} dot={false} activeDot={{ r: 5 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </Panel>
-            </div>
+              <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.12fr)_minmax(410px,0.88fr)]">
+                <Panel
+                  title={selectedExplorer?.label ?? "Data explorer"}
+                  subtitle={`${countryName} · ${selectedExplorer?.unit ?? ""}`}
+                  action={
+                    <button
+                      type="button"
+                      onClick={() =>
+                        downloadCsv(
+                          `macro_finance_${country}_${selectedExplorer?.key ?? "metric"}.csv`,
+                          (selectedExplorer?.series ?? []).map((point) => ({
+                            country: countryName,
+                            iso3: country,
+                            domain: selectedExplorer?.domain,
+                            metric: selectedExplorer?.label,
+                            unit: selectedExplorer?.unit,
+                            year: point.year,
+                            value: point.value,
+                          })),
+                        )
+                      }
+                      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      CSV
+                    </button>
+                  }
+                >
+                  <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-3">
+                    <div className="flex items-start gap-2.5">
+                      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-[11px] font-black text-indigo-700 ring-1 ring-indigo-100">i</div>
+                      <div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">What it means</div>
+                        <p className="mt-0.5 text-xs font-medium leading-5 text-slate-600">
+                          {selectedExplorer?.description}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="h-[430px] px-2 pb-3 pt-4 sm:px-4">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={selectedExplorer?.series ?? []} margin={{ top: 8, right: 14, bottom: 4, left: 0 }}>
+                        <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 5" vertical={false} />
+                        <XAxis dataKey="year" tick={{ fill: "#64748b", fontSize: 10 }} axisLine={false} tickLine={false} minTickGap={24} />
+                        <YAxis tick={{ fill: "#64748b", fontSize: 10 }} axisLine={false} tickLine={false} width={54} tickFormatter={(value: any) => compactNumber(Number(value), 1)} />
+                        <Tooltip formatter={(value: any) => [compactNumber(Number(value), 2), selectedExplorer?.unit ?? ""]} labelFormatter={(label: any) => `Year ${label}`} />
+                        <Line connectNulls type="monotone" dataKey="value" stroke="#4f46e5" strokeWidth={2.6} dot={false} activeDot={{ r: 4 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Panel>
 
-            <Panel title="Historical records" subtitle="Direct series values used by the selected visualization">
-              <div className="max-h-[500px] overflow-auto">
-                <table className="w-full min-w-[620px]">
-                  <thead className="sticky top-0 bg-slate-50 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                    <tr>
-                      <th className="px-5 py-3 text-left">Year</th>
-                      <th className="px-4 py-3 text-left">Metric</th>
-                      <th className="px-4 py-3 text-left">Unit</th>
-                      <th className="px-5 py-3 text-right">Value</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {[...(selectedExplorer?.series ?? [])].reverse().map((point) => (
-                      <tr key={point.year} className="hover:bg-slate-50">
-                        <td className="px-5 py-3 text-xs font-black text-slate-700">{point.year}</td>
-                        <td className="px-4 py-3 text-xs font-semibold text-slate-600">{selectedExplorer?.label}</td>
-                        <td className="px-4 py-3 text-xs font-medium text-slate-400">{selectedExplorer?.unit}</td>
-                        <td className="px-5 py-3 text-right text-sm font-black tabular-nums text-slate-950">{metricValue(point.value, selectedExplorer?.unit ?? "")}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <Panel
+                  title="Historical records"
+                  subtitle={`${selectedExplorer?.label ?? "Metric"} · ${selectedExplorer?.unit ?? ""}`}
+                >
+                  <div className="max-h-[536px] overflow-auto">
+                    <table className="w-full">
+                      <thead className="sticky top-0 z-10 bg-slate-50 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                        <tr>
+                          <th className="px-4 py-3 text-left">Year</th>
+                          <th className="px-4 py-3 text-right">Value</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {[...(selectedExplorer?.series ?? [])].reverse().map((point) => (
+                          <tr key={point.year} className="transition hover:bg-slate-50">
+                            <td className="px-4 py-2.5 text-xs font-bold text-slate-600">{point.year}</td>
+                            <td className="px-4 py-2.5 text-right text-sm font-black tabular-nums text-slate-950">
+                              {metricValue(point.value, selectedExplorer?.unit ?? "")}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Panel>
               </div>
-            </Panel>
+            </div>
           </div>
         ) : null}
 
