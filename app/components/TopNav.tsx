@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { label: "Global Pulse", href: "/global-pulse" },
   { label: "Macro & Finance", href: "/macro-finance" },
   { label: "Energy", href: "/energy" },
+  { label: "Agriculture", href: "/agriculture" },
   { label: "History", href: "/history" },
   { label: "Corporate 500", href: "/corporate-intelligence" },
   { label: "Credits", href: "/credits" },
@@ -18,6 +19,7 @@ const MOBILE_ITEMS = [
   { label: "Home", href: "/" },
   { label: "Pulse", href: "/global-pulse" },
   { label: "Macro", href: "/macro-finance" },
+  { label: "Agri", href: "/agriculture" },
   { label: "History", href: "/history" },
 ];
 

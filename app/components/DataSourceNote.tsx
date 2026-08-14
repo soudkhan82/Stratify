@@ -12,6 +12,8 @@ const SOURCE_NOTES = {
 
   macroFinance:
     "Macro & Finance sources: World Bank monetary and financial indicators, IMF World Economic Outlook (WEO), IMF Government Finance Statistics (GFS), IMF Fiscal Monitor, IMF Global Debt Database, and World Bank International Debt Statistics (IDS). Updated periodically for analytical use.",
+  agriculture:
+    "Agriculture Atlas source: FAOSTAT Crops and Livestock Products (QCL), accessed on demand through the FAOSTAT API. Country points are representative locations from the packaged world-countries reference dataset; values are national annual totals.",
 
   debt:
     "Data sources: IMF World Economic Outlook (WEO) - General Government Gross Debt, IMF Global Debt Database, World Bank International Debt Statistics (IDS), and World Bank WDI debt indicators. Updated periodically for analytical use.",
@@ -40,6 +42,7 @@ function getSourceNote(pathname: string) {
 
   if (path.startsWith("/global-pulse")) return SOURCE_NOTES.globalPulse;
   if (path.startsWith("/macro-finance")) return SOURCE_NOTES.macroFinance;
+  if (path.startsWith("/agriculture")) return SOURCE_NOTES.agriculture;
   if (path === "/" || path.startsWith("/world")) return SOURCE_NOTES.home;
   if (path.startsWith("/debt")) return SOURCE_NOTES.debt;
   if (path.startsWith("/energy")) return SOURCE_NOTES.energy;

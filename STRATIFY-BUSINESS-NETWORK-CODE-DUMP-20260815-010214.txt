@@ -1,0 +1,2153 @@
+
+######################################################################
+FILE: C:\NextJS\stratify\package.json
+######################################################################
+{
+  "name": "stratify",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build --turbopack",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-scroll-area": "^1.2.10",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-separator": "^1.1.8",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@supabase/ssr": "^0.12.0",
+    "@supabase/supabase-js": "^2.110.0",
+    "@tanstack/react-query": "^5.89.0",
+    "@vnedyalk0v/react19-simple-maps": "^1.2.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "d3-interpolate": "^3.0.1",
+    "d3-scale": "^4.0.2",
+    "d3-scale-chromatic": "^3.1.0",
+    "i18n-iso-countries": "^7.14.0",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.544.0",
+    "mapbox-gl": "^3.21.0",
+    "maplibre-gl": "^5.7.2",
+    "next": "^16.1.4",
+    "pg": "^8.17.2",
+    "radix-ui": "^1.4.3",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-leaflet": "^5.0.0",
+    "react-map-gl": "^8.1.0",
+    "recharts": "^3.2.1",
+    "tailwind-merge": "^3.4.0",
+    "world-countries": "^5.1.0",
+    "zod": "^4.1.9"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/leaflet": "^1.9.21",
+    "@types/mapbox-gl": "^3.4.1",
+    "@types/node": "^20",
+    "@types/pg": "^8.16.0",
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.66",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.7",
+    "mapshaper": "^0.6.113",
+    "tailwindcss": "^4",
+    "tw-animate-css": "^1.3.8",
+    "typescript": "^5"
+  }
+}
+
+
+######################################################################
+FILE: C:\NextJS\stratify\proxy.ts
+######################################################################
+import { type NextRequest } from "next/server";
+import { updateSession } from "@/lib/supabase/proxy";
+
+export async function proxy(request: NextRequest) {
+  return updateSession(request);
+}
+
+export const config = {
+  matcher: [
+    "/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map|woff|woff2)$).*)",
+  ],
+};
+
+######################################################################
+FILE: C:\NextJS\stratify\app\agriculture\page.tsx
+######################################################################
+"use client";
+
+import dynamic from "next/dynamic";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ChevronRight,
+  Globe2,
+  Loader2,
+  MapPinned,
+  Search,
+  Sprout,
+  Trophy,
+  Wheat,
+} from "lucide-react";
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip as ChartTooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import type { AgricultureMapRow } from "./_components/AgricultureMap";
+
+const AgricultureMap = dynamic(
+  () => import("./_components/AgricultureMap"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex min-h-[410px] items-center justify-center rounded-[24px] bg-slate-100">
+        <div className="flex items-center gap-2 text-sm font-bold text-slate-500">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          Preparing map
+        </div>
+      </div>
+    ),
+  },
+);
+
+type CropMeta = {
+  key: string;
+  label: string;
+  itemCode: string;
+  cpc?: string;
+  group: string;
+  countries?: number;
+  fileKB?: number;
+};
+
+type MetaPayload = {
+  source: string;
+  sourceMode: string;
+  catalogueMode?: string;
+  metric: string;
+  minYear: number;
+  latestYear: number;
+  generatedAt: string;
+  cropCount?: number;
+  crops: CropMeta[];
+};
+
+type StaticCountry = {
+  iso3: string;
+  m49: string;
+  country: string;
+  lat: number;
+  lng: number;
+  unit: string;
+  series: unknown[];
+};
+
+type CropPayload = {
+  source: string;
+  sourceMode: string;
+  cropKey: string;
+  crop: string;
+  itemCode: string;
+  cpc?: string;
+  group: string;
+  metric: string;
+  minYear: number;
+  latestYear: number;
+  generatedAt: string;
+  countries: StaticCountry[];
+};
+
+type TrendPoint = {
+  year: number;
+  value: number;
+  unit: string;
+};
+
+function normalizeSeries(raw: unknown): Array<[number, number]> {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return [];
+  }
+
+  const first = raw[0];
+
+  if (Array.isArray(first)) {
+    const nested: Array<[number, number]> = [];
+
+    for (const entry of raw) {
+      if (!Array.isArray(entry) || entry.length < 2) {
+        continue;
+      }
+
+      const seriesYear = Number(entry[0]);
+      const seriesValue = Number(entry[1]);
+
+      if (
+        Number.isFinite(seriesYear) &&
+        Number.isFinite(seriesValue)
+      ) {
+        nested.push([seriesYear, seriesValue]);
+      }
+    }
+
+    return nested;
+  }
+
+  // Compatibility with any older flattened cache:
+  // [1992, value, 1993, value, ...]
+  const flat: Array<[number, number]> = [];
+
+  for (let index = 0; index + 1 < raw.length; index += 2) {
+    const seriesYear = Number(raw[index]);
+    const seriesValue = Number(raw[index + 1]);
+
+    if (
+      Number.isFinite(seriesYear) &&
+      Number.isFinite(seriesValue)
+    ) {
+      flat.push([seriesYear, seriesValue]);
+    }
+  }
+
+  return flat;
+}
+
+function formatNumber(
+  value: number,
+  maximumFractionDigits = 1,
+) {
+  if (!Number.isFinite(value)) {
+    return "n/a";
+  }
+
+  return new Intl.NumberFormat("en", {
+    maximumFractionDigits,
+  }).format(value);
+}
+
+function compact(value: number) {
+  if (!Number.isFinite(value)) {
+    return "n/a";
+  }
+
+  return new Intl.NumberFormat("en", {
+    notation: "compact",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function Selector({
+  label,
+  value,
+  onChange,
+  children,
+}: {
+  label: string;
+  value: string | number;
+  onChange: (value: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="min-w-[170px] flex-1">
+      <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+        {label}
+      </span>
+
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+      >
+        {children}
+      </select>
+    </label>
+  );
+}
+
+export default function AgriculturePage() {
+  const [meta, setMeta] = useState<MetaPayload | null>(null);
+  const [crop, setCrop] = useState("wheat");
+  const [year, setYear] = useState(2024);
+  const [cropData, setCropData] = useState<CropPayload | null>(
+    null,
+  );
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selectedIso3, setSelectedIso3] = useState<
+    string | null
+  >(null);
+  const [countryQuery, setCountryQuery] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    fetch(
+      `/data/agriculture/meta.json?v=catalogue-clean`,
+      {
+        cache: "no-store",
+      },
+    )
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(
+            `Agriculture metadata HTTP ${response.status}`,
+          );
+        }
+
+        return (await response.json()) as MetaPayload;
+      })
+      .then((payload) => {
+        if (!active) {
+          return;
+        }
+
+        setMeta(payload);
+
+        if (payload.latestYear) {
+          setYear(payload.latestYear);
+        }
+
+        // Keep wheat when available; otherwise use first catalogue item.
+        if (
+          !payload.crops.some((item) => item.key === crop) &&
+          payload.crops.length > 0
+        ) {
+          setCrop(payload.crops[0].key);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!active) {
+          return;
+        }
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load Agriculture Atlas metadata.",
+        );
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!meta) {
+      return;
+    }
+
+    let active = true;
+
+    const dataVersion =
+      meta.generatedAt || "catalogue-clean";
+
+    const cacheKey =
+      `stratify:agriculture:static:${dataVersion}:${crop}`;
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const cached = sessionStorage.getItem(cacheKey);
+
+      if (cached) {
+        const parsed = JSON.parse(cached) as CropPayload;
+
+        if (
+          parsed?.cropKey === crop &&
+          Array.isArray(parsed.countries)
+        ) {
+          setCropData(parsed);
+          setLoading(false);
+
+          if (year > parsed.latestYear) {
+            setYear(parsed.latestYear);
+          }
+
+          return () => {
+            active = false;
+          };
+        }
+      }
+    } catch {
+      // Local static fetch remains the fallback.
+    }
+
+    fetch(
+      `/data/agriculture/${crop}.json?v=${encodeURIComponent(
+        dataVersion,
+      )}`,
+      {
+        cache: "no-cache",
+      },
+    )
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(
+            `Local crop dataset HTTP ${response.status}: ${crop}`,
+          );
+        }
+
+        return (await response.json()) as CropPayload;
+      })
+      .then((payload) => {
+        if (!active) {
+          return;
+        }
+
+        setCropData(payload);
+
+        if (year > payload.latestYear) {
+          setYear(payload.latestYear);
+        }
+
+        try {
+          sessionStorage.setItem(
+            cacheKey,
+            JSON.stringify(payload),
+          );
+        } catch {
+          // Browser storage is optional.
+        }
+      })
+      .catch((err: unknown) => {
+        if (!active) {
+          return;
+        }
+
+        setCropData(null);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load local crop data.",
+        );
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [crop, meta?.generatedAt]);
+
+  const rows = useMemo((): AgricultureMapRow[] => {
+    if (!cropData) {
+      return [];
+    }
+
+    const base = cropData.countries
+      .map((country) => {
+        const normalizedSeries =
+          normalizeSeries(country.series);
+
+        const observation = normalizedSeries.find(
+          ([seriesYear]) => seriesYear === year,
+        );
+
+        if (!observation) {
+          return null;
+        }
+
+        const value = Number(observation[1]);
+
+        if (!Number.isFinite(value)) {
+          return null;
+        }
+
+        return {
+          iso3: country.iso3,
+          areaCode: country.m49,
+          country: country.country,
+          lat: country.lat,
+          lng: country.lng,
+          crop: cropData.crop,
+          cropKey: cropData.cropKey,
+          year,
+          value,
+          unit: country.unit || "t",
+          rank: null,
+          sharePct: null,
+        } satisfies AgricultureMapRow;
+      })
+      .filter(
+        (row): row is AgricultureMapRow => row !== null,
+      );
+
+    base.sort((a, b) => b.value - a.value);
+
+    const globalTotal = base.reduce(
+      (sum, row) => sum + row.value,
+      0,
+    );
+
+    return base.map((row, index) => ({
+      ...row,
+      rank: index + 1,
+      sharePct:
+        globalTotal > 0
+          ? (row.value / globalTotal) * 100
+          : null,
+    }));
+  }, [cropData, year]);
+
+  const globalTotal = useMemo(
+    () =>
+      rows.reduce(
+        (sum, row) => sum + row.value,
+        0,
+      ),
+    [rows],
+  );
+
+  const selected = useMemo(
+    () =>
+      rows.find(
+        (row) => row.iso3 === selectedIso3,
+      ) ?? null,
+    [rows, selectedIso3],
+  );
+
+  // Never auto-select the top producer.
+  // Initial map therefore remains a global distribution view.
+  useEffect(() => {
+    setSelectedIso3((current) => {
+      if (
+        current &&
+        rows.some((row) => row.iso3 === current)
+      ) {
+        return current;
+      }
+
+      return null;
+    });
+  }, [rows]);
+
+  const trend = useMemo((): TrendPoint[] => {
+    if (!cropData || !selectedIso3) {
+      return [];
+    }
+
+    const country = cropData.countries.find(
+      (item) => item.iso3 === selectedIso3,
+    );
+
+    if (!country) {
+      return [];
+    }
+
+    return normalizeSeries(country.series)
+      .map(([seriesYear, value]) => ({
+        year: seriesYear,
+        value,
+        unit: country.unit || "t",
+      }))
+      .sort((a, b) => a.year - b.year)
+      .slice(-30);
+  }, [cropData, selectedIso3]);
+
+  const topRows = rows.slice(0, 10);
+
+  const searchMatches = useMemo(() => {
+    const query = countryQuery
+      .trim()
+      .toLowerCase();
+
+    if (query.length < 2) {
+      return [];
+    }
+
+    return rows
+      .filter(
+        (row) =>
+          row.country
+            .toLowerCase()
+            .includes(query) ||
+          row.iso3
+            .toLowerCase()
+            .includes(query),
+      )
+      .slice(0, 7);
+  }, [countryQuery, rows]);
+
+  const years = useMemo(() => {
+    const max =
+      cropData?.latestYear ??
+      meta?.latestYear ??
+      2024;
+
+    const min =
+      cropData?.minYear ??
+      meta?.minYear ??
+      1961;
+
+    const values: number[] = [];
+
+    for (
+      let current = max;
+      current >= min;
+      current -= 1
+    ) {
+      values.push(current);
+    }
+
+    return values;
+  }, [cropData, meta]);
+
+  const cropGroups = useMemo(() => {
+    const groups: Map<string, CropMeta[]> = new Map();
+
+    for (const item of meta?.crops ?? []) {
+      const list =
+        groups.get(item.group) ?? [];
+
+      list.push(item);
+      groups.set(item.group, list);
+    }
+
+    return [...groups.entries()];
+  }, [meta]);
+
+  function selectRow(row: AgricultureMapRow) {
+    setSelectedIso3(row.iso3);
+    setCountryQuery("");
+  }
+
+  return (
+    <main className="min-h-screen bg-slate-100">
+      <div className="mx-auto w-full max-w-[1480px] px-4 py-5 sm:px-6 lg:px-8">
+        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div className="max-w-3xl">
+              <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.16em] text-emerald-700">
+                <Sprout className="h-4 w-4" />
+                Agriculture Atlas
+              </div>
+
+              <h1 className="mt-1 text-[30px] font-black tracking-[-0.035em] text-slate-950 sm:text-[34px]">
+                Global Crop Production
+              </h1>
+
+              <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-slate-600">
+                Explore national agricultural output on an
+                interactive proportional-point map. Crop data is
+                served from a compact local FAOSTAT snapshot for
+                fast loading.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-800">
+                FAOSTAT QCL
+              </div>
+
+              <div className="rounded-2xl bg-indigo-50 px-3 py-2 text-xs font-black text-indigo-700">
+                Local cached snapshot
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 lg:flex-row lg:items-end">
+            <Selector
+              label={`Crop (${meta?.crops?.length ?? 0} available)`}
+              value={crop}
+              onChange={setCrop}
+            >
+              {cropGroups.map(
+                ([group, groupCrops]) => (
+                  <optgroup
+                    key={group}
+                    label={group}
+                  >
+                    {groupCrops.map((item) => (
+                      <option
+                        key={item.key}
+                        value={item.key}
+                      >
+                        {item.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ),
+              )}
+            </Selector>
+
+            <Selector
+              label="Year"
+              value={year}
+              onChange={(value) =>
+                setYear(Number(value))
+              }
+            >
+              {years.map((item) => (
+                <option
+                  key={item}
+                  value={item}
+                >
+                  {item}
+                </option>
+              ))}
+            </Selector>
+
+            <div className="relative min-w-[240px] flex-[1.25]">
+              <label className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                Find country
+              </label>
+
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                <input
+                  value={countryQuery}
+                  onChange={(event) =>
+                    setCountryQuery(
+                      event.target.value,
+                    )
+                  }
+                  placeholder="Type at least 2 characters"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+
+              {searchMatches.length > 0 ? (
+                <div className="absolute z-[700] mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                  {searchMatches.map((row) => (
+                    <button
+                      key={row.iso3}
+                      type="button"
+                      onClick={() =>
+                        selectRow(row)
+                      }
+                      className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-slate-50"
+                    >
+                      <span>
+                        <span className="block text-sm font-black text-slate-800">
+                          {row.country}
+                        </span>
+
+                        <span className="block text-[10px] font-bold text-slate-400">
+                          {row.iso3}
+                        </span>
+                      </span>
+
+                      <span className="text-xs font-black text-emerald-700">
+                        {compact(row.value)}{" "}
+                        {row.unit}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="min-w-[190px] rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+              <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-600">
+                Metric
+              </div>
+
+              <div className="text-sm font-black text-emerald-950">
+                Production quantity
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {error ? (
+          <section className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold leading-6 text-rose-800">
+            <div className="font-black">
+              Agriculture Atlas local dataset could not
+              load.
+            </div>
+
+            <div className="mt-1">
+              {error}
+            </div>
+          </section>
+        ) : null}
+
+        <section className="relative mt-4">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
+            <div className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white p-2 shadow-sm">
+              {loading ? (
+                <div className="pointer-events-none absolute left-5 top-5 z-[750] flex items-center gap-2 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-black text-slate-700 shadow-md backdrop-blur">
+                  <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+                  Loading crop data
+                </div>
+              ) : null}
+
+              <AgricultureMap
+                rows={rows}
+                selectedIso3={selectedIso3}
+                onSelect={selectRow}
+              />
+            </div>
+
+            <aside className="flex min-h-[426px] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-100 p-4">
+                <div className="flex items-center gap-2">
+                  <Trophy className="h-4 w-4 text-amber-600" />
+
+                  <h2 className="text-base font-black text-slate-900">
+                    Top Producers
+                  </h2>
+                </div>
+
+                <p className="mt-1 text-xs font-semibold text-slate-500">
+                  {cropData?.crop ??
+                    "Selected crop"}{" "}
+                  | {year}
+                </p>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-auto">
+                {topRows.map((row) => {
+                  const active =
+                    row.iso3 === selectedIso3;
+
+                  return (
+                    <button
+                      key={row.iso3}
+                      type="button"
+                      onClick={() =>
+                        selectRow(row)
+                      }
+                      className={[
+                        "flex w-full items-center gap-3 border-b border-slate-100 px-4 py-3 text-left transition",
+                        active
+                          ? "bg-indigo-50"
+                          : "hover:bg-slate-50",
+                      ].join(" ")}
+                    >
+                      <div
+                        className={[
+                          "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black",
+                          active
+                            ? "bg-indigo-600 text-white"
+                            : "bg-slate-100 text-slate-600",
+                        ].join(" ")}
+                      >
+                        {row.rank}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-black text-slate-800">
+                          {row.country}
+                        </div>
+
+                        <div className="text-[10px] font-bold text-slate-400">
+                          {row.sharePct == null
+                            ? row.iso3
+                            : `${row.sharePct.toFixed(
+                                2,
+                              )}% global share`}
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 text-right">
+                        <div className="text-xs font-black text-emerald-700">
+                          {compact(row.value)}
+                        </div>
+
+                        <div className="text-[9px] font-bold text-slate-400">
+                          {row.unit}
+                        </div>
+                      </div>
+
+                      <ChevronRight className="h-4 w-4 text-slate-300" />
+                    </button>
+                  );
+                })}
+
+                {!loading &&
+                topRows.length === 0 ? (
+                  <div className="p-5 text-sm font-semibold text-slate-500">
+                    No production observations are
+                    available for this crop/year.
+                  </div>
+                ) : null}
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+              <Globe2 className="h-4 w-4 text-indigo-500" />
+              Global production
+            </div>
+
+            <div className="mt-2 text-2xl font-black text-slate-950">
+              {compact(globalTotal)}
+
+              <span className="ml-1 text-sm text-slate-500">
+                {rows[0]?.unit ?? ""}
+              </span>
+            </div>
+
+            <div className="mt-1 text-xs font-semibold text-slate-500">
+              Sum of country observations for {year}
+            </div>
+          </div>
+
+          <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+              <Trophy className="h-4 w-4 text-amber-500" />
+              Top producer
+            </div>
+
+            <div className="mt-2 truncate text-2xl font-black text-slate-950">
+              {rows[0]?.country ?? "n/a"}
+            </div>
+
+            <div className="mt-1 text-xs font-semibold text-slate-500">
+              {rows[0]
+                ? `${compact(
+                    rows[0].value,
+                  )} ${rows[0].unit}`
+                : "No data"}
+            </div>
+          </div>
+
+          <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+              <MapPinned className="h-4 w-4 text-emerald-600" />
+              Selected country
+            </div>
+
+            <div className="mt-2 truncate text-2xl font-black text-slate-950">
+              {selected?.country ??
+                "Select a point"}
+            </div>
+
+            <div className="mt-1 text-xs font-semibold text-slate-500">
+              {selected
+                ? `${compact(
+                    selected.value,
+                  )} ${selected.unit}`
+                : "Click any country marker"}
+            </div>
+          </div>
+
+          <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+              <Wheat className="h-4 w-4 text-emerald-600" />
+              Global rank
+            </div>
+
+            <div className="mt-2 text-2xl font-black text-slate-950">
+              {selected?.rank
+                ? `#${selected.rank}`
+                : "n/a"}
+            </div>
+
+            <div className="mt-1 text-xs font-semibold text-slate-500">
+              {selected?.sharePct == null
+                ? `${rows.length} countries with data`
+                : `${selected.sharePct.toFixed(
+                    2,
+                  )}% of global total`}
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
+          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                Historical production
+              </div>
+
+              <h2 className="mt-1 text-lg font-black text-slate-900">
+                {selected?.country ?? "Country"} |{" "}
+                {cropData?.crop ?? "Crop"}
+              </h2>
+            </div>
+
+            <div className="mt-4 h-[280px]">
+              {trend.length > 0 ? (
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                >
+                  <LineChart
+                    data={trend}
+                    margin={{
+                      top: 10,
+                      right: 16,
+                      left: 4,
+                      bottom: 0,
+                    }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="#e2e8f0"
+                    />
+
+                    <XAxis
+                      dataKey="year"
+                      tick={{
+                        fontSize: 10,
+                        fill: "#64748b",
+                        fontWeight: 700,
+                      }}
+                      tickLine={false}
+                      axisLine={{
+                        stroke: "#cbd5e1",
+                      }}
+                      minTickGap={24}
+                    />
+
+                    <YAxis
+                      tickFormatter={(value) =>
+                        compact(
+                          Number(value),
+                        )
+                      }
+                      tick={{
+                        fontSize: 10,
+                        fill: "#64748b",
+                        fontWeight: 700,
+                      }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={58}
+                    />
+
+                    <ChartTooltip
+                      formatter={(
+                        value:
+                          | number
+                          | string,
+                      ) => [
+                        `${formatNumber(
+                          Number(value),
+                          0,
+                        )} ${
+                          trend[0]?.unit ??
+                          ""
+                        }`,
+                        "Production",
+                      ]}
+                      labelFormatter={(label) =>
+                        `Year ${label}`
+                      }
+                      contentStyle={{
+                        borderRadius: 12,
+                        border:
+                          "1px solid #e2e8f0",
+                        boxShadow:
+                          "0 10px 28px rgba(15,23,42,0.10)",
+                      }}
+                    />
+
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#4f46e5"
+                      strokeWidth={2.5}
+                      dot={false}
+                      activeDot={{ r: 5 }}
+                      isAnimationActive={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center rounded-2xl bg-slate-50 text-sm font-semibold text-slate-500">
+                  Select a country point to view
+                  historical records.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-100 p-5">
+              <div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                Annual records
+              </div>
+
+              <h2 className="mt-1 text-lg font-black text-slate-900">
+                Production table
+              </h2>
+            </div>
+
+            <div className="max-h-[330px] overflow-auto">
+              <table className="w-full border-collapse text-left">
+                <thead className="sticky top-0 z-10 bg-slate-50">
+                  <tr className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                    <th className="px-4 py-2.5">
+                      Year
+                    </th>
+
+                    <th className="px-4 py-2.5 text-right">
+                      Production
+                    </th>
+
+                    <th className="px-4 py-2.5">
+                      Unit
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-100">
+                  {[...trend]
+                    .sort(
+                      (a, b) =>
+                        b.year - a.year,
+                    )
+                    .map((point) => (
+                      <tr
+                        key={point.year}
+                        className="hover:bg-slate-50"
+                      >
+                        <td className="px-4 py-2.5 text-sm font-black text-slate-700">
+                          {point.year}
+                        </td>
+
+                        <td className="px-4 py-2.5 text-right text-sm font-black tabular-nums text-slate-900">
+                          {formatNumber(
+                            point.value,
+                            0,
+                          )}
+                        </td>
+
+                        <td className="px-4 py-2.5 text-xs font-bold text-slate-500">
+                          {point.unit}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[11px] font-semibold leading-5 text-slate-500 shadow-sm">
+          Source: FAOSTAT Crops and livestock products
+          (QCL). Production data is pre-filtered into
+          compact local crop files. Map points are
+          representative country locations; values are
+          national totals, not city or farm coordinates.
+        </section>
+      </div>
+    </main>
+  );
+}
+
+######################################################################
+FILE: C:\NextJS\stratify\app\agriculture\_components\AgricultureMap.tsx
+######################################################################
+"use client";
+
+import { memo, useEffect, useMemo, useState } from "react";
+import {
+  CircleMarker,
+  GeoJSON,
+  MapContainer,
+  Pane,
+  Popup,
+  Tooltip,
+  useMap,
+} from "react-leaflet";
+
+export type AgricultureMapRow = {
+  iso3: string;
+  areaCode: string;
+  country: string;
+  lat: number;
+  lng: number;
+  crop: string;
+  cropKey: string;
+  year: number;
+  value: number;
+  unit: string;
+  rank?: number | null;
+  sharePct?: number | null;
+};
+
+const WORLD_MAP_URL = "/maps/world-110m.min.geojson";
+
+function compact(value: number) {
+  if (!Number.isFinite(value)) return "n/a";
+
+  return new Intl.NumberFormat("en", {
+    notation: "compact",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function BaseWorldLayer() {
+  const [world, setWorld] = useState<any>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const controller = new AbortController();
+
+    fetch(WORLD_MAP_URL, {
+      signal: controller.signal,
+      cache: "force-cache",
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`World map HTTP ${response.status}`);
+        }
+
+        return response.json();
+      })
+      .then((data) => {
+        if (alive) setWorld(data);
+      })
+      .catch((error) => {
+        if (error?.name !== "AbortError") {
+          console.warn(
+            "Agriculture base world layer unavailable:",
+            error,
+          );
+        }
+      });
+
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, []);
+
+  if (!world) return null;
+
+  return (
+    <GeoJSON
+      data={world}
+      interactive={false}
+      style={{
+        color: "#b9c8d8",
+        weight: 0.65,
+        opacity: 0.95,
+        fillColor: "#f8fafc",
+        fillOpacity: 1,
+      }}
+    />
+  );
+}
+
+function MapViewport({
+  rows,
+  selected,
+}: {
+  rows: AgricultureMapRow[];
+  selected: AgricultureMapRow | null;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (selected) {
+      map.setView(
+        [selected.lat, selected.lng],
+        Math.max(map.getZoom(), 4),
+        { animate: false },
+      );
+      return;
+    }
+
+    if (!rows.length) {
+      map.setView([18, 5], 1.5, { animate: false });
+      return;
+    }
+
+    const points = rows
+      .filter(
+        (row) =>
+          Number.isFinite(row.lat) &&
+          Number.isFinite(row.lng),
+      )
+      .map(
+        (row) =>
+          [row.lat, row.lng] as [number, number],
+      );
+
+    if (!points.length) {
+      map.setView([18, 5], 1.5, { animate: false });
+      return;
+    }
+
+    map.fitBounds(points, {
+      paddingTopLeft: [70, 55],
+      paddingBottomRight: [70, 55],
+      maxZoom: 1.5,
+      animate: false,
+    });
+  }, [map, rows, selected]);
+
+  return null;
+}
+
+function AgricultureMapComponent({
+  rows,
+  selectedIso3,
+  onSelect,
+}: {
+  rows: AgricultureMapRow[];
+  selectedIso3: string | null;
+  onSelect: (row: AgricultureMapRow) => void;
+}) {
+  const maxValue = useMemo(
+    () => Math.max(
+      1,
+      ...rows.map((row) => Number(row.value) || 0),
+    ),
+    [rows],
+  );
+
+  const selected = useMemo(
+    () =>
+      rows.find((row) => row.iso3 === selectedIso3) ??
+      null,
+    [rows, selectedIso3],
+  );
+
+  function radius(value: number) {
+    const ratio = Math.max(0, value) / maxValue;
+
+    return Math.max(
+      4.5,
+      Math.min(25, 4.5 + Math.sqrt(ratio) * 20.5),
+    );
+  }
+
+  return (
+    <div className="relative h-full min-h-[410px] overflow-hidden rounded-[24px] bg-[#dcecf3]">
+      <MapContainer
+        center={[18, 5]}
+        zoom={1.5}
+        minZoom={1.5}
+        maxZoom={7}
+        zoomSnap={0.5}
+        zoomDelta={0.5}
+        scrollWheelZoom
+        preferCanvas
+        worldCopyJump={false}
+        zoomAnimation={false}
+        fadeAnimation={false}
+        markerZoomAnimation={false}
+        inertia={false}
+        maxBounds={[
+          [-84, -180],
+          [84, 180],
+        ]}
+        maxBoundsViscosity={0.8}
+        attributionControl={false}
+        className="h-full min-h-[410px] w-full"
+        style={{ background: "#dcecf3" }}
+      >
+        {/*
+          IMPORTANT:
+          Basemap and production paths must live in DIFFERENT panes.
+
+          With preferCanvas enabled, placing both in the normal overlay
+          renderer can allow the later SVG/GeoJSON renderer to visually
+          cover the Canvas circles. The result looks like green crescents
+          instead of complete production circles.
+        */}
+        <Pane
+          name="agriculture-basemap"
+          style={{
+            zIndex: 200,
+            pointerEvents: "none",
+          }}
+        >
+          <BaseWorldLayer />
+        </Pane>
+
+        <Pane
+          name="agriculture-production"
+          style={{
+            zIndex: 450,
+          }}
+        >
+          {rows.map((row) => {
+            const active = row.iso3 === selectedIso3;
+
+            return (
+              <CircleMarker
+                key={`${row.iso3}-${row.year}-${row.cropKey}`}
+                center={[row.lat, row.lng]}
+                radius={radius(row.value)}
+                pathOptions={{
+                  color: active ? "#312e81" : "#047857",
+                  fillColor: active ? "#6366f1" : "#10b981",
+                  fillOpacity: active ? 0.86 : 0.68,
+                  opacity: 0.98,
+                  weight: active ? 2.6 : 1.35,
+                }}
+                eventHandlers={{
+                  click: () => onSelect(row),
+                }}
+              >
+                <Tooltip
+                  direction="top"
+                  opacity={0.98}
+                  sticky
+                >
+                  <div className="min-w-[150px]">
+                    <div className="font-extrabold text-slate-950">
+                      {row.country}
+                    </div>
+
+                    <div className="mt-1 text-xs text-slate-600">
+                      {row.crop} Ã‚Â· {row.year}
+                    </div>
+
+                    <div className="mt-1 text-sm font-black text-emerald-700">
+                      {compact(row.value)} {row.unit}
+                    </div>
+
+                    {row.rank ? (
+                      <div className="mt-0.5 text-[11px] font-bold text-slate-500">
+                        Global rank #{row.rank}
+                      </div>
+                    ) : null}
+                  </div>
+                </Tooltip>
+
+                <Popup>
+                  <div className="min-w-[190px]">
+                    <div className="text-[15px] font-black text-slate-950">
+                      {row.country}
+                    </div>
+
+                    <div className="mt-1 text-xs font-semibold text-slate-500">
+                      {row.crop} production Ã‚Â· {row.year}
+                    </div>
+
+                    <div className="mt-2 text-lg font-black text-emerald-700">
+                      {compact(row.value)} {row.unit}
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <div className="font-bold text-slate-400">
+                          Rank
+                        </div>
+                        <div className="font-black text-slate-800">
+                          {row.rank ? `#${row.rank}` : "n/a"}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="font-bold text-slate-400">
+                          Global share
+                        </div>
+                        <div className="font-black text-slate-800">
+                          {row.sharePct == null
+                            ? "n/a"
+                            : `${row.sharePct.toFixed(2)}%`}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Popup>
+              </CircleMarker>
+            );
+          })}
+        </Pane>
+
+        <MapViewport
+          rows={rows}
+          selected={selected}
+        />
+      </MapContainer>
+
+      <div className="pointer-events-none absolute bottom-3 left-3 z-[500] rounded-xl border border-slate-200 bg-white/95 px-3 py-2 shadow-md backdrop-blur">
+        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500/70" />
+          Marker size = production
+        </div>
+      </div>
+
+      <div className="pointer-events-none absolute bottom-3 right-3 z-[500] rounded-lg bg-white/85 px-2 py-1 text-[9px] font-bold text-slate-400 backdrop-blur">
+        Base map: Natural Earth
+      </div>
+    </div>
+  );
+}
+
+export default memo(AgricultureMapComponent);
+
+######################################################################
+FILE: C:\NextJS\stratify\app\api\agriculture\production\route.ts
+######################################################################
+import { NextResponse } from "next/server";
+
+export const dynamic = "force-static";
+
+export async function GET() {
+  return NextResponse.json(
+    {
+      ok: true,
+      mode: "static-local-cache",
+      source: "FAOSTAT Crops and livestock products (QCL)",
+      message:
+        "Agriculture Atlas now serves compact FAOSTAT bulk snapshots from /data/agriculture/*.json. The live authenticated FAOSTAT API is no longer used at page runtime.",
+    },
+    {
+      headers: {
+        "Cache-Control":
+          "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800",
+      },
+    },
+  );
+}
+
+######################################################################
+FILE: C:\NextJS\stratify\app\components\TopNav.tsx
+######################################################################
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import AuthNavButton from "@/components/AuthNavButton";
+
+const NAV_ITEMS = [
+  { label: "Home", href: "/" },
+  { label: "Global Pulse", href: "/global-pulse" },
+  { label: "Macro & Finance", href: "/macro-finance" },
+  { label: "Energy", href: "/energy" },
+  { label: "Agriculture", href: "/agriculture" },
+  { label: "History", href: "/history" },
+  { label: "Corporate 500", href: "/corporate-intelligence" },
+  { label: "Credits", href: "/credits" },
+];
+
+const MOBILE_ITEMS = [
+  { label: "Home", href: "/" },
+  { label: "Pulse", href: "/global-pulse" },
+  { label: "Macro", href: "/macro-finance" },
+  { label: "Agri", href: "/agriculture" },
+  { label: "History", href: "/history" },
+];
+
+function isActivePath(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
+
+  if (href === "/macro-finance") {
+    return (
+      pathname === "/macro-finance" ||
+      pathname.startsWith("/macro-finance/") ||
+      pathname === "/monetary" ||
+      pathname.startsWith("/monetary/") ||
+      pathname === "/fiscal" ||
+      pathname.startsWith("/fiscal/") ||
+      pathname === "/debt" ||
+      pathname.startsWith("/debt/") ||
+      pathname === "/imf-weo" ||
+      pathname.startsWith("/imf-weo/") ||
+      pathname.includes("dataset=weo")
+    );
+  }
+
+  if (href === "/history") {
+    return pathname === "/history" || pathname.startsWith("/history/");
+  }
+
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function MobileNavLink({
+  href,
+  label,
+  pathname,
+}: {
+  href: string;
+  label: string;
+  pathname: string;
+}) {
+  const active = isActivePath(pathname, href);
+
+  return (
+    <Link
+      href={href}
+      className={[
+        "shrink-0 rounded-full px-3 py-2 text-xs font-black",
+        active
+          ? "bg-violet-600 text-white shadow-md shadow-violet-200"
+          : "bg-slate-100 text-slate-700",
+      ].join(" ")}
+    >
+      {label}
+    </Link>
+  );
+}
+
+export default function TopNav() {
+  const pathname = usePathname() || "/";
+
+  return (
+    <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 shadow-sm backdrop-blur-xl">
+      <div className="mx-auto flex h-[72px] w-full max-w-[1480px] items-center gap-4 px-4 sm:px-6 lg:px-8">
+        <Link href="/" className="flex shrink-0 items-center gap-2">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-blue-600 text-lg font-black text-white shadow-lg shadow-violet-200">
+            S
+          </div>
+
+          <div className="hidden leading-tight sm:block">
+            <div className="text-lg font-black tracking-tight text-slate-950">
+              Stratify
+            </div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+              Analytics
+            </div>
+          </div>
+        </Link>
+
+        <div className="ml-auto hidden min-w-0 items-center gap-2 lg:flex">
+          <nav className="flex min-w-0 items-center gap-0.5 rounded-full border border-slate-200 bg-slate-50 p-1.5 shadow-sm">
+            {NAV_ITEMS.map((item) => {
+              const active = isActivePath(pathname, item.href);
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={[
+                    "whitespace-nowrap rounded-full px-2 py-2 text-[12px] font-bold transition-all xl:px-2.5 xl:text-[13px] 2xl:px-3",
+                    active
+                      ? "bg-gradient-to-r from-violet-600 to-blue-600 text-white shadow-md shadow-violet-200"
+                      : "text-slate-600 hover:bg-white hover:text-slate-950 hover:shadow-sm",
+                  ].join(" ")}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+
+          <AuthNavButton />
+        </div>
+
+        <div className="ml-auto flex min-w-0 flex-1 items-center gap-2 lg:hidden">
+          <nav className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {MOBILE_ITEMS.map((item) => (
+              <MobileNavLink
+                key={item.href}
+                href={item.href}
+                label={item.label}
+                pathname={pathname}
+              />
+            ))}
+          </nav>
+
+          <div className="shrink-0">
+            <AuthNavButton />
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+
+
+######################################################################
+FILE: C:\NextJS\stratify\app\components\DataSourceNote.tsx
+######################################################################
+"use client";
+
+import { usePathname } from "next/navigation";
+import { cleanText } from "@/app/lib/cleanText";
+
+const SOURCE_NOTES = {
+  home:
+    "Data sources: World Bank World Development Indicators (WDI), World Bank Open Data, UNData, FAOSTAT, IMF public datasets, and Natural Earth / world-atlas boundaries. Updated periodically for analytical use.",
+
+  globalPulse:
+    "Global Pulse sources: GDELT global news search, ReliefWeb/OCHA, World Bank news, IMF, WTO and FAO official feeds, plus Wikimedia On This Day. Source attribution is retained and the internal reader loads available article text inside Stratify without external news buttons.",
+
+  macroFinance:
+    "Macro & Finance sources: World Bank monetary and financial indicators, IMF World Economic Outlook (WEO), IMF Government Finance Statistics (GFS), IMF Fiscal Monitor, IMF Global Debt Database, and World Bank International Debt Statistics (IDS). Updated periodically for analytical use.",
+  agriculture:
+    "Agriculture Atlas source: FAOSTAT Crops and Livestock Products (QCL), accessed on demand through the FAOSTAT API. Country points are representative locations from the packaged world-countries reference dataset; values are national annual totals.",
+
+  debt:
+    "Data sources: IMF World Economic Outlook (WEO) - General Government Gross Debt, IMF Global Debt Database, World Bank International Debt Statistics (IDS), and World Bank WDI debt indicators. Updated periodically for analytical use.",
+
+  energy:
+    "Data sources: Our World in Data Energy Dataset, Energy Institute Statistical Review of World Energy, World Bank WDI energy indicators, and IEA public energy statistics. Updated periodically for analytical use.",
+
+  faostat:
+    "Data sources: FAOSTAT Crops and Livestock Products, FAOSTAT Production, FAOSTAT Food Balances / SUA, FAOSTAT Trade, FAOSTAT Land Use, and FAOSTAT Emissions datasets. Updated periodically for analytical use.",
+
+  fiscal:
+    "Data sources: IMF World Economic Outlook (WEO), IMF Government Finance Statistics (GFS), IMF Fiscal Monitor, World Bank WDI fiscal indicators, World Bank IDS, and UN National Accounts / UNData. Updated periodically for analytical use.",
+
+  corporate:
+    "Data sources: S&P 500 constituent universe, SEC EDGAR company submissions, company investor relations / public filings, and curated public market-profile datasets. Updated periodically for analytical use.",
+
+  credits:
+    "Product background: Stratify Analytics is built from public development, fiscal, energy, agriculture, debt, and corporate intelligence datasets curated for analytical use.",
+
+  default:
+    "Data sources: World Bank WDI, IMF WEO / GFS, FAOSTAT, UNData, SEC EDGAR, and curated public datasets. Updated periodically for analytical use.",
+};
+
+function getSourceNote(pathname: string) {
+  const path = pathname.toLowerCase();
+
+  if (path.startsWith("/global-pulse")) return SOURCE_NOTES.globalPulse;
+  if (path.startsWith("/macro-finance")) return SOURCE_NOTES.macroFinance;
+  if (path.startsWith("/agriculture")) return SOURCE_NOTES.agriculture;
+  if (path === "/" || path.startsWith("/world")) return SOURCE_NOTES.home;
+  if (path.startsWith("/debt")) return SOURCE_NOTES.debt;
+  if (path.startsWith("/energy")) return SOURCE_NOTES.energy;
+  if (path.startsWith("/faostat") || path.startsWith("/fao")) return SOURCE_NOTES.faostat;
+  if (path.startsWith("/fiscal")) return SOURCE_NOTES.fiscal;
+  if (path.startsWith("/corporate-intelligence")) return SOURCE_NOTES.corporate;
+  if (path.startsWith("/credits")) return SOURCE_NOTES.credits;
+
+  return SOURCE_NOTES.default;
+}
+
+export default function DataSourceNote() {
+  const pathname = usePathname() || "/";
+
+  return (
+    <div className="w-full border-b border-slate-200 bg-white px-4 py-2 text-center text-[12px] font-semibold leading-5 text-slate-600 shadow-sm sm:px-6">
+      {cleanText(getSourceNote(pathname))}
+    </div>
+  );
+}
+
+
+######################################################################
+FILE: C:\NextJS\stratify\app\config\supabase-config.ts
+######################################################################
+  // app/config/supabase-config.ts
+  import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+  function getEnv() {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    return { url, anon };
+  }
+
+  /**
+   * We DO NOT throw at module import time.
+   * Next/Vercel may import this during prerender/build.
+   *
+   * Instead, we create the client lazily and throw only if someone actually
+   * tries to access it without env vars configured.
+   */
+  let _client: SupabaseClient | null = null;
+
+  function createSupabaseClient(): SupabaseClient {
+    const { url, anon } = getEnv();
+
+    if (!url || !anon) {
+      throw new Error(
+        "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY. " +
+          "Set these in Vercel Project Settings â†’ Environment Variables."
+      );
+    }
+
+    return createClient(url, anon);
+  }
+
+  /**
+   * Default export is a Proxy so existing imports keep working:
+   *   import supabase from "@/app/config/supabase-config";
+   *
+   * The proxy defers env validation until first actual usage.
+   */
+  const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+    get(_target, prop) {
+      if (!_client) _client = createSupabaseClient();
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+      return (_client as unknown as Record<PropertyKey, unknown>)[prop] as never;
+    },
+  });
+
+  export default supabase;
+
+
+######################################################################
+FILE: C:\NextJS\stratify\lib\supabase\client.ts
+######################################################################
+import { createBrowserClient } from '@supabase/ssr';
+
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+  );
+}
+
+
+######################################################################
+FILE: C:\NextJS\stratify\lib\supabase\server.ts
+######################################################################
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+
+export async function createClient() {
+  const cookieStore = await cookies();
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options);
+            });
+          } catch {
+            // Safe to ignore in Server Components.
+          }
+        },
+      },
+    }
+  );
+}
+
+
+######################################################################
+FILE: C:\NextJS\stratify\lib\supabase\proxy.ts
+######################################################################
+import { createServerClient } from "@supabase/ssr";
+import { NextResponse, type NextRequest } from "next/server";
+
+function copyResponseCookies(
+  source: NextResponse,
+  destination: NextResponse,
+) {
+  source.cookies.getAll().forEach(({ name, value, ...options }) => {
+    destination.cookies.set(name, value, options);
+  });
+}
+
+function hasSupabaseSessionCookie(request: NextRequest) {
+  return request.cookies
+    .getAll()
+    .some(
+      ({ name }) =>
+        name.startsWith("sb-") &&
+        (name.includes("auth-token") || name.includes("refresh-token")),
+    );
+}
+
+export async function updateSession(request: NextRequest) {
+  let supabaseResponse = NextResponse.next({
+    request,
+  });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => {
+            request.cookies.set(name, value);
+          });
+
+          supabaseResponse = NextResponse.next({
+            request,
+          });
+
+          cookiesToSet.forEach(({ name, value, options }) => {
+            supabaseResponse.cookies.set(name, value, options);
+          });
+        },
+      },
+    },
+  );
+
+  const pathname = request.nextUrl.pathname;
+  const authCode = request.nextUrl.searchParams.get("code");
+
+  // Preserve the OAuth callback hand-off if a provider returns the code
+  // to another page unexpectedly.
+  if (authCode && pathname !== "/auth/callback") {
+    const callbackUrl = request.nextUrl.clone();
+    callbackUrl.pathname = "/auth/callback";
+    callbackUrl.search = "";
+    callbackUrl.searchParams.set("code", authCode);
+
+    const next = request.nextUrl.searchParams.get("next");
+    if (next && next.startsWith("/") && !next.startsWith("//")) {
+      callbackUrl.searchParams.set("next", next);
+    }
+
+    const callbackResponse = NextResponse.redirect(callbackUrl);
+    copyResponseCookies(supabaseResponse, callbackResponse);
+    return callbackResponse;
+  }
+
+  // Authentication is OPTIONAL.
+  // Public visitors are never redirected to /login.
+  //
+  // Only refresh/validate a Supabase session when a session cookie exists.
+  // This avoids an unnecessary auth round-trip for anonymous visitors and
+  // keeps public browsing fast.
+  if (hasSupabaseSessionCookie(request)) {
+    try {
+      await supabase.auth.getUser();
+    } catch (error) {
+      console.error("Optional Supabase session refresh failed:", error);
+    }
+  }
+
+  return supabaseResponse;
+}
+
+
+######################################################################
+FILE: C:\NextJS\stratify\public\data\agriculture\meta.json
+######################################################################
+{"source":"FAOSTAT Crops and livestock products (QCL)","sourceMode":"FAO bulk snapshot","catalogueMode":"Comprehensive CPC-01 crop catalogue","metric":"Production quantity","minYear":1961,"latestYear":2024,"generatedAt":"2026-08-14T19:25:34.0249155Z","cropCount":166,"crops":[{"key":"wheat","label":"Wheat","itemCode":"15","cpc":"\u00270111","group":"Cereals \u0026 grains","countries":125,"fileKB":106.3},{"key":"rice","label":"Rice","itemCode":"27","cpc":"\u00270113","group":"Cereals \u0026 grains","countries":142,"fileKB":112.5},{"key":"maize","label":"Maize (corn)","itemCode":"56","cpc":"\u00270112","group":"Cereals \u0026 grains","countries":175,"fileKB":143.6},{"key":"barley","label":"Barley","itemCode":"44","cpc":"\u00270115","group":"Cereals \u0026 grains","countries":106,"fileKB":85.3},{"key":"millet","label":"Millet","itemCode":"79","cpc":"\u00270118","group":"Cereals \u0026 grains","countries":88,"fileKB":67.3},{"key":"sorghum","label":"Sorghum","itemCode":"83","cpc":"\u00270114","group":"Cereals \u0026 grains","countries":126,"fileKB":92.9},{"key":"potatoes","label":"Potatoes","itemCode":"116","cpc":"\u002701510","group":"Roots \u0026 tubers","countries":160,"fileKB":134.5},{"key":"cassava","label":"Cassava, fresh","itemCode":"125","cpc":"\u002701520.01","group":"Roots \u0026 tubers","countries":102,"fileKB":92.5},{"key":"sugar-cane","label":"Sugar cane","itemCode":"156","cpc":"\u002701802","group":"Sugar crops","countries":112,"fileKB":101.1},{"key":"soybeans","label":"Soya beans","itemCode":"236","cpc":"\u00270141","group":"Pulses","countries":118,"fileKB":78.8},{"key":"tomatoes","label":"Tomatoes","itemCode":"388","cpc":"\u002701234","group":"Vegetables","countries":174,"fileKB":138.7},{"key":"bananas","label":"Bananas","itemCode":"486","cpc":"\u002701312","group":"Fruit","countries":152,"fileKB":114.6},{"key":"apples","label":"Apples","itemCode":"515","cpc":"\u002701341","group":"Fruit","countries":96,"fileKB":76},{"key":"grapes","label":"Grapes","itemCode":"560","cpc":"\u002701330","group":"Fruit","countries":100,"fileKB":75.2},{"key":"coffee","label":"Coffee, green","itemCode":"656","cpc":"\u002701610","group":"Beverage crops","countries":84,"fileKB":70.2},{"key":"cocoa","label":"Cocoa beans","itemCode":"661","cpc":"\u002701640","group":"Pulses","countries":62,"fileKB":50.3},{"key":"tea","label":"Tea leaves","itemCode":"667","cpc":"\u002701620","group":"Beverage crops","countries":50,"fileKB":40.3},{"key":"tobacco","label":"Unmanufactured tobacco","itemCode":"826","cpc":"\u002701970","group":"Industrial \u0026 other crops","countries":146,"fileKB":109.1},{"key":"buckwheat","label":"Buckwheat","itemCode":"89","cpc":"\u002701192","group":"Cereals \u0026 grains","countries":31,"fileKB":17.8},{"key":"canary-seed","label":"Canary seed","itemCode":"101","cpc":"\u002701195","group":"Cereals \u0026 grains","countries":12,"fileKB":8.9},{"key":"cereals-n-e-c","label":"Cereals n.e.c.","itemCode":"108","cpc":"\u002701199.90","group":"Cereals \u0026 grains","countries":67,"fileKB":37.2},{"key":"fonio","label":"Fonio","itemCode":"94","cpc":"\u002701193","group":"Cereals \u0026 grains","countries":11,"fileKB":8.6},{"key":"green-corn-maize","label":"Green corn (maize)","itemCode":"446","cpc":"\u002701290.01","group":"Cereals \u0026 grains","countries":57,"fileKB":35.6},{"key":"oats","label":"Oats","itemCode":"75","cpc":"\u00270117","group":"Cereals \u0026 grains","countries":78,"fileKB":59.4},{"key":"quinoa","label":"Quinoa","itemCode":"92","cpc":"\u002701194","group":"Cereals \u0026 grains","countries":4,"fileKB":3.1},{"key":"rye","label":"Rye","itemCode":"71","cpc":"\u00270116","group":"Cereals \u0026 grains","countries":66,"fileKB":46.6},{"key":"triticale","label":"Triticale","itemCode":"97","cpc":"\u002701191","group":"Cereals \u0026 grains","countries":46,"fileKB":23.5},{"key":"abaca-manila-hemp-raw","label":"Abaca, manila hemp, raw","itemCode":"809","cpc":"\u002701929.07","group":"Fibre crops","countries":7,"fileKB":6},{"key":"cotton-lint-ginned","label":"Cotton lint, ginned","itemCode":"767","cpc":"\u002701921.02","group":"Fibre crops","countries":99,"fileKB":79.2},{"key":"cotton-seed","label":"Cotton seed","itemCode":"329","cpc":"\u00270143","group":"Fibre crops","countries":121,"fileKB":83.1},{"key":"hempseed","label":"Hempseed","itemCode":"336","cpc":"\u002701449.02","group":"Fibre crops","countries":19,"fileKB":9},{"key":"jute-raw-or-retted","label":"Jute, raw or retted","itemCode":"780","cpc":"\u002701922.01","group":"Fibre crops","countries":21,"fileKB":16.3},{"key":"kapok-fibre-raw","label":"Kapok fibre, raw","itemCode":"778","cpc":"\u002701929.03","group":"Fibre crops","countries":2,"fileKB":2.1},{"key":"kapok-fruit","label":"Kapok fruit","itemCode":"310","cpc":"\u002701499.05","group":"Fibre crops","countries":2,"fileKB":2.3},{"key":"kapokseed-in-shell","label":"Kapokseed in shell","itemCode":"311","cpc":"\u002701499.06","group":"Fibre crops","countries":2,"fileKB":2.3},{"key":"other-fibre-crops-raw-n-e-c","label":"Other fibre crops, raw, n.e.c.","itemCode":"821","cpc":"\u002701929.90","group":"Fibre crops","countries":26,"fileKB":19.8},{"key":"ramie-raw-or-retted","label":"Ramie, raw or retted","itemCode":"788","cpc":"\u002701929.04","group":"Fibre crops","countries":7,"fileKB":4.8},{"key":"seed-cotton-unginned","label":"Seed cotton, unginned","itemCode":"328","cpc":"\u002701921.01","group":"Fibre crops","countries":100,"fileKB":81.3},{"key":"sisal-raw","label":"Sisal, raw","itemCode":"789","cpc":"\u002701929.05","group":"Fibre crops","countries":25,"fileKB":21.1},{"key":"true-hemp-raw-or-retted","label":"True hemp, raw or retted","itemCode":"777","cpc":"\u002701929.02","group":"Fibre crops","countries":34,"fileKB":16.2},{"key":"apricots","label":"Apricots","itemCode":"526","cpc":"\u002701343","group":"Fruit","countries":80,"fileKB":53},{"key":"avocados","label":"Avocados","itemCode":"572","cpc":"\u002701311","group":"Fruit","countries":100,"fileKB":58.9},{"key":"blueberries","label":"Blueberries","itemCode":"552","cpc":"\u002701355.01","group":"Fruit","countries":38,"fileKB":16.4},{"key":"cantaloupes-and-other-melons","label":"Cantaloupes and other melons","itemCode":"568","cpc":"\u002701229","group":"Fruit","countries":113,"fileKB":76.3},{"key":"cherries","label":"Cherries","itemCode":"531","cpc":"\u002701344.02","group":"Fruit","countries":71,"fileKB":47.5},{"key":"cranberries","label":"Cranberries","itemCode":"554","cpc":"\u002701355.02","group":"Fruit","countries":12,"fileKB":6.3},{"key":"currants","label":"Currants","itemCode":"550","cpc":"\u002701351.01","group":"Fruit","countries":42,"fileKB":24.1},{"key":"dates","label":"Dates","itemCode":"577","cpc":"\u002701314","group":"Fruit","countries":39,"fileKB":30.9},{"key":"figs","label":"Figs","itemCode":"569","cpc":"\u002701315","group":"Fruit","countries":72,"fileKB":41.9},{"key":"gooseberries","label":"Gooseberries","itemCode":"549","cpc":"\u002701351.02","group":"Fruit","countries":21,"fileKB":12},{"key":"kiwi-fruit","label":"Kiwi fruit","itemCode":"592","cpc":"\u002701352","group":"Fruit","countries":44,"fileKB":19.3},{"key":"lemons-and-limes","label":"Lemons and limes","itemCode":"497","cpc":"\u002701322","group":"Fruit","countries":133,"fileKB":88.4},{"key":"mangoes-guavas-and-mangosteens","label":"Mangoes, guavas and mangosteens","itemCode":"571","cpc":"\u002701316","group":"Fruit","countries":106,"fileKB":82.3},{"key":"melonseed","label":"Melonseed","itemCode":"299","cpc":"\u002701449.01","group":"Fruit","countries":19,"fileKB":13.5},{"key":"oranges","label":"Oranges","itemCode":"490","cpc":"\u002701323","group":"Fruit","countries":141,"fileKB":104.4},{"key":"other-berries-and-fruits-of-the-genus-vaccinium-n-e-c","label":"Other berries and fruits of the genus vaccinium n.e.c.","itemCode":"558","cpc":"\u002701355.90","group":"Fruit","countries":63,"fileKB":39.8},{"key":"other-citrus-fruit-n-e-c","label":"Other citrus fruit, n.e.c.","itemCode":"512","cpc":"\u002701329","group":"Fruit","countries":91,"fileKB":56.3},{"key":"other-fruits-n-e-c","label":"Other fruits, n.e.c.","itemCode":"619","cpc":"\u002701359.90","group":"Fruit","countries":165,"fileKB":134.4},{"key":"other-pome-fruits","label":"Other pome fruits","itemCode":"542","cpc":"\u002701349.10","group":"Fruit","countries":23,"fileKB":4.2},{"key":"other-stone-fruits","label":"Other stone fruits","itemCode":"541","cpc":"\u002701349.20","group":"Fruit","countries":43,"fileKB":25.1},{"key":"other-tropical-fruits-n-e-c","label":"Other tropical fruits, n.e.c.","itemCode":"603","cpc":"\u002701319","group":"Fruit","countries":101,"fileKB":64.8},{"key":"papayas","label":"Papayas","itemCode":"600","cpc":"\u002701317","group":"Fruit","countries":77,"fileKB":52.5},{"key":"persimmons","label":"Persimmons","itemCode":"587","cpc":"\u002701359.01","group":"Fruit","countries":20,"fileKB":13.6},{"key":"pineapples","label":"Pineapples","itemCode":"574","cpc":"\u002701318","group":"Fruit","countries":92,"fileKB":73.9},{"key":"plantains-and-cooking-bananas","label":"Plantains and cooking bananas","itemCode":"489","cpc":"\u002701313","group":"Fruit","countries":58,"fileKB":46.5},{"key":"plums-and-sloes","label":"Plums and sloes","itemCode":"536","cpc":"\u002701346","group":"Fruit","countries":91,"fileKB":65.9},{"key":"pomelos-and-grapefruits","label":"Pomelos and grapefruits","itemCode":"507","cpc":"\u002701321","group":"Fruit","countries":101,"fileKB":68.8},{"key":"raspberries","label":"Raspberries","itemCode":"547","cpc":"\u002701353.01","group":"Fruit","countries":49,"fileKB":28.6},{"key":"sour-cherries","label":"Sour cherries","itemCode":"530","cpc":"\u002701344.01","group":"Fruit","countries":44,"fileKB":22.7},{"key":"strawberries","label":"Strawberries","itemCode":"544","cpc":"\u002701354","group":"Fruit","countries":84,"fileKB":56.4},{"key":"tangerines-mandarins-clementines","label":"Tangerines, mandarins, clementines","itemCode":"495","cpc":"\u002701324","group":"Fruit","countries":98,"fileKB":61.8},{"key":"watermelons","label":"Watermelons","itemCode":"567","cpc":"\u002701221","group":"Fruit","countries":139,"fileKB":92.7},{"key":"hop-cones","label":"Hop cones","itemCode":"677","cpc":"\u002701659","group":"Industrial \u0026 other crops","countries":42,"fileKB":23.3},{"key":"natural-rubber-in-primary-forms","label":"Natural rubber in primary forms","itemCode":"836","cpc":"\u002701950.01","group":"Industrial \u0026 other crops","countries":36,"fileKB":28.4},{"key":"pyrethrum-dried-flowers","label":"Pyrethrum, dried flowers","itemCode":"754","cpc":"\u002701930.02","group":"Industrial \u0026 other crops","countries":12,"fileKB":8.2},{"key":"almonds-in-shell","label":"Almonds, in shell","itemCode":"221","cpc":"\u002701371","group":"Nuts","countries":64,"fileKB":36.9},{"key":"areca-nuts","label":"Areca nuts","itemCode":"226","cpc":"\u002701379.01","group":"Nuts","countries":12,"fileKB":9.1},{"key":"brazil-nuts-in-shell","label":"Brazil nuts, in shell","itemCode":"216","cpc":"\u002701377","group":"Nuts","countries":6,"fileKB":3.9},{"key":"cashew-nuts-in-shell","label":"Cashew nuts, in shell","itemCode":"217","cpc":"\u002701372","group":"Nuts","countries":36,"fileKB":27.5},{"key":"cashewapple","label":"Cashewapple","itemCode":"591","cpc":"\u002701359.02","group":"Nuts","countries":4,"fileKB":3.6},{"key":"chestnuts-in-shell","label":"Chestnuts, in shell","itemCode":"220","cpc":"\u002701373","group":"Nuts","countries":39,"fileKB":20.4},{"key":"coconuts-in-shell","label":"Coconuts, in shell","itemCode":"249","cpc":"\u002701460","group":"Nuts","countries":90,"fileKB":78.2},{"key":"hazelnuts-in-shell","label":"Hazelnuts, in shell","itemCode":"225","cpc":"\u002701374","group":"Nuts","countries":42,"fileKB":21},{"key":"kola-nuts","label":"Kola nuts","itemCode":"224","cpc":"\u002701379.02","group":"Nuts","countries":7,"fileKB":6.2},{"key":"pistachios-in-shell","label":"Pistachios, in shell","itemCode":"223","cpc":"\u002701375","group":"Nuts","countries":23,"fileKB":14.7},{"key":"walnuts-in-shell","label":"Walnuts, in shell","itemCode":"222","cpc":"\u002701376","group":"Nuts","countries":65,"fileKB":39.7},{"key":"castor-oil-seeds","label":"Castor oil seeds","itemCode":"265","cpc":"\u002701447","group":"Oil crops","countries":46,"fileKB":32.2},{"key":"groundnuts-excluding-shelled","label":"Groundnuts, excluding shelled","itemCode":"242","cpc":"\u00270142","group":"Oil crops","countries":120,"fileKB":97.8},{"key":"linseed","label":"Linseed","itemCode":"333","cpc":"\u002701441","group":"Oil crops","countries":62,"fileKB":40.6},{"key":"mustard-seed","label":"Mustard seed","itemCode":"292","cpc":"\u002701442","group":"Oil crops","countries":31,"fileKB":18.4},{"key":"oil-palm-fruit","label":"Oil palm fruit","itemCode":"254","cpc":"\u002701491.01","group":"Oil crops","countries":44,"fileKB":41.5},{"key":"other-nuts-excluding-wild-edible-nuts-and-groundnuts-in-shell-n-e-c","label":"Other nuts (excluding wild edible nuts and groundnuts), in shell, n.e.c.","itemCode":"234","cpc":"\u002701379.90","group":"Oil crops","countries":87,"fileKB":52.8},{"key":"palm-kernels","label":"Palm kernels","itemCode":"256","cpc":"\u002701491.02","group":"Oil crops","countries":45,"fileKB":37.5},{"key":"poppy-seed","label":"Poppy seed","itemCode":"296","cpc":"\u002701448","group":"Oil crops","countries":17,"fileKB":10.2},{"key":"safflower-seed","label":"Safflower seed","itemCode":"280","cpc":"\u002701446","group":"Oil crops","countries":24,"fileKB":15.1},{"key":"sesame-seed","label":"Sesame seed","itemCode":"289","cpc":"\u002701444","group":"Oil crops","countries":78,"fileKB":60.1},{"key":"sunflower-seed","label":"Sunflower seed","itemCode":"267","cpc":"\u002701445","group":"Oil crops","countries":86,"fileKB":58.1},{"key":"agave-fibres-raw-n-e-c","label":"Agave fibres, raw, n.e.c.","itemCode":"800","cpc":"\u002701929.06","group":"Other crops","countries":8,"fileKB":7.3},{"key":"coir-raw","label":"Coir, raw","itemCode":"813","cpc":"\u002701929.08","group":"Other crops","countries":8,"fileKB":6.6},{"key":"flax-raw-or-retted","label":"Flax, raw or retted","itemCode":"771","cpc":"\u002701929.01","group":"Other crops","countries":40,"fileKB":21.5},{"key":"jojoba-seeds","label":"Jojoba seeds","itemCode":"277","cpc":"\u002701499.03","group":"Other crops","countries":1,"fileKB":0.9},{"key":"karite-nuts-sheanuts","label":"Karite nuts (sheanuts)","itemCode":"263","cpc":"\u002701499.01","group":"Other crops","countries":7,"fileKB":7},{"key":"kenaf-and-other-textile-bast-fibres-raw-or-retted","label":"Kenaf, and other textile bast fibres, raw or retted","itemCode":"782","cpc":"\u002701922.02","group":"Other crops","countries":24,"fileKB":20.1},{"key":"mat-leaves","label":"MatÃ© leaves","itemCode":"671","cpc":"\u002701630","group":"Other crops","countries":3,"fileKB":3.1},{"key":"mixed-grain","label":"Mixed grain","itemCode":"103","cpc":"\u002701199.02","group":"Other crops","countries":35,"fileKB":19.6},{"key":"olives","label":"Olives","itemCode":"260","cpc":"\u002701450","group":"Other crops","countries":60,"fileKB":36.3},{"key":"other-oil-seeds-n-e-c","label":"Other oil seeds, n.e.c.","itemCode":"339","cpc":"\u002701449.90","group":"Other crops","countries":75,"fileKB":43.8},{"key":"other-sugar-crops-n-e-c","label":"Other sugar crops n.e.c.","itemCode":"161","cpc":"\u002701809","group":"Other crops","countries":3,"fileKB":3.3},{"key":"quinces","label":"Quinces","itemCode":"523","cpc":"\u002701342.02","group":"Other crops","countries":54,"fileKB":34.1},{"key":"rape-or-colza-seed","label":"Rape or colza seed","itemCode":"270","cpc":"\u002701443","group":"Other crops","countries":67,"fileKB":46.2},{"key":"tallowtree-seeds","label":"Tallowtree seeds","itemCode":"305","cpc":"\u002701499.04","group":"Other crops","countries":1,"fileKB":1.3},{"key":"tung-nuts","label":"Tung nuts","itemCode":"275","cpc":"\u002701499.02","group":"Other crops","countries":7,"fileKB":6.2},{"key":"vanilla-raw","label":"Vanilla, raw","itemCode":"692","cpc":"\u002701658","group":"Other crops","countries":18,"fileKB":11.7},{"key":"bambara-beans-dry","label":"Bambara beans, dry","itemCode":"203","cpc":"\u002701708","group":"Pulses","countries":9,"fileKB":6},{"key":"beans-dry","label":"Beans, dry","itemCode":"176","cpc":"\u002701701","group":"Pulses","countries":135,"fileKB":98.7},{"key":"broad-beans-and-horse-beans-dry","label":"Broad beans and horse beans, dry","itemCode":"181","cpc":"\u002701702","group":"Pulses","countries":71,"fileKB":47.4},{"key":"broad-beans-and-horse-beans-green","label":"Broad beans and horse beans, green","itemCode":"420","cpc":"\u002701243","group":"Pulses","countries":67,"fileKB":43},{"key":"chick-peas-dry","label":"Chick peas, dry","itemCode":"191","cpc":"\u002701703","group":"Pulses","countries":60,"fileKB":40.3},{"key":"cow-peas-dry","label":"Cow peas, dry","itemCode":"195","cpc":"\u002701706","group":"Pulses","countries":48,"fileKB":29.9},{"key":"lentils-dry","label":"Lentils, dry","itemCode":"201","cpc":"\u002701704","group":"Pulses","countries":59,"fileKB":39.6},{"key":"locust-beans-carobs","label":"Locust beans (carobs)","itemCode":"461","cpc":"\u002701356","group":"Pulses","countries":16,"fileKB":11.8},{"key":"lupins","label":"Lupins","itemCode":"210","cpc":"\u002701709.02","group":"Pulses","countries":36,"fileKB":20},{"key":"other-beans-green","label":"Other beans, green","itemCode":"414","cpc":"\u002701241.90","group":"Pulses","countries":118,"fileKB":77.5},{"key":"other-pulses-n-e-c","label":"Other pulses n.e.c.","itemCode":"211","cpc":"\u002701709.90","group":"Pulses","countries":123,"fileKB":87},{"key":"peaches-and-nectarines","label":"Peaches and nectarines","itemCode":"534","cpc":"\u002701345","group":"Pulses","countries":93,"fileKB":64},{"key":"pears","label":"Pears","itemCode":"521","cpc":"\u002701342.01","group":"Pulses","countries":89,"fileKB":66.7},{"key":"peas-dry","label":"Peas, dry","itemCode":"187","cpc":"\u002701705","group":"Pulses","countries":100,"fileKB":71.1},{"key":"peas-green","label":"Peas, green","itemCode":"417","cpc":"\u002701242","group":"Pulses","countries":90,"fileKB":62},{"key":"peppermint-spearmint","label":"Peppermint, spearmint","itemCode":"748","cpc":"\u002701930.01","group":"Pulses","countries":9,"fileKB":5.2},{"key":"pigeon-peas-dry","label":"Pigeon peas, dry","itemCode":"197","cpc":"\u002701707","group":"Pulses","countries":26,"fileKB":20.3},{"key":"string-beans","label":"String beans","itemCode":"423","cpc":"\u002701241.01","group":"Pulses","countries":22,"fileKB":15.2},{"key":"vetches","label":"Vetches","itemCode":"205","cpc":"\u002701709.01","group":"Pulses","countries":41,"fileKB":25.8},{"key":"cassava-leaves","label":"Cassava leaves","itemCode":"378","cpc":"\u002701219.01","group":"Roots \u0026 tubers","countries":1,"fileKB":0.4},{"key":"chicory-roots","label":"Chicory roots","itemCode":"459","cpc":"\u002701691","group":"Roots \u0026 tubers","countries":20,"fileKB":10.7},{"key":"edible-roots-and-tubers-with-high-starch-or-inulin-content-n-e-c-fresh","label":"Edible roots and tubers with high starch or inulin content, n.e.c., fresh","itemCode":"149","cpc":"\u002701599.10","group":"Roots \u0026 tubers","countries":80,"fileKB":60.3},{"key":"sweet-potatoes","label":"Sweet potatoes","itemCode":"122","cpc":"\u002701530","group":"Roots \u0026 tubers","countries":121,"fileKB":100.3},{"key":"taro","label":"Taro","itemCode":"136","cpc":"\u002701550","group":"Roots \u0026 tubers","countries":58,"fileKB":44.4},{"key":"yams","label":"Yams","itemCode":"137","cpc":"\u002701540","group":"Roots \u0026 tubers","countries":65,"fileKB":49.4},{"key":"yautia","label":"Yautia","itemCode":"135","cpc":"\u002701591","group":"Roots \u0026 tubers","countries":14,"fileKB":10.6},{"key":"anise-badian-coriander-cumin-caraway-fennel-and-juniper-berries-raw","label":"Anise, badian, coriander, cumin, caraway, fennel and juniper berries, raw","itemCode":"711","cpc":"\u002701654","group":"Spices \u0026 aromatics","countries":46,"fileKB":29.2},{"key":"chillies-and-peppers-dry-capsicum-spp-pimenta-spp-raw","label":"Chillies and peppers, dry (Capsicum spp., Pimenta spp.), raw","itemCode":"689","cpc":"\u002701652","group":"Spices \u0026 aromatics","countries":71,"fileKB":52.8},{"key":"chillies-and-peppers-green-capsicum-spp-and-pimenta-spp","label":"Chillies and peppers, green (Capsicum spp. and Pimenta spp.)","itemCode":"401","cpc":"\u002701231","group":"Spices \u0026 aromatics","countries":132,"fileKB":92.7},{"key":"cinnamon-and-cinnamon-tree-flowers-raw","label":"Cinnamon and cinnamon-tree flowers, raw","itemCode":"693","cpc":"\u002701655","group":"Spices \u0026 aromatics","countries":11,"fileKB":8.8},{"key":"cloves-whole-stems-raw","label":"Cloves (whole stems), raw","itemCode":"698","cpc":"\u002701656","group":"Spices \u0026 aromatics","countries":9,"fileKB":7.5},{"key":"ginger-raw","label":"Ginger, raw","itemCode":"720","cpc":"\u002701657","group":"Spices \u0026 aromatics","countries":44,"fileKB":27.1},{"key":"nutmeg-mace-cardamoms-raw","label":"Nutmeg, mace, cardamoms, raw","itemCode":"702","cpc":"\u002701653","group":"Spices \u0026 aromatics","countries":21,"fileKB":16},{"key":"other-stimulant-spice-and-aromatic-crops-n-e-c","label":"Other stimulant, spice and aromatic crops, n.e.c.","itemCode":"723","cpc":"\u002701699","group":"Spices \u0026 aromatics","countries":76,"fileKB":52.4},{"key":"pepper-piper-spp-raw","label":"Pepper (Piper spp.), raw","itemCode":"687","cpc":"\u002701651","group":"Spices \u0026 aromatics","countries":49,"fileKB":30.5},{"key":"sugar-beet","label":"Sugar beet","itemCode":"157","cpc":"\u002701801","group":"Sugar crops","countries":69,"fileKB":50.7},{"key":"artichokes","label":"Artichokes","itemCode":"366","cpc":"\u002701216","group":"Vegetables","countries":46,"fileKB":24.2},{"key":"asparagus","label":"Asparagus","itemCode":"367","cpc":"\u002701211","group":"Vegetables","countries":53,"fileKB":32.9},{"key":"cabbages","label":"Cabbages","itemCode":"358","cpc":"\u002701212","group":"Vegetables","countries":154,"fileKB":113.8},{"key":"carrots-and-turnips","label":"Carrots and turnips","itemCode":"426","cpc":"\u002701251","group":"Vegetables","countries":136,"fileKB":95.3},{"key":"cauliflowers-and-broccoli","label":"Cauliflowers and broccoli","itemCode":"393","cpc":"\u002701213","group":"Vegetables","countries":100,"fileKB":71.1},{"key":"cucumbers-and-gherkins","label":"Cucumbers and gherkins","itemCode":"397","cpc":"\u002701232","group":"Vegetables","countries":141,"fileKB":100.5},{"key":"eggplants-aubergines","label":"Eggplants (aubergines)","itemCode":"399","cpc":"\u002701233","group":"Vegetables","countries":109,"fileKB":68.4},{"key":"green-garlic","label":"Green garlic","itemCode":"406","cpc":"\u002701252","group":"Vegetables","countries":108,"fileKB":70.5},{"key":"leeks-and-other-alliaceous-vegetables","label":"Leeks and other alliaceous vegetables","itemCode":"407","cpc":"\u002701254","group":"Vegetables","countries":61,"fileKB":34},{"key":"lettuce-and-chicory","label":"Lettuce and chicory","itemCode":"372","cpc":"\u002701214","group":"Vegetables","countries":113,"fileKB":77.4},{"key":"mushrooms-and-truffles","label":"Mushrooms and truffles","itemCode":"449","cpc":"\u002701270","group":"Vegetables","countries":75,"fileKB":47.7},{"key":"okra","label":"Okra","itemCode":"430","cpc":"\u002701239.01","group":"Vegetables","countries":58,"fileKB":32.8},{"key":"onions-and-shallots-dry-excluding-dehydrated","label":"Onions and shallots, dry (excluding dehydrated)","itemCode":"403","cpc":"\u002701253.02","group":"Vegetables","countries":143,"fileKB":113},{"key":"onions-and-shallots-green","label":"Onions and shallots, green","itemCode":"402","cpc":"\u002701253.01","group":"Vegetables","countries":64,"fileKB":43.5},{"key":"other-vegetables-fresh-n-e-c","label":"Other vegetables, fresh n.e.c.","itemCode":"463","cpc":"\u002701290.90","group":"Vegetables","countries":195,"fileKB":170.3},{"key":"pumpkins-squash-and-gourds","label":"Pumpkins, squash and gourds","itemCode":"394","cpc":"\u002701235","group":"Vegetables","countries":131,"fileKB":90},{"key":"spinach","label":"Spinach","itemCode":"373","cpc":"\u002701215","group":"Vegetables","countries":71,"fileKB":46.6}]}
+
+######################################################################
+AGRICULTURE STATIC DATA INVENTORY
+######################################################################
+abaca-manila-hemp-raw.json	6 KB
+agave-fibres-raw-n-e-c.json	7.3 KB
+almonds-in-shell.json	36.9 KB
+anise-badian-coriander-cumin-caraway-fennel-and-juniper-berries-raw.json	29.2 KB
+apples.json	76 KB
+apricots.json	53 KB
+areca-nuts.json	9.1 KB
+artichokes.json	24.2 KB
+asparagus.json	32.9 KB
+avocados.json	58.9 KB
+bambara-beans-dry.json	6 KB
+bananas.json	114.6 KB
+barley.json	85.3 KB
+beans-dry.json	98.7 KB
+blueberries.json	16.4 KB
+brazil-nuts-in-shell.json	3.9 KB
+broad-beans-and-horse-beans-dry.json	47.4 KB
+broad-beans-and-horse-beans-green.json	43 KB
+buckwheat.json	17.8 KB
+cabbages.json	113.8 KB
+canary-seed.json	8.9 KB
+cantaloupes-and-other-melons.json	76.3 KB
+carrots-and-turnips.json	95.3 KB
+cashewapple.json	3.6 KB
+cashew-nuts-in-shell.json	27.5 KB
+cassava.json	92.5 KB
+cassava-leaves.json	0.4 KB
+castor-oil-seeds.json	32.2 KB
+cauliflowers-and-broccoli.json	71.1 KB
+cereals-n-e-c.json	37.2 KB
+cherries.json	47.5 KB
+chestnuts-in-shell.json	20.4 KB
+chick-peas-dry.json	40.3 KB
+chicory-roots.json	10.7 KB
+chillies-and-peppers-dry-capsicum-spp-pimenta-spp-raw.json	52.8 KB
+chillies-and-peppers-green-capsicum-spp-and-pimenta-spp.json	92.7 KB
+cinnamon-and-cinnamon-tree-flowers-raw.json	8.8 KB
+cloves-whole-stems-raw.json	7.5 KB
+cocoa.json	50.3 KB
+coconuts-in-shell.json	78.2 KB
+coffee.json	70.2 KB
+coir-raw.json	6.6 KB
+cotton-lint-ginned.json	79.2 KB
+cotton-seed.json	83.1 KB
+cow-peas-dry.json	29.9 KB
+cranberries.json	6.3 KB
+cucumbers-and-gherkins.json	100.5 KB
+currants.json	24.1 KB
+dates.json	30.9 KB
+edible-roots-and-tubers-with-high-starch-or-inulin-content-n-e-c-fresh.json	60.3 KB
+eggplants-aubergines.json	68.4 KB
+figs.json	41.9 KB
+flax-raw-or-retted.json	21.5 KB
+fonio.json	8.6 KB
+ginger-raw.json	27.1 KB
+gooseberries.json	12 KB
+grapes.json	75.2 KB
+green-corn-maize.json	35.6 KB
+green-garlic.json	70.5 KB
+groundnuts-excluding-shelled.json	97.8 KB
+hazelnuts-in-shell.json	21 KB
+hempseed.json	9 KB
+hop-cones.json	23.3 KB
+jojoba-seeds.json	0.9 KB
+jute-raw-or-retted.json	16.3 KB
+kapok-fibre-raw.json	2.1 KB
+kapok-fruit.json	2.3 KB
+kapokseed-in-shell.json	2.3 KB
+karite-nuts-sheanuts.json	7 KB
+kenaf-and-other-textile-bast-fibres-raw-or-retted.json	20.1 KB
+kiwi-fruit.json	19.3 KB
+kola-nuts.json	6.2 KB
+leeks-and-other-alliaceous-vegetables.json	34 KB
+lemons-and-limes.json	88.4 KB
+lentils-dry.json	39.6 KB
+lettuce-and-chicory.json	77.4 KB
+linseed.json	40.6 KB
+locust-beans-carobs.json	11.8 KB
+lupins.json	20 KB
+maize.json	143.6 KB
+mangoes-guavas-and-mangosteens.json	82.3 KB
+mat-leaves.json	3.1 KB
+melonseed.json	13.5 KB
+meta.json	23.7 KB
+millet.json	67.3 KB
+mixed-grain.json	19.6 KB
+mushrooms-and-truffles.json	47.7 KB
+mustard-seed.json	18.4 KB
+natural-rubber-in-primary-forms.json	28.4 KB
+nutmeg-mace-cardamoms-raw.json	16 KB
+oats.json	59.4 KB
+oil-palm-fruit.json	41.5 KB
+okra.json	32.8 KB
+olives.json	36.3 KB
+onions-and-shallots-dry-excluding-dehydrated.json	113 KB
+onions-and-shallots-green.json	43.5 KB
+oranges.json	104.4 KB
+other-beans-green.json	77.5 KB
+other-berries-and-fruits-of-the-genus-vaccinium-n-e-c.json	39.8 KB
+other-citrus-fruit-n-e-c.json	56.3 KB
+other-fibre-crops-raw-n-e-c.json	19.8 KB
+other-fruits-n-e-c.json	134.4 KB
+other-nuts-excluding-wild-edible-nuts-and-groundnuts-in-shell-n-e-c.json	52.8 KB
+other-oil-seeds-n-e-c.json	43.8 KB
+other-pome-fruits.json	4.2 KB
+other-pulses-n-e-c.json	87 KB
+other-stimulant-spice-and-aromatic-crops-n-e-c.json	52.4 KB
+other-stone-fruits.json	25.1 KB
+other-sugar-crops-n-e-c.json	3.3 KB
+other-tropical-fruits-n-e-c.json	64.8 KB
+other-vegetables-fresh-n-e-c.json	170.3 KB
+palm-kernels.json	37.5 KB
+papayas.json	52.5 KB
+peaches-and-nectarines.json	64 KB
+pears.json	66.7 KB
+peas-dry.json	71.1 KB
+peas-green.json	62 KB
+peppermint-spearmint.json	5.2 KB
+pepper-piper-spp-raw.json	30.5 KB
+persimmons.json	13.6 KB
+pigeon-peas-dry.json	20.3 KB
+pineapples.json	73.9 KB
+pistachios-in-shell.json	14.7 KB
+plantains-and-cooking-bananas.json	46.5 KB
+plums-and-sloes.json	65.9 KB
+pomelos-and-grapefruits.json	68.8 KB
+poppy-seed.json	10.2 KB
+potatoes.json	134.5 KB
+pumpkins-squash-and-gourds.json	90 KB
+pyrethrum-dried-flowers.json	8.2 KB
+quinces.json	34.1 KB
+quinoa.json	3.1 KB
+ramie-raw-or-retted.json	4.8 KB
+rape-or-colza-seed.json	46.2 KB
+raspberries.json	28.6 KB
+rice.json	112.5 KB
+rye.json	46.6 KB
+safflower-seed.json	15.1 KB
+seed-cotton-unginned.json	81.3 KB
+sesame-seed.json	60.1 KB
+sisal-raw.json	21.1 KB
+sorghum.json	92.9 KB
+sour-cherries.json	22.7 KB
+soybeans.json	78.8 KB
+spinach.json	46.6 KB
+strawberries.json	56.4 KB
+string-beans.json	15.2 KB
+sugar-beet.json	50.7 KB
+sugar-cane.json	101.1 KB
+sunflower-seed.json	58.1 KB
+sweet-potatoes.json	100.3 KB
+tallowtree-seeds.json	1.3 KB
+tangerines-mandarins-clementines.json	61.8 KB
+taro.json	44.4 KB
+tea.json	40.3 KB
+tobacco.json	109.1 KB
+tomatoes.json	138.7 KB
+triticale.json	23.5 KB
+true-hemp-raw-or-retted.json	16.2 KB
+tung-nuts.json	6.2 KB
+vanilla-raw.json	11.7 KB
+vetches.json	25.8 KB
+walnuts-in-shell.json	39.7 KB
+watermelons.json	92.7 KB
+wheat.json	106.3 KB
+yams.json	49.4 KB
+yautia.json	10.6 KB
+
+######################################################################
+RELEVANT PROJECT FILE INVENTORY
+######################################################################
+app\api\agriculture\production\route.ts
+app\api\corporate-intelligence\directory\route.ts
+app\api\corporate-intelligence\geocode\refresh\route.ts
+app\api\corporate-intelligence\global\import\route.ts
+app\api\corporate-intelligence\profiles\refresh\route.ts
+app\api\corporate-intelligence\quote\route.ts
+app\api\corporate-intelligence\sp500\import\route.ts
+app\api\corporate-intelligence\summary\route.ts
+app\api\debt\route.ts
+app\api\energy\route.ts
+app\api\fiscal\expenditure\route.ts
+app\api\fiscal\interest-revenue\route.ts
+app\api\fiscal\overall-balance\route.ts
+app\api\fiscal\primary-balance\route.ts
+app\api\fiscal\revenue\route.ts
+app\api\global-pulse\route.ts
+app\api\global-pulse\article\route.ts
+app\api\history\route.ts
+app\api\history\event-detail\route.ts
+app\api\history\events\route.ts
+app\api\history\on-this-day\route.ts
+app\api\history\source-records\route.ts
+app\api\imf\weo\country\route.ts
+app\api\imf\weo\meta\route.ts
+app\api\landing\route.ts
+app\api\map\route.ts
+app\api\monetary\_category.ts
+app\api\monetary\banking\route.ts
+app\api\monetary\capital-markets\route.ts
+app\api\monetary\countries\route.ts
+app\api\monetary\exchange-rates\route.ts
+app\api\monetary\interest-rates\route.ts
+app\api\monetary\money-supply\route.ts
+app\api\monetary\overview\route.ts
+app\api\monetary\reserves\route.ts
+app\api\wdi\country\route.ts
+app\api\wiki\country\route.ts
+app\api\_lib\global-pulse\sources.ts
+app\api\_lib\global-pulse\types.ts
+app\api\_lib\global-pulse\utils.ts
+app\components\DataSourceNote.tsx
+app\components\StratifyMap.tsx
+app\components\TextSanitizer.tsx
+app\components\TopNav.tsx
+app\components\VitalStatsList.tsx
+lib\utils.ts
+lib\supabase\client.ts
+lib\supabase\proxy.ts
+lib\supabase\server.ts

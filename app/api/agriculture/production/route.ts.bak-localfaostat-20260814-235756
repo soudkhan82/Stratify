@@ -1,0 +1,452 @@
+import { NextResponse } from "next/server";
+import countries from "world-countries";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const DOMAIN = "QCL";
+const PRODUCTION_FILTER_CODE = "2510";
+const LATEST_YEAR = 2024;
+const CACHE_SECONDS = 60 * 60 * 12;
+
+type CropDefinition = {
+  key: string;
+  label: string;
+  itemCode: string;
+  group: string;
+};
+
+type CountryMeta = {
+  iso3: string;
+  country: string;
+  lat: number;
+  lng: number;
+};
+
+type ProductionRow = {
+  iso3: string;
+  areaCode: string;
+  country: string;
+  lat: number;
+  lng: number;
+  crop: string;
+  cropKey: string;
+  year: number;
+  value: number;
+  unit: string;
+  rank?: number;
+  sharePct?: number;
+};
+
+const CROPS: CropDefinition[] = [
+  { key: "wheat", label: "Wheat", itemCode: "15", group: "Cereals" },
+  { key: "rice", label: "Rice / Paddy", itemCode: "27", group: "Cereals" },
+  { key: "barley", label: "Barley", itemCode: "44", group: "Cereals" },
+  { key: "maize", label: "Maize / Corn", itemCode: "56", group: "Cereals" },
+  { key: "millet", label: "Millet", itemCode: "79", group: "Cereals" },
+  { key: "sorghum", label: "Sorghum", itemCode: "83", group: "Cereals" },
+  { key: "potatoes", label: "Potatoes", itemCode: "116", group: "Roots & Tubers" },
+  { key: "cassava", label: "Cassava", itemCode: "125", group: "Roots & Tubers" },
+  { key: "sugar-cane", label: "Sugar cane", itemCode: "156", group: "Sugar Crops" },
+  { key: "soybeans", label: "Soybeans", itemCode: "236", group: "Oil Crops" },
+  { key: "tomatoes", label: "Tomatoes", itemCode: "388", group: "Vegetables" },
+  { key: "bananas", label: "Bananas", itemCode: "486", group: "Fruit" },
+  { key: "apples", label: "Apples", itemCode: "515", group: "Fruit" },
+  { key: "grapes", label: "Grapes", itemCode: "560", group: "Fruit" },
+  { key: "coffee", label: "Coffee, green", itemCode: "656", group: "Beverage Crops" },
+  { key: "cocoa", label: "Cocoa beans", itemCode: "661", group: "Beverage Crops" },
+  { key: "tea", label: "Tea leaves", itemCode: "667", group: "Beverage Crops" },
+  { key: "tobacco", label: "Tobacco, unmanufactured", itemCode: "826", group: "Other Crops" },
+];
+
+const COUNTRY_META = new Map<string, CountryMeta>(
+  (countries as any[])
+    .map((country) => {
+      const iso3 = String(country?.cca3 ?? "").toUpperCase();
+      const latlng = Array.isArray(country?.latlng) ? country.latlng : [];
+      const lat = Number(latlng?.[0]);
+      const lng = Number(latlng?.[1]);
+
+      if (!/^[A-Z]{3}$/.test(iso3) || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return null;
+      }
+
+      return [
+        iso3,
+        {
+          iso3,
+          country: String(country?.name?.common ?? iso3),
+          lat,
+          lng,
+        },
+      ] as const;
+    })
+    .filter(Boolean) as Array<readonly [string, CountryMeta]>,
+);
+
+function cropByKey(key: string | null) {
+  const normalized = String(key ?? "").trim().toLowerCase();
+  return CROPS.find((crop) => crop.key === normalized) ?? CROPS[0];
+}
+
+function asYear(value: string | null) {
+  const year = Number(value);
+  if (!Number.isFinite(year)) return LATEST_YEAR;
+  return Math.max(1961, Math.min(LATEST_YEAR, Math.trunc(year)));
+}
+
+function normalizeTable(payload: any): Record<string, any>[] {
+  const raw = payload?.data;
+
+  if (!Array.isArray(raw) || !raw.length) return [];
+
+  if (Array.isArray(raw[0])) {
+    const headers = raw[0].map((header: unknown) => String(header ?? ""));
+
+    return raw
+      .slice(1)
+      .filter((row: unknown) => Array.isArray(row))
+      .map((row: any[]) =>
+        Object.fromEntries(headers.map((header: string, index: number) => [header, row[index]])),
+      );
+  }
+
+  if (typeof raw[0] === "object" && raw[0] !== null) {
+    return raw as Record<string, any>[];
+  }
+
+  return [];
+}
+
+function getByExactOrPartial(
+  row: Record<string, any>,
+  exact: string[],
+  includes: string[] = [],
+) {
+  for (const key of exact) {
+    if (row[key] !== undefined && row[key] !== null && row[key] !== "") {
+      return row[key];
+    }
+  }
+
+  const keys = Object.keys(row);
+
+  for (const needle of includes) {
+    const key = keys.find((candidate) =>
+      candidate.toLowerCase().includes(needle.toLowerCase()),
+    );
+
+    if (key && row[key] !== undefined && row[key] !== null && row[key] !== "") {
+      return row[key];
+    }
+  }
+
+  return null;
+}
+
+function parseRows(payload: any, crop: CropDefinition): ProductionRow[] {
+  const rows = normalizeTable(payload);
+  const byIso3 = new Map<string, ProductionRow>();
+
+  for (const row of rows) {
+    const iso3 = String(
+      getByExactOrPartial(
+        row,
+        ["Area Code (ISO3)", "Area Code ISO3", "ISO3"],
+        ["iso3"],
+      ) ?? "",
+    )
+      .trim()
+      .toUpperCase();
+
+    const meta = COUNTRY_META.get(iso3);
+    if (!meta) continue;
+
+    const value = Number(
+      getByExactOrPartial(row, ["Value"], ["value"]),
+    );
+
+    if (!Number.isFinite(value)) continue;
+
+    const year = Number(
+      getByExactOrPartial(row, ["Year"], ["year"]),
+    );
+
+    const areaCode = String(
+      getByExactOrPartial(
+        row,
+        ["Area Code", "Area code", "AreaCode"],
+        ["area code"],
+      ) ?? "",
+    ).trim();
+
+    const countryName = String(
+      getByExactOrPartial(row, ["Area"], ["area"]) ?? meta.country,
+    ).trim();
+
+    const unit = String(
+      getByExactOrPartial(row, ["Unit"], ["unit"]) ?? "t",
+    ).trim();
+
+    const candidate: ProductionRow = {
+      iso3,
+      areaCode,
+      country: countryName || meta.country,
+      lat: meta.lat,
+      lng: meta.lng,
+      crop: crop.label,
+      cropKey: crop.key,
+      year: Number.isFinite(year) ? year : LATEST_YEAR,
+      value,
+      unit: unit || "t",
+    };
+
+    // Country/item/year should normally be unique. If upstream returns
+    // duplicates, retain the largest numeric observation rather than double count.
+    const existing = byIso3.get(iso3);
+    if (!existing || candidate.value > existing.value) {
+      byIso3.set(iso3, candidate);
+    }
+  }
+
+  return [...byIso3.values()];
+}
+
+function productionUrl(base: string, crop: CropDefinition, options: {
+  year?: number;
+  areaCode?: string;
+}) {
+  const url = new URL(base);
+
+  url.searchParams.set("element", PRODUCTION_FILTER_CODE);
+  url.searchParams.set("item", crop.itemCode);
+
+  if (options.year) {
+    url.searchParams.set("year", String(options.year));
+    url.searchParams.set("area_cs", "ISO3");
+  }
+
+  if (options.areaCode) {
+    url.searchParams.set("area", options.areaCode);
+  }
+
+  url.searchParams.set("show_code", "1");
+  url.searchParams.set("show_unit", "1");
+  url.searchParams.set("show_flags", "0");
+  url.searchParams.set("null_values", "0");
+  url.searchParams.set("limit", "-1");
+  url.searchParams.set("output_type", "objects");
+
+  return url.toString();
+}
+
+function apiBases() {
+  const custom = String(process.env.FAOSTAT_API_BASE_URL ?? "").trim();
+
+  return [
+    custom,
+    "https://faostatservices.fao.org/api/v1/en/data/QCL",
+    "https://fenixservices.fao.org/faostat/api/v1/en/data/QCL",
+  ].filter((value, index, all) => value && all.indexOf(value) === index);
+}
+
+async function fetchFaostat(url: string) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);
+
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      next: { revalidate: CACHE_SECONDS },
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Stratify-Agriculture-Atlas/1.0",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchWithFallback(
+  crop: CropDefinition,
+  options: { year?: number; areaCode?: string },
+) {
+  const bases = apiBases();
+
+  if (!bases.length) {
+    throw new Error("No FAOSTAT API endpoint is configured.");
+  }
+
+  const attempts = bases.map(async (base) => {
+    const url = productionUrl(base, crop, options);
+    const payload = await fetchFaostat(url);
+    const rows = normalizeTable(payload);
+
+    if (!rows.length) {
+      throw new Error(`${base}: no rows`);
+    }
+
+    return { payload, upstream: base };
+  });
+
+  try {
+    return await Promise.any(attempts);
+  } catch (error) {
+    const reasons =
+      error instanceof AggregateError
+        ? error.errors
+            .map((item) =>
+              item instanceof Error ? item.message : String(item),
+            )
+            .join(" | ")
+        : error instanceof Error
+          ? error.message
+          : String(error);
+
+    throw new Error(`FAOSTAT returned no usable data. ${reasons}`);
+  }
+}
+
+function json(data: unknown, status = 200) {
+  return NextResponse.json(data, {
+    status,
+    headers: {
+      "Cache-Control":
+        "public, s-maxage=21600, stale-while-revalidate=86400",
+    },
+  });
+}
+
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const scope = String(searchParams.get("scope") ?? "map").toLowerCase();
+    const crop = cropByKey(searchParams.get("crop"));
+
+    if (scope === "meta") {
+      return json({
+        ok: true,
+        source: "FAOSTAT Crops and Livestock Products (QCL)",
+        metric: "Production quantity",
+        elementFilterCode: PRODUCTION_FILTER_CODE,
+        latestYear: LATEST_YEAR,
+        minYear: 1961,
+        crops: CROPS,
+      });
+    }
+
+    if (scope === "trend") {
+      const areaCode = String(searchParams.get("area_code") ?? "").trim();
+      const iso3 = String(searchParams.get("iso3") ?? "").trim().toUpperCase();
+
+      if (!areaCode) {
+        return json(
+          {
+            ok: false,
+            error: "area_code is required for a country trend.",
+            rows: [],
+          },
+          400,
+        );
+      }
+
+      const { payload, upstream } = await fetchWithFallback(crop, { areaCode });
+      const normalized = normalizeTable(payload);
+
+      const rows = normalized
+        .map((row) => {
+          const year = Number(
+            getByExactOrPartial(row, ["Year"], ["year"]),
+          );
+          const value = Number(
+            getByExactOrPartial(row, ["Value"], ["value"]),
+          );
+          const unit = String(
+            getByExactOrPartial(row, ["Unit"], ["unit"]) ?? "t",
+          );
+
+          return { year, value, unit };
+        })
+        .filter(
+          (row) =>
+            Number.isFinite(row.year) &&
+            Number.isFinite(row.value) &&
+            row.year >= 1961 &&
+            row.year <= LATEST_YEAR,
+        )
+        .sort((a, b) => a.year - b.year)
+        .slice(-30);
+
+      return json({
+        ok: true,
+        source: "FAOSTAT",
+        upstream,
+        crop: crop.label,
+        cropKey: crop.key,
+        iso3,
+        areaCode,
+        rows,
+      });
+    }
+
+    const year = asYear(searchParams.get("year"));
+    const { payload, upstream } = await fetchWithFallback(crop, { year });
+    const parsed = parseRows(payload, crop)
+      .filter((row) => row.year === year || !Number.isFinite(row.year))
+      .sort((a, b) => b.value - a.value);
+
+    const commonUnit =
+      parsed.find((row) => row.unit)?.unit ?? "t";
+
+    const compatibleRows = parsed.filter((row) => row.unit === commonUnit);
+    const globalTotal = compatibleRows.reduce((sum, row) => sum + row.value, 0);
+
+    const ranked = parsed.map((row, index) => ({
+      ...row,
+      rank: index + 1,
+      sharePct:
+        globalTotal > 0 && row.unit === commonUnit
+          ? (row.value / globalTotal) * 100
+          : null,
+    }));
+
+    return json({
+      ok: true,
+      source: "FAOSTAT Crops and Livestock Products (QCL)",
+      upstream,
+      metric: "Production quantity",
+      elementFilterCode: PRODUCTION_FILTER_CODE,
+      crop: crop.label,
+      cropKey: crop.key,
+      itemCode: crop.itemCode,
+      year,
+      unit: commonUnit,
+      globalTotal,
+      countryCount: ranked.length,
+      rows: ranked,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Unable to load agricultural production.";
+
+    return json(
+      {
+        ok: false,
+        error: message,
+        hint:
+          "If FAOSTAT changes the API host in your environment, set FAOSTAT_API_BASE_URL to the QCL data endpoint.",
+        rows: [],
+      },
+      502,
+    );
+  }
+}

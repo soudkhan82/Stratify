@@ -1,0 +1,164 @@
+import { NextResponse } from "next/server";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type Business = {
+  id: string;
+  name: string;
+  module: string;
+  country: string;
+  countryCode: string;
+  city: string;
+  lat: number;
+  lng: number;
+  coverage: string;
+  roles: string[];
+  commerceGroups: string[];
+  itemKeys: string[];
+  description: string;
+  website: string;
+  sourceUrl: string;
+  verified: boolean;
+  featured?: boolean;
+};
+
+type SeedPayload = {
+  generatedAt: string;
+  sourcePolicy: string;
+  businesses: Business[];
+};
+
+function normalize(value: string | null) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+async function readSeed(): Promise<SeedPayload> {
+  const filePath = path.join(
+    process.cwd(),
+    "public",
+    "data",
+    "business-network",
+    "businesses.json",
+  );
+
+  const raw = await readFile(filePath, "utf8");
+  return JSON.parse(raw) as SeedPayload;
+}
+
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+
+    const moduleKey = normalize(
+      searchParams.get("module") || "agriculture",
+    );
+    const item = normalize(searchParams.get("item"));
+    const group = normalize(searchParams.get("group"));
+    const role = normalize(searchParams.get("role"));
+    const q = normalize(searchParams.get("q"));
+
+    const seed = await readSeed();
+
+    const rows = seed.businesses
+      .filter((business) => {
+        if (normalize(business.module) !== moduleKey) {
+          return false;
+        }
+
+        if (
+          role &&
+          !business.roles.some(
+            (value) => normalize(value) === role,
+          )
+        ) {
+          return false;
+        }
+
+        if (q) {
+          const haystack = [
+            business.name,
+            business.country,
+            business.city,
+            business.description,
+            ...business.roles,
+          ]
+            .join(" ")
+            .toLowerCase();
+
+          if (!haystack.includes(q)) {
+            return false;
+          }
+        }
+
+        const itemMatch =
+          !!item &&
+          business.itemKeys.some(
+            (value) => normalize(value) === item,
+          );
+
+        const groupMatch =
+          !!group &&
+          business.commerceGroups.some(
+            (value) => normalize(value) === group,
+          );
+
+        return itemMatch || groupMatch;
+      })
+      .map((business) => {
+        const exactMatch = business.itemKeys.some(
+          (value) => normalize(value) === item,
+        );
+
+        return {
+          ...business,
+          matchType: exactMatch ? "exact-item" : "category",
+          matchScore:
+            (business.featured ? 10 : 0) +
+            (exactMatch ? 100 : 40),
+        };
+      })
+      .sort((a, b) => {
+        if (b.matchScore !== a.matchScore) {
+          return b.matchScore - a.matchScore;
+        }
+
+        return a.name.localeCompare(b.name);
+      });
+
+    return NextResponse.json(
+      {
+        ok: true,
+        generatedAt: seed.generatedAt,
+        sourcePolicy: seed.sourcePolicy,
+        module: moduleKey,
+        item,
+        group,
+        count: rows.length,
+        businesses: rows,
+      },
+      {
+        headers: {
+          "Cache-Control":
+            "public, s-maxage=86400, stale-while-revalidate=604800",
+        },
+      },
+    );
+  } catch (error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to load business network.",
+        businesses: [],
+      },
+      { status: 500 },
+    );
+  }
+}
