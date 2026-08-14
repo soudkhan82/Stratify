@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import WeoView from "./WeoView";
 import {
   Activity,
   ArrowDownRight,
@@ -36,7 +35,6 @@ type ViewKey =
   | "monetary"
   | "fiscal"
   | "debt"
-  | "weo"
   | "compare"
   | "explorer";
 
@@ -205,7 +203,6 @@ const VIEWS: Array<{ key: ViewKey; label: string }> = [
   { key: "monetary", label: "Monetary" },
   { key: "fiscal", label: "Fiscal" },
   { key: "debt", label: "Public Debt" },
-  { key: "weo", label: "IMF WEO" },
   { key: "compare", label: "Compare" },
   { key: "explorer", label: "Data Explorer" },
 ];
@@ -1410,16 +1407,6 @@ export default function MacroFinancePage() {
           </div>
         ) : null}
 
-        {view === "weo" ? (
-          <div className="mt-5">
-            <WeoView
-              country={country}
-              countryName={countryName}
-              referenceYear={year}
-              refreshTick={refreshTick}
-            />
-          </div>
-        ) : null}
         {view === "compare" ? (
           <div className="mt-5 space-y-5">
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

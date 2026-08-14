@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -9,6 +9,8 @@ const NAV_ITEMS = [
   { label: "Global Pulse", href: "/global-pulse" },
   { label: "Macro & Finance", href: "/macro-finance" },
   { label: "Energy", href: "/energy" },
+  { label: "FAO", href: "/faostat" },
+  { label: "IMF (WEO)", href: "/imf-weo" },
   { label: "History", href: "/history" },
   { label: "Corporate 500", href: "/corporate-intelligence" },
   { label: "Credits", href: "/credits" },
@@ -18,7 +20,9 @@ const MOBILE_ITEMS = [
   { label: "Home", href: "/" },
   { label: "Pulse", href: "/global-pulse" },
   { label: "Macro", href: "/macro-finance" },
+  { label: "FAO", href: "/faostat" },
   { label: "History", href: "/history" },
+  { label: "IMF", href: "/imf-weo" },
 ];
 
 function isActivePath(pathname: string, href: string) {
@@ -33,7 +37,21 @@ function isActivePath(pathname: string, href: string) {
       pathname === "/fiscal" ||
       pathname.startsWith("/fiscal/") ||
       pathname === "/debt" ||
-      pathname.startsWith("/debt/") ||
+      pathname.startsWith("/debt/")
+    );
+  }
+
+  if (href === "/faostat") {
+    return (
+      pathname === "/faostat" ||
+      pathname.startsWith("/faostat/") ||
+      pathname.includes("dataset=faostat") ||
+      pathname.includes("dataset=fao")
+    );
+  }
+
+  if (href === "/imf-weo") {
+    return (
       pathname === "/imf-weo" ||
       pathname.startsWith("/imf-weo/") ||
       pathname.includes("dataset=weo")
@@ -139,4 +157,3 @@ export default function TopNav() {
     </header>
   );
 }
-
