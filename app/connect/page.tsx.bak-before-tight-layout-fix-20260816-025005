@@ -1172,6 +1172,505 @@ export default function ConnectPage() {
     );
 
   return (
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.08),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(14,165,233,0.07),_transparent_24%),linear-gradient(180deg,#f8fafc_0%,#eef3f8_100%)] px-3 py-4 text-slate-800 sm:px-5">
+      <div className="mx-auto w-full max-w-[1520px]">
+        <section className="relative z-[80] overflow-visible rounded-[26px] border border-white/90 bg-white/85 shadow-[0_18px_55px_rgba(30,41,59,0.08)] backdrop-blur-xl">
+          <div className="relative overflow-hidden rounded-t-[26px] border-b border-slate-100/80 bg-[linear-gradient(110deg,rgba(238,242,255,0.95)_0%,rgba(255,255,255,0.98)_48%,rgba(240,249,255,0.92)_100%)] px-5 py-4 sm:px-6">
+            <div className="pointer-events-none absolute -right-8 -top-12 h-40 w-40 rounded-full bg-indigo-200/20 blur-3xl" />
+            <div className="pointer-events-none absolute left-1/3 top-0 h-28 w-28 rounded-full bg-sky-200/20 blur-3xl" />
+
+            <div className="relative flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex min-w-0 items-center gap-3.5">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[15px] bg-gradient-to-br from-indigo-500 to-blue-500 text-white shadow-[0_8px_20px_rgba(79,70,229,0.22)]">
+                  <Globe2 className="h-5 w-5" />
+                </div>
+
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <h1 className="text-[22px] font-semibold tracking-[-0.035em] text-slate-800 sm:text-[25px]">
+                      Stratify Connect
+                    </h1>
+
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200/70 bg-emerald-50/80 px-2.5 py-1 text-[9px] font-medium text-emerald-700">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      Google Places live
+                    </span>
+                  </div>
+
+                  <p className="mt-1 max-w-2xl text-[12px] font-normal leading-5 text-slate-500">
+                    Discover organizations, suppliers, institutions and service providers across Stratify sectors.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="rounded-[13px] border border-white/80 bg-white/75 px-3 py-2 shadow-sm backdrop-blur">
+                  <div className="text-[9px] font-medium uppercase tracking-[0.08em] text-slate-400">
+                    Results
+                  </div>
+                  <div className="mt-0.5 text-[13px] font-medium text-slate-700">
+                    {loading
+                      ? "Updating..."
+                      : places.length
+                        ? `${places.length} live places`
+                        : "Waiting"}
+                  </div>
+                </div>
+
+                <div className="rounded-[13px] border border-white/80 bg-white/75 px-3 py-2 shadow-sm backdrop-blur">
+                  <div className="text-[9px] font-medium uppercase tracking-[0.08em] text-slate-400">
+                    Search model
+                  </div>
+                  <div className="mt-0.5 text-[13px] font-medium text-slate-700">
+                    {payload?.queryCount
+                      ? `${payload.queryCount} query variants`
+                      : "Auto"}
+                  </div>
+                </div>
+
+                <div className="flex h-9 items-center gap-2 rounded-full border border-white/80 bg-white/70 px-3 text-[11px] font-normal text-slate-500 shadow-sm">
+                  {loading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-500" />
+                  ) : (
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  )}
+                  {resultSummary}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="px-4 pb-4 pt-3.5 sm:px-5">
+            <div className="grid gap-4 xl:grid-cols-[250px_minmax(0,1fr)]">
+              <aside className="overflow-hidden rounded-[18px] border border-slate-200/80 bg-slate-50/70">
+                <div className="border-b border-slate-200/70 bg-white/80 px-3.5 py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-[12px] font-semibold tracking-[-0.01em] text-slate-700">
+                        Economic sectors
+                      </div>
+                      <div className="mt-0.5 text-[9.5px] font-normal text-slate-400">
+                        Aâ€“Z directory
+                      </div>
+                    </div>
+
+                    <span className="rounded-full bg-indigo-50 px-2 py-1 text-[9px] font-medium text-indigo-600">
+                      {CONNECT_SECTORS.length}
+                    </span>
+                  </div>
+
+                  <div className="mt-2.5 flex h-9 items-center rounded-[11px] border border-slate-200 bg-white transition focus-within:border-indigo-300 focus-within:ring-3 focus-within:ring-indigo-100/70">
+                    <Search className="ml-2.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+
+                    <input
+                      value={sectorSearch}
+                      onChange={(event) =>
+                        setSectorSearch(
+                          event.target.value,
+                        )
+                      }
+                      placeholder="Search sectors..."
+                      className="h-full min-w-0 flex-1 bg-transparent px-2 text-[12px] font-normal text-slate-700 outline-none placeholder:text-slate-400"
+                    />
+
+                    {sectorSearch ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSectorSearch("")
+                        }
+                        className="mr-1.5 flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                        aria-label="Clear sector search"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="max-h-[306px] overflow-y-auto overscroll-contain p-1.5">
+                  {sectorMenuItems.length ? (
+                    <div className="space-y-0.5">
+                      {sectorMenuItems.map((item) => {
+                        const active =
+                          item.value ===
+                          sector;
+
+                        return (
+                          <button
+                            key={item.value}
+                            type="button"
+                            onClick={() =>
+                              changeSector(
+                                item.value,
+                              )
+                            }
+                            className={[
+                              "group flex w-full items-center gap-2.5 rounded-[11px] px-2.5 py-2 text-left transition",
+                              active
+                                ? "bg-indigo-600 text-white shadow-[0_5px_14px_rgba(79,70,229,0.18)]"
+                                : "text-slate-600 hover:bg-white hover:text-slate-900",
+                            ].join(
+                              " ",
+                            )}
+                          >
+                            <span
+                              className={[
+                                "flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[10px] font-semibold",
+                                active
+                                  ? "bg-white/15 text-white"
+                                  : "bg-white text-slate-400 ring-1 ring-slate-200/80 group-hover:text-indigo-600",
+                              ].join(
+                                " ",
+                              )}
+                            >
+                              {item.label
+                                .charAt(0)
+                                .toUpperCase()}
+                            </span>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-[11.5px] font-medium">
+                                {item.label}
+                              </div>
+                            </div>
+
+                            <ChevronRight
+                              className={[
+                                "h-3.5 w-3.5 shrink-0",
+                                active
+                                  ? "text-white/80"
+                                  : "text-slate-300 group-hover:text-indigo-400",
+                              ].join(
+                                " ",
+                              )}
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="px-3 py-8 text-center text-[11px] font-normal text-slate-400">
+                      No matching sector
+                    </div>
+                  )}
+                </div>
+              </aside>
+
+              <div className="min-w-0">
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-3 rounded-[16px] border border-indigo-100/70 bg-[linear-gradient(120deg,rgba(238,242,255,0.74),rgba(248,250,252,0.80))] px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-indigo-500">
+                      Active sector
+                    </div>
+
+                    <div className="mt-1 text-[16px] font-semibold tracking-[-0.02em] text-slate-800">
+                      {sectorConfig.label}
+                    </div>
+
+                    <p className="mt-1 max-w-3xl text-[11px] font-normal leading-5 text-slate-500">
+                      {sectorConfig.description}
+                    </p>
+                  </div>
+
+                  <div className="rounded-full border border-white bg-white/80 px-2.5 py-1 text-[9px] font-medium text-slate-500 shadow-sm">
+                    {sectorConfig.categories.length} categories
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.05fr_1.08fr_1.08fr_1.45fr]">
+                  <SearchableSelect
+                    label="Category"
+                    value={category}
+                    options={categoryOptions}
+                    placeholder="Find category..."
+                    allowClear={false}
+                    onChange={(value) => {
+                      const nextCategory =
+                        value || "all";
+
+                      setCategory(
+                        nextCategory,
+                      );
+
+                      if (
+                        sector ===
+                          "agriculture" &&
+                        (
+                          nextCategory ===
+                            "dairy" ||
+                          nextCategory ===
+                            "livestock"
+                        )
+                      ) {
+                        setTag("");
+                      }
+
+                      setSelectedId(
+                        null,
+                      );
+                    }}
+                  />
+
+                  <SearchableSelect
+                    label="Country"
+                    value={location}
+                    options={COUNTRY_OPTIONS}
+                    placeholder="Type country..."
+                    onChange={(value) => {
+                      setLocation(
+                        value,
+                      );
+                      setSelectedId(
+                        null,
+                      );
+                    }}
+                  />
+
+                  <SearchableSelect
+                    label={
+                      sector ===
+                      "agriculture"
+                        ? "Crop / product"
+                        : "Specialty"
+                    }
+                    value={tag}
+                    options={
+                      animalAgricultureCategory
+                        ? []
+                        : specialtyOptions
+                    }
+                    placeholder={
+                      animalAgricultureCategory
+                        ? "Not applicable for this category"
+                        : sector ===
+                            "agriculture"
+                          ? "Type crop or Citrus..."
+                          : "Type specialty..."
+                    }
+                    disabled={
+                      animalAgricultureCategory
+                    }
+                    onChange={(value) => {
+                      setTag(
+                        value,
+                      );
+                      setSelectedId(
+                        null,
+                      );
+                    }}
+                  />
+
+                  <div>
+                    <div className="mb-1.5 pl-0.5 text-[11px] font-medium tracking-[-0.01em] text-slate-500">
+                      Company or keyword
+                    </div>
+
+                    <div className="flex h-11 items-center rounded-[14px] border border-slate-200/90 bg-white/90 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:border-indigo-200 focus-within:border-indigo-300 focus-within:ring-4 focus-within:ring-indigo-100/70">
+                      <Building2 className="ml-3 h-3.5 w-3.5 shrink-0 text-slate-400" />
+
+                      <input
+                        value={q}
+                        onChange={(event) =>
+                          setQ(
+                            event.target.value,
+                          )
+                        }
+                        disabled={!location}
+                        placeholder={
+                          location
+                            ? "Optional name or keyword..."
+                            : "Choose country first"
+                        }
+                        className="h-full min-w-0 flex-1 bg-transparent px-2 text-[13px] font-normal text-slate-700 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
+                      />
+
+                      {q ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setQ("")
+                          }
+                          className="mr-2 flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                          aria-label="Clear keyword"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-[15px] bg-slate-50/80 px-3.5 py-2.5">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-normal text-slate-500">
+                <span className="font-medium text-slate-600">
+                  {sectorConfig.label}
+                </span>
+
+                <span className="text-slate-300">
+                  /
+                </span>
+
+                <span>
+                  {categoryLabel}
+                </span>
+
+                {location ? (
+                  <>
+                    <span className="text-slate-300">
+                      /
+                    </span>
+                    <span>
+                      {location}
+                    </span>
+                  </>
+                ) : null}
+
+                {specialtyLabel ? (
+                  <>
+                    <span className="text-slate-300">
+                      /
+                    </span>
+                    <span className="text-indigo-600">
+                      {specialtyLabel}
+                    </span>
+                  </>
+                ) : null}
+              </div>
+
+              {(location ||
+                tag ||
+                q ||
+                category !==
+                  "all") ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCategory(
+                      "all",
+                    );
+                    setLocation("");
+                    setTag("");
+                    setQ("");
+                    setPayload(
+                      null,
+                    );
+                    setSelectedId(
+                      null,
+                    );
+                    setError("");
+                  }}
+                  className="rounded-lg px-2 py-1 text-[10px] font-medium text-slate-400 transition hover:bg-white hover:text-slate-700"
+                >
+                  Reset filters
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </section>
+
+        {error ? (
+          <div className="mt-3 rounded-[16px] border border-rose-200/80 bg-rose-50/90 px-4 py-3 text-xs font-normal text-rose-700 shadow-sm">
+            {error}
+          </div>
+        ) : null}
+
+        <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_470px]">
+          <div className="overflow-hidden rounded-[26px] border border-white/90 bg-white/85 shadow-[0_18px_55px_rgba(30,41,59,0.08)] backdrop-blur-xl">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-white/90 px-4 py-3.5 sm:px-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-[12px] bg-indigo-50 text-indigo-600">
+                  <MapPinned className="h-4 w-4" />
+                </div>
+
+                <div>
+                  <div className="text-[14px] font-medium text-slate-700">
+                    Geographic coverage
+                  </div>
+                  <div className="mt-1 text-[12px] font-normal text-slate-500">
+                    Live Google Places mapped for the active filters
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                {location ? (
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-medium text-slate-500">
+                    {location}
+                  </span>
+                ) : null}
+
+                <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[9px] font-medium text-indigo-600">
+                  {sectorConfig.label}
+                </span>
+
+                {specialtyLabel ? (
+                  <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[9px] font-medium text-sky-700">
+                    {specialtyLabel}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="h-[620px] bg-slate-100 p-1.5">
+              <OrganizationMap
+                places={places}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+              />
+            </div>
+          </div>
+
+          <aside className="flex h-[681px] min-h-[620px] flex-col overflow-hidden rounded-[26px] border border-white/90 bg-white/85 shadow-[0_18px_55px_rgba(30,41,59,0.08)] backdrop-blur-xl">
+            <div className="shrink-0 border-b border-slate-100 bg-[linear-gradient(120deg,rgba(248,250,252,0.96),rgba(238,242,255,0.7))] px-4 py-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-white text-indigo-600 shadow-sm ring-1 ring-slate-100">
+                    <Building2 className="h-4 w-4" />
+                  </div>
+
+                  <div className="min-w-0">
+                    <h2 className="text-[18px] font-semibold tracking-[-0.02em] text-slate-900">
+                      Organizations
+                    </h2>
+
+                    <div className="mt-1 text-[12px] font-normal text-slate-500">
+                      {!location
+                        ? "Choose a country to begin"
+                        : loading
+                          ? "Updating the directory"
+                          : payload
+                            ? `${places.length} unique Google Places results`
+                            : "Ready for live discovery"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-full border border-white bg-white/90 px-3 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm">
+                  {payload?.queryCount
+                    ? `${payload.queryCount} variants`
+                    : "Live"}
+                </div>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-slate-50/65 p-2.5">
+              {places.length ? (
+                <div className="space-y-2">
+                  {places.map(
+                    (place) => {
+                      const active =
+                        selectedId ===
+                        place.id;
+
+                      const details =
+                        detailsById[
+                          place.id
+                        ];
+
+                      return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.07),_transparent_25%),linear-gradient(180deg,#f7f9fc_0%,#edf2f7_100%)] px-2.5 py-3 text-slate-800 sm:px-4">
       <div className="mx-auto w-full max-w-[1580px]">
         <header className="mb-3 flex flex-col gap-3 rounded-[22px] border border-white/90 bg-white/88 px-4 py-3 shadow-[0_10px_34px_rgba(30,41,59,0.07)] backdrop-blur-xl sm:px-5 lg:flex-row lg:items-center lg:justify-between">
@@ -1466,13 +1965,11 @@ export default function ConnectPage() {
                   }
                   value={tag}
                   options={
-                    typeof animalAgricultureCategory !== "undefined" &&
                     animalAgricultureCategory
                       ? []
                       : specialtyOptions
                   }
                   placeholder={
-                    typeof animalAgricultureCategory !== "undefined" &&
                     animalAgricultureCategory
                       ? "Not applicable"
                       : sector ===
@@ -1481,9 +1978,7 @@ export default function ConnectPage() {
                         : "Type specialty..."
                   }
                   disabled={
-                    typeof animalAgricultureCategory !== "undefined"
-                      ? animalAgricultureCategory
-                      : false
+                    animalAgricultureCategory
                   }
                   onChange={(value) => {
                     setTag(
