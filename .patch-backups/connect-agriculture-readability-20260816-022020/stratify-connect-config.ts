@@ -24,7 +24,7 @@ export const CONNECT_SECTORS: ConnectSector[] = [
     value: "agriculture",
     label: "Agriculture",
     description:
-      "Suppliers, processors, exporters, agri-inputs, dairy, livestock, storage and logistics.",
+      "Suppliers, processors, exporters, agri-inputs, storage and logistics.",
     categories: [
       {
         value: "all",
@@ -69,24 +69,6 @@ export const CONNECT_SECTORS: ConnectSector[] = [
           "fertilizer supplier",
           "seed supplier",
           "agricultural input supplier",
-        ],
-      },
-      {
-        value: "dairy",
-        label: "Dairy",
-        terms: [
-          "dairy farm",
-          "dairy company",
-          "milk producer",
-        ],
-      },
-      {
-        value: "livestock",
-        label: "Livestock",
-        terms: [
-          "livestock farm",
-          "cattle farm",
-          "livestock supplier",
         ],
       },
       {
@@ -431,43 +413,6 @@ export function buildConnectQueries({
   if (
     sectorConfig.value ===
       "agriculture" &&
-    (
-      categoryConfig.value ===
-        "dairy" ||
-      categoryConfig.value ===
-        "livestock"
-    )
-  ) {
-    return categoryConfig.terms
-      .slice(0, 3)
-      .map(
-        (
-          term,
-          index,
-        ) => ({
-          label:
-            categoryConfig.value ===
-            "dairy"
-              ? [
-                  "Dairy farm",
-                  "Dairy company",
-                  "Milk producer",
-                ][index] ??
-                categoryConfig.label
-              : [
-                  "Livestock farm",
-                  "Cattle farm",
-                  "Livestock supplier",
-                ][index] ??
-                categoryConfig.label,
-          text: term,
-        }),
-      );
-  }
-
-  if (
-    sectorConfig.value ===
-      "agriculture" &&
     tagText
   ) {
     const crop =
@@ -582,16 +527,6 @@ export function buildConnectQueries({
       "Seed",
       "Agri-inputs",
     ],
-    dairy: [
-      "Dairy farm",
-      "Dairy company",
-      "Milk producer",
-    ],
-    livestock: [
-      "Livestock farm",
-      "Cattle farm",
-      "Livestock supplier",
-    ],
     logistics: [
       "Logistics",
       "Cold storage",
@@ -705,4 +640,3 @@ export function buildConnectQueries({
       }),
     );
 }
-

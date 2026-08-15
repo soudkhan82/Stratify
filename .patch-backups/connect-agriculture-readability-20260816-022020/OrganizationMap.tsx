@@ -623,18 +623,18 @@ function GooglePlacesMap({
       position,
     );
     info.setContent(
-      `<div style="min-width:260px;max-width:340px;padding:5px 2px;">
-        <div style="font-size:17px;font-weight:600;line-height:1.3;color:#0f172a;">
+      `<div style="min-width:220px;max-width:300px;padding:2px 0;">
+        <div style="font-size:14px;font-weight:800;color:#0f172a;">
           ${escapeHtml(
             place.name,
           )}
         </div>
-        <div style="margin-top:7px;font-size:13px;font-weight:400;line-height:1.5;color:#475569;">
+        <div style="margin-top:5px;font-size:12px;line-height:1.45;color:#64748b;">
           ${escapeHtml(
             place.address,
           )}
         </div>
-        <div style="margin-top:9px;font-size:12px;font-weight:600;line-height:1.4;color:#4338ca;">
+        <div style="margin-top:7px;font-size:11px;font-weight:700;color:#2563eb;">
           ${escapeHtml(
             place.matchedServices.join(
               " | ",
@@ -709,4 +709,3 @@ function GooglePlacesMap({
 export default memo(
   GooglePlacesMap,
 );
-

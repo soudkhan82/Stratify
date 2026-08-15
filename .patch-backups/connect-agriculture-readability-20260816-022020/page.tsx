@@ -715,48 +715,18 @@ export default function ConnectPage() {
         sector ===
         "agriculture"
       ) {
-        const cropOptions =
-          agricultureCrops.map(
-            (crop) => ({
-              value: crop.key,
-              label:
-                crop.label,
-              meta:
-                crop.group
-                  ? titleCase(
-                      crop.group,
-                    )
-                  : undefined,
-            }),
-          );
-
-        const hasUmbrellaCitrus =
-          cropOptions.some(
-            (option) =>
-              option.value ===
-                "citrus" ||
-              option.label
-                .trim()
-                .toLowerCase() ===
-                "citrus",
-          );
-
-        if (
-          !hasUmbrellaCitrus
-        ) {
-          cropOptions.push({
-            value: "citrus",
-            label: "Citrus",
+        return agricultureCrops.map(
+          (crop) => ({
+            value: crop.key,
+            label:
+              crop.label,
             meta:
-              "Oranges, lemons, limes & other citrus",
-          });
-        }
-
-        return cropOptions.sort(
-          (a, b) =>
-            a.label.localeCompare(
-              b.label,
-            ),
+              crop.group
+                ? titleCase(
+                    crop.group,
+                  )
+                : undefined,
+          }),
         );
       }
 
@@ -1131,13 +1101,6 @@ export default function ConnectPage() {
     )?.label ??
     "";
 
-  const animalAgricultureCategory =
-    sector === "agriculture" &&
-    (
-      category === "dairy" ||
-      category === "livestock"
-    );
-
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.08),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(14,165,233,0.07),_transparent_24%),linear-gradient(180deg,#f8fafc_0%,#eef3f8_100%)] px-3 py-4 text-slate-800 sm:px-5">
       <div className="mx-auto w-full max-w-[1520px]">
@@ -1214,7 +1177,7 @@ export default function ConnectPage() {
                   <div className="text-[11px] font-medium tracking-[-0.01em] text-slate-500">
                     Explore by sector
                   </div>
-                  <div className="mt-1 text-[12px] font-normal text-slate-500">
+                  <div className="mt-0.5 text-[10px] font-normal text-slate-400">
                     Select a sector to instantly update categories, specialties and live Google Places results.
                   </div>
                 </div>
@@ -1310,26 +1273,9 @@ export default function ConnectPage() {
                 placeholder="Find category..."
                 allowClear={false}
                 onChange={(value) => {
-                  const nextCategory =
-                    value || "all";
-
                   setCategory(
-                    nextCategory,
+                    value || "all",
                   );
-
-                  if (
-                    sector ===
-                      "agriculture" &&
-                    (
-                      nextCategory ===
-                        "dairy" ||
-                      nextCategory ===
-                        "livestock"
-                    )
-                  ) {
-                    setTag("");
-                  }
-
                   setSelectedId(
                     null,
                   );
@@ -1355,25 +1301,16 @@ export default function ConnectPage() {
                 label={
                   sector ===
                   "agriculture"
-                    ? "Crop / product"
+                    ? "Crop"
                     : "Specialty"
                 }
                 value={tag}
-                options={
-                  animalAgricultureCategory
-                    ? []
-                    : specialtyOptions
-                }
+                options={specialtyOptions}
                 placeholder={
-                  animalAgricultureCategory
-                    ? "Not applicable for this category"
-                    : sector ===
-                        "agriculture"
-                      ? "Type crop or Citrus..."
-                      : "Type specialty..."
-                }
-                disabled={
-                  animalAgricultureCategory
+                  sector ===
+                  "agriculture"
+                    ? "Type crop..."
+                    : "Type specialty..."
                 }
                 onChange={(value) => {
                   setTag(
@@ -1499,7 +1436,7 @@ export default function ConnectPage() {
           </div>
         ) : null}
 
-        <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_470px]">
+        <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="overflow-hidden rounded-[26px] border border-white/90 bg-white/85 shadow-[0_18px_55px_rgba(30,41,59,0.08)] backdrop-blur-xl">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-white/90 px-4 py-3.5 sm:px-5">
               <div className="flex items-center gap-3">
@@ -1511,7 +1448,7 @@ export default function ConnectPage() {
                   <div className="text-[14px] font-medium text-slate-700">
                     Geographic coverage
                   </div>
-                  <div className="mt-1 text-[12px] font-normal text-slate-500">
+                  <div className="mt-0.5 text-[10px] font-normal text-slate-400">
                     Live Google Places mapped for the active filters
                   </div>
                 </div>
@@ -1554,11 +1491,11 @@ export default function ConnectPage() {
                   </div>
 
                   <div className="min-w-0">
-                    <h2 className="text-[18px] font-semibold tracking-[-0.02em] text-slate-900">
+                    <h2 className="text-[15px] font-medium tracking-[-0.02em] text-slate-700">
                       Organizations
                     </h2>
 
-                    <div className="mt-1 text-[12px] font-normal text-slate-500">
+                    <div className="mt-0.5 text-[10px] font-normal text-slate-400">
                       {!location
                         ? "Choose a country to begin"
                         : loading
@@ -1570,7 +1507,7 @@ export default function ConnectPage() {
                   </div>
                 </div>
 
-                <div className="rounded-full border border-white bg-white/90 px-3 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm">
+                <div className="rounded-full border border-white bg-white/85 px-2.5 py-1 text-[9px] font-medium text-slate-500 shadow-sm">
                   {payload?.queryCount
                     ? `${payload.queryCount} variants`
                     : "Live"}
@@ -1601,7 +1538,7 @@ export default function ConnectPage() {
                             )
                           }
                           className={[
-                            "group relative cursor-pointer overflow-hidden rounded-[18px] border bg-white px-4 py-4 shadow-[0_3px_12px_rgba(15,23,42,0.035)] transition-all duration-200",
+                            "group relative cursor-pointer overflow-hidden rounded-[18px] border bg-white px-3.5 py-3.5 shadow-[0_3px_12px_rgba(15,23,42,0.035)] transition-all duration-200",
                             active
                               ? "border-indigo-200 bg-[linear-gradient(120deg,#ffffff_0%,#f5f7ff_100%)] shadow-[0_8px_22px_rgba(79,70,229,0.09)]"
                               : "border-slate-200/70 hover:-translate-y-[1px] hover:border-indigo-100 hover:shadow-[0_8px_24px_rgba(15,23,42,0.07)]",
@@ -1616,7 +1553,7 @@ export default function ConnectPage() {
                           <div className="flex items-start gap-3">
                             <div
                               className={[
-                                "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] text-[14px] font-semibold transition",
+                                "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] text-[12px] font-medium transition",
                                 active
                                   ? "bg-indigo-600 text-white shadow-[0_5px_14px_rgba(79,70,229,0.22)]"
                                   : "bg-slate-100 text-slate-500 group-hover:bg-indigo-50 group-hover:text-indigo-600",
@@ -1630,11 +1567,11 @@ export default function ConnectPage() {
                             </div>
 
                             <div className="min-w-0 flex-1">
-                              <h3 className="text-[16px] font-semibold leading-[21px] tracking-[-0.015em] text-slate-900">
+                              <h3 className="text-[13px] font-medium leading-[18px] tracking-[-0.01em] text-slate-700">
                                 {place.name}
                               </h3>
 
-                              <div className="mt-1.5 line-clamp-2 text-[12px] font-normal leading-[18px] text-slate-600">
+                              <div className="mt-1 line-clamp-2 text-[10.5px] font-normal leading-[16px] text-slate-400">
                                 {place.address}
                               </div>
 
@@ -1652,7 +1589,7 @@ export default function ConnectPage() {
                                       ) => (
                                         <span
                                           key={service}
-                                          className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10.5px] font-semibold text-indigo-700"
+                                          className="rounded-full bg-indigo-50/80 px-2 py-1 text-[8.5px] font-medium text-indigo-600"
                                         >
                                           {titleCase(
                                             service,
@@ -1664,12 +1601,12 @@ export default function ConnectPage() {
                               ) : null}
 
                               {details ? (
-                                <div className="mt-3 rounded-[12px] border border-slate-200/70 bg-slate-50 px-3.5 py-3">
+                                <div className="mt-2.5 rounded-[12px] border border-slate-100 bg-slate-50/80 px-3 py-2.5">
                                   {details
                                     .internationalPhoneNumber ||
                                   details
                                     .nationalPhoneNumber ? (
-                                    <div className="flex items-center gap-2 text-[12px] font-medium text-slate-700">
+                                    <div className="flex items-center gap-2 text-[10px] font-normal text-slate-500">
                                       <Phone className="h-3.5 w-3.5 text-indigo-400" />
                                       <span>
                                         {details.internationalPhoneNumber ||
@@ -1686,7 +1623,7 @@ export default function ConnectPage() {
                                       onClick={(event) =>
                                         event.stopPropagation()
                                       }
-                                      className="mt-2 inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-indigo-700 transition hover:text-indigo-800"
+                                      className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] font-medium text-indigo-600 transition hover:text-indigo-800"
                                     >
                                       Official website
                                       <ExternalLink className="h-3 w-3" />
@@ -1695,7 +1632,7 @@ export default function ConnectPage() {
                                 </div>
                               ) : null}
 
-                              <div className="mt-3 flex flex-wrap items-center gap-4 border-t border-slate-100 pt-3">
+                              <div className="mt-2.5 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-2.5">
                                 {!details ? (
                                   <button
                                     type="button"
@@ -1709,7 +1646,7 @@ export default function ConnectPage() {
                                         place.id,
                                       );
                                     }}
-                                    className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-indigo-700 transition hover:text-indigo-800 disabled:opacity-50"
+                                    className="inline-flex items-center gap-1.5 text-[9.5px] font-medium text-indigo-600 transition hover:text-indigo-800 disabled:opacity-50"
                                   >
                                     {detailLoadingId ===
                                     place.id ? (
@@ -1730,7 +1667,7 @@ export default function ConnectPage() {
                                     onClick={(event) =>
                                       event.stopPropagation()
                                     }
-                                    className="inline-flex items-center gap-1 text-[11.5px] font-medium text-slate-600 transition hover:text-slate-700"
+                                    className="inline-flex items-center gap-1 text-[9.5px] font-normal text-slate-400 transition hover:text-slate-700"
                                   >
                                     Google Maps
                                     <ExternalLink className="h-3 w-3" />
@@ -1773,7 +1710,7 @@ export default function ConnectPage() {
               )}
             </div>
 
-            <div className="shrink-0 border-t border-slate-100 bg-white/90 px-4 py-3 text-[10.5px] font-normal leading-4 text-slate-500">
+            <div className="shrink-0 border-t border-slate-100 bg-white/90 px-4 py-2.5 text-[9px] font-normal leading-4 text-slate-400">
               Live Google Places results Â· duplicate Place IDs are merged across Stratify search variants.
             </div>
           </aside>
