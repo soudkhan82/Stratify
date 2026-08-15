@@ -12,7 +12,6 @@ import {
   Building2,
   Check,
   ChevronDown,
-  ChevronRight,
   ExternalLink,
   Globe2,
   Loader2,
@@ -620,10 +619,6 @@ export default function ConnectPage() {
     setInitialized,
   ] = useState(false);
   const [
-    sectorSearch,
-    setSectorSearch,
-  ] = useState("");
-  const [
     agricultureCrops,
     setAgricultureCrops,
   ] = useState<CropMeta[]>([]);
@@ -636,34 +631,6 @@ export default function ConnectPage() {
         ),
       [sector],
     );
-
-  const sectorMenuItems =
-    useMemo(() => {
-      const needle =
-        sectorSearch
-          .trim()
-          .toLowerCase();
-
-      return [...CONNECT_SECTORS]
-        .sort((a, b) =>
-          a.label.localeCompare(
-            b.label,
-          ),
-        )
-        .filter((item) => {
-          if (!needle) {
-            return true;
-          }
-
-          return [
-            item.label,
-            item.description,
-          ]
-            .join(" ")
-            .toLowerCase()
-            .includes(needle);
-        });
-    }, [sectorSearch]);
 
   const categoryOptions =
     useMemo<SelectOption[]>(
@@ -1241,264 +1208,219 @@ export default function ConnectPage() {
           </div>
 
           <div className="px-4 pb-4 pt-3.5 sm:px-5">
-            <div className="grid gap-4 xl:grid-cols-[250px_minmax(0,1fr)]">
-              <aside className="overflow-hidden rounded-[18px] border border-slate-200/80 bg-slate-50/70">
-                <div className="border-b border-slate-200/70 bg-white/80 px-3.5 py-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <div className="text-[12px] font-semibold tracking-[-0.01em] text-slate-700">
-                        Economic sectors
-                      </div>
-                      <div className="mt-0.5 text-[9.5px] font-normal text-slate-400">
-                        Aâ€“Z directory
-                      </div>
-                    </div>
-
-                    <span className="rounded-full bg-indigo-50 px-2 py-1 text-[9px] font-medium text-indigo-600">
-                      {CONNECT_SECTORS.length}
-                    </span>
+            <div className="mb-4">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] font-medium tracking-[-0.01em] text-slate-500">
+                    Explore by sector
                   </div>
-
-                  <div className="mt-2.5 flex h-9 items-center rounded-[11px] border border-slate-200 bg-white transition focus-within:border-indigo-300 focus-within:ring-3 focus-within:ring-indigo-100/70">
-                    <Search className="ml-2.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
-
-                    <input
-                      value={sectorSearch}
-                      onChange={(event) =>
-                        setSectorSearch(
-                          event.target.value,
-                        )
-                      }
-                      placeholder="Search sectors..."
-                      className="h-full min-w-0 flex-1 bg-transparent px-2 text-[12px] font-normal text-slate-700 outline-none placeholder:text-slate-400"
-                    />
-
-                    {sectorSearch ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSectorSearch("")
-                        }
-                        className="mr-1.5 flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                        aria-label="Clear sector search"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    ) : null}
+                  <div className="mt-1 text-[12px] font-normal text-slate-500">
+                    Select a sector to instantly update categories, specialties and live Google Places results.
                   </div>
                 </div>
 
-                <div className="max-h-[306px] overflow-y-auto overscroll-contain p-1.5">
-                  {sectorMenuItems.length ? (
-                    <div className="space-y-0.5">
-                      {sectorMenuItems.map((item) => {
-                        const active =
-                          item.value ===
-                          sector;
+                <div className="hidden rounded-full bg-indigo-50 px-2.5 py-1 text-[9px] font-medium text-indigo-600 sm:block">
+                  {sectorConfig.label}
+                </div>
+              </div>
 
-                        return (
-                          <button
-                            key={item.value}
-                            type="button"
-                            onClick={() =>
-                              changeSector(
-                                item.value,
-                              )
-                            }
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+                {CONNECT_SECTORS.map((item) => {
+                  const active =
+                    item.value ===
+                    sector;
+
+                  return (
+                    <button
+                      key={item.value}
+                      type="button"
+                      onClick={() =>
+                        changeSector(
+                          item.value,
+                        )
+                      }
+                      className={[
+                        "group relative min-h-[58px] overflow-hidden rounded-[15px] border px-3 py-2.5 text-left transition-all duration-200",
+                        active
+                          ? "border-indigo-200 bg-[linear-gradient(135deg,rgba(238,242,255,1)_0%,rgba(239,246,255,1)_100%)] shadow-[0_6px_18px_rgba(79,70,229,0.10)]"
+                          : "border-slate-200/80 bg-white/85 hover:-translate-y-[1px] hover:border-indigo-200 hover:bg-slate-50 hover:shadow-[0_5px_16px_rgba(15,23,42,0.05)]",
+                      ].join(
+                        " ",
+                      )}
+                    >
+                      {active ? (
+                        <span className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-indigo-500 via-violet-500 to-sky-400" />
+                      ) : null}
+
+                      <div className="flex items-start gap-2.5">
+                        <span
+                          className={[
+                            "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] text-[10px] font-medium transition",
+                            active
+                              ? "bg-indigo-600 text-white shadow-sm"
+                              : "bg-slate-100 text-slate-500 group-hover:bg-indigo-50 group-hover:text-indigo-600",
+                          ].join(
+                            " ",
+                          )}
+                        >
+                          {item.label
+                            .charAt(0)
+                            .toUpperCase()}
+                        </span>
+
+                        <div className="min-w-0">
+                          <div
                             className={[
-                              "group flex w-full items-center gap-2.5 rounded-[11px] px-2.5 py-2 text-left transition",
+                              "text-[12px] font-medium leading-4 tracking-[-0.01em]",
                               active
-                                ? "bg-indigo-600 text-white shadow-[0_5px_14px_rgba(79,70,229,0.18)]"
-                                : "text-slate-600 hover:bg-white hover:text-slate-900",
+                                ? "text-indigo-800"
+                                : "text-slate-700",
                             ].join(
                               " ",
                             )}
                           >
-                            <span
-                              className={[
-                                "flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[10px] font-semibold",
-                                active
-                                  ? "bg-white/15 text-white"
-                                  : "bg-white text-slate-400 ring-1 ring-slate-200/80 group-hover:text-indigo-600",
-                              ].join(
-                                " ",
-                              )}
-                            >
-                              {item.label
-                                .charAt(0)
-                                .toUpperCase()}
-                            </span>
+                            {item.label}
+                          </div>
 
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-[11.5px] font-medium">
-                                {item.label}
-                              </div>
-                            </div>
+                          <div
+                            className={[
+                              "mt-1 line-clamp-1 text-[9px] font-normal leading-3",
+                              active
+                                ? "text-indigo-500"
+                                : "text-slate-400",
+                            ].join(
+                              " ",
+                            )}
+                          >
+                            {item.description}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
-                            <ChevronRight
-                              className={[
-                                "h-3.5 w-3.5 shrink-0",
-                                active
-                                  ? "text-white/80"
-                                  : "text-slate-300 group-hover:text-indigo-400",
-                              ].join(
-                                " ",
-                              )}
-                            />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="px-3 py-8 text-center text-[11px] font-normal text-slate-400">
-                      No matching sector
-                    </div>
-                  )}
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.05fr_1.08fr_1.08fr_1.45fr]">
+              <SearchableSelect
+                label="Category"
+                value={category}
+                options={categoryOptions}
+                placeholder="Find category..."
+                allowClear={false}
+                onChange={(value) => {
+                  const nextCategory =
+                    value || "all";
+
+                  setCategory(
+                    nextCategory,
+                  );
+
+                  if (
+                    sector ===
+                      "agriculture" &&
+                    (
+                      nextCategory ===
+                        "dairy" ||
+                      nextCategory ===
+                        "livestock"
+                    )
+                  ) {
+                    setTag("");
+                  }
+
+                  setSelectedId(
+                    null,
+                  );
+                }}
+              />
+
+              <SearchableSelect
+                label="Country"
+                value={location}
+                options={COUNTRY_OPTIONS}
+                placeholder="Type country..."
+                onChange={(value) => {
+                  setLocation(
+                    value,
+                  );
+                  setSelectedId(
+                    null,
+                  );
+                }}
+              />
+
+              <SearchableSelect
+                label={
+                  sector ===
+                  "agriculture"
+                    ? "Crop / product"
+                    : "Specialty"
+                }
+                value={tag}
+                options={
+                  animalAgricultureCategory
+                    ? []
+                    : specialtyOptions
+                }
+                placeholder={
+                  animalAgricultureCategory
+                    ? "Not applicable for this category"
+                    : sector ===
+                        "agriculture"
+                      ? "Type crop or Citrus..."
+                      : "Type specialty..."
+                }
+                disabled={
+                  animalAgricultureCategory
+                }
+                onChange={(value) => {
+                  setTag(
+                    value,
+                  );
+                  setSelectedId(
+                    null,
+                  );
+                }}
+              />
+
+              <div>
+                <div className="mb-1.5 pl-0.5 text-[11px] font-medium tracking-[-0.01em] text-slate-500">
+                  Company or keyword
                 </div>
-              </aside>
 
-              <div className="min-w-0">
-                <div className="mb-3 flex flex-wrap items-start justify-between gap-3 rounded-[16px] border border-indigo-100/70 bg-[linear-gradient(120deg,rgba(238,242,255,0.74),rgba(248,250,252,0.80))] px-4 py-3">
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-indigo-500">
-                      Active sector
-                    </div>
+                <div className="flex h-11 items-center rounded-[14px] border border-slate-200/90 bg-white/90 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:border-indigo-200 focus-within:border-indigo-300 focus-within:ring-4 focus-within:ring-indigo-100/70">
+                  <Building2 className="ml-3 h-3.5 w-3.5 shrink-0 text-slate-400" />
 
-                    <div className="mt-1 text-[16px] font-semibold tracking-[-0.02em] text-slate-800">
-                      {sectorConfig.label}
-                    </div>
-
-                    <p className="mt-1 max-w-3xl text-[11px] font-normal leading-5 text-slate-500">
-                      {sectorConfig.description}
-                    </p>
-                  </div>
-
-                  <div className="rounded-full border border-white bg-white/80 px-2.5 py-1 text-[9px] font-medium text-slate-500 shadow-sm">
-                    {sectorConfig.categories.length} categories
-                  </div>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.05fr_1.08fr_1.08fr_1.45fr]">
-                  <SearchableSelect
-                    label="Category"
-                    value={category}
-                    options={categoryOptions}
-                    placeholder="Find category..."
-                    allowClear={false}
-                    onChange={(value) => {
-                      const nextCategory =
-                        value || "all";
-
-                      setCategory(
-                        nextCategory,
-                      );
-
-                      if (
-                        sector ===
-                          "agriculture" &&
-                        (
-                          nextCategory ===
-                            "dairy" ||
-                          nextCategory ===
-                            "livestock"
-                        )
-                      ) {
-                        setTag("");
-                      }
-
-                      setSelectedId(
-                        null,
-                      );
-                    }}
-                  />
-
-                  <SearchableSelect
-                    label="Country"
-                    value={location}
-                    options={COUNTRY_OPTIONS}
-                    placeholder="Type country..."
-                    onChange={(value) => {
-                      setLocation(
-                        value,
-                      );
-                      setSelectedId(
-                        null,
-                      );
-                    }}
-                  />
-
-                  <SearchableSelect
-                    label={
-                      sector ===
-                      "agriculture"
-                        ? "Crop / product"
-                        : "Specialty"
+                  <input
+                    value={q}
+                    onChange={(event) =>
+                      setQ(
+                        event.target.value,
+                      )
                     }
-                    value={tag}
-                    options={
-                      animalAgricultureCategory
-                        ? []
-                        : specialtyOptions
-                    }
+                    disabled={!location}
                     placeholder={
-                      animalAgricultureCategory
-                        ? "Not applicable for this category"
-                        : sector ===
-                            "agriculture"
-                          ? "Type crop or Citrus..."
-                          : "Type specialty..."
+                      location
+                        ? "Optional name or keyword..."
+                        : "Choose country first"
                     }
-                    disabled={
-                      animalAgricultureCategory
-                    }
-                    onChange={(value) => {
-                      setTag(
-                        value,
-                      );
-                      setSelectedId(
-                        null,
-                      );
-                    }}
+                    className="h-full min-w-0 flex-1 bg-transparent px-2 text-[13px] font-normal text-slate-700 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
                   />
 
-                  <div>
-                    <div className="mb-1.5 pl-0.5 text-[11px] font-medium tracking-[-0.01em] text-slate-500">
-                      Company or keyword
-                    </div>
-
-                    <div className="flex h-11 items-center rounded-[14px] border border-slate-200/90 bg-white/90 shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition hover:border-indigo-200 focus-within:border-indigo-300 focus-within:ring-4 focus-within:ring-indigo-100/70">
-                      <Building2 className="ml-3 h-3.5 w-3.5 shrink-0 text-slate-400" />
-
-                      <input
-                        value={q}
-                        onChange={(event) =>
-                          setQ(
-                            event.target.value,
-                          )
-                        }
-                        disabled={!location}
-                        placeholder={
-                          location
-                            ? "Optional name or keyword..."
-                            : "Choose country first"
-                        }
-                        className="h-full min-w-0 flex-1 bg-transparent px-2 text-[13px] font-normal text-slate-700 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
-                      />
-
-                      {q ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setQ("")
-                          }
-                          className="mr-2 flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                          aria-label="Clear keyword"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
+                  {q ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setQ("")
+                      }
+                      className="mr-2 flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                      aria-label="Clear keyword"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </div>
