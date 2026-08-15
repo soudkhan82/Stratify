@@ -1,31 +1,12 @@
 "use client";
 
-import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import {
-  ComposableMap,
-  Geographies,
-  Geography,
-  ZoomableGroup,
-} from "@vnedyalk0v/react19-simple-maps";
-
-import { scaleQuantile } from "d3-scale";
-import { interpolateBlues } from "d3-scale-chromatic";
-
-import isoCountries from "i18n-iso-countries";
-import enLocale from "i18n-iso-countries/langs/en.json";
-
-/* register once */
-let __ISO_INIT__ = false;
-function initIso() {
-  if (__ISO_INIT__) return;
-  isoCountries.registerLocale(enLocale as any);
-  __ISO_INIT__ = true;
-}
-
-/* =======================
-   Types
-======================= */
+  GeoJSON,
+  MapContainer,
+  Pane,
+  useMap,
+} from "react-leaflet";
 
 export type StratifyMapRow = {
   iso3: string;
@@ -36,459 +17,597 @@ export type StratifyMapRow = {
 
 type Props = {
   rows: StratifyMapRow[];
-  topoJsonUrl: string;
   selectedIso3: string | null;
   onSelectIso3?: (iso3: string) => void;
   indicatorLabel: string;
   indicatorUnit?: string;
+  // Kept optional for backwards compatibility with the old component API.
+  topoJsonUrl?: string;
 };
 
-type GeoProps = {
-  name?: unknown;
-  NAME?: unknown;
-  NAME_LONG?: unknown;
-
-  ISO_A3?: unknown;
-  ADM0_A3?: unknown;
-  SOV_A3?: unknown;
-  WB_A3?: unknown;
-  ISO3?: unknown;
-  iso3?: unknown;
-  iso_a3?: unknown;
+type WorldFeatureProperties = {
+  name?: string;
+  iso3?: string;
 };
 
-type TooltipState = {
-  show: boolean;
-  x: number;
-  y: number;
-  iso3: string;
-  country: string;
-  region: string | null;
-  value?: number;
-};
+const WORLD_MAP_URL =
+  "/maps/world-110m.min.geojson";
 
-/* =======================
-   Helpers
-======================= */
+const COLORS = [
+  "#dbeafe",
+  "#bfdbfe",
+  "#93c5fd",
+  "#60a5fa",
+  "#2563eb",
+  "#1e3a8a",
+] as const;
 
-function cleanISO3(v: unknown): string {
-  return String(v ?? "")
+const MISSING_FILL = "#eef2f7";
+const DEFAULT_STROKE = "#b8c6d8";
+const SELECTED_STROKE = "#312e81";
+const HOVER_STROKE = "#0f172a";
+
+function cleanIso3(value: unknown) {
+  return String(value ?? "")
     .trim()
     .toUpperCase();
 }
-function isValidISO3(v: unknown): v is string {
-  return typeof v === "string" && /^[A-Z]{3}$/.test(v);
-}
-function fmtNumber(v?: number): string {
-  if (!Number.isFinite(v)) return "—";
-  const n = v as number;
-  if (Math.abs(n) >= 1e12) return `${(n / 1e12).toFixed(2)}T`;
-  if (Math.abs(n) >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
-  if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
-  if (Math.abs(n) >= 1e3) return n.toLocaleString();
-  return Number.isInteger(n) ? String(n) : n.toFixed(2);
-}
-function clamp(n: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, n));
-}
-function getLocalXY(e: React.MouseEvent<SVGPathElement, MouseEvent>): {
-  x: number;
-  y: number;
-} {
-  const svg = e.currentTarget.ownerSVGElement;
-  const rect = svg?.getBoundingClientRect();
-  return {
-    x: rect ? e.clientX - rect.left : e.clientX,
-    y: rect ? e.clientY - rect.top : e.clientY,
-  };
+
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
-function iso3FromGeo(geo: unknown): string {
-  initIso();
-  const g = geo as any;
-  const p = (g?.properties ?? {}) as GeoProps;
-
-  const propCand = [
-    p.ISO_A3,
-    p.ADM0_A3,
-    p.SOV_A3,
-    p.WB_A3,
-    p.ISO3,
-    p.iso3,
-    p.iso_a3,
-  ]
-    .map(cleanISO3)
-    .find((x) => isValidISO3(x) && x !== "ATA" && x !== "-99");
-
-  if (propCand) return propCand;
-
-  const rawId = String(g?.id ?? "").trim();
-  if (rawId) {
-    const num = rawId.padStart(3, "0");
-    const a3 = isoCountries.numericToAlpha3(num);
-    const iso3 = cleanISO3(a3);
-    if (isValidISO3(iso3)) return iso3;
+function compact(
+  value: number | undefined,
+) {
+  if (
+    value == null ||
+    !Number.isFinite(value)
+  ) {
+    return "No data";
   }
 
-  return "";
-}
+  const abs = Math.abs(value);
 
-/**
- * centroid of Polygon/MultiPolygon using bbox center.
- * (Good enough to separate mainland France vs French Guiana in world-atlas@2.)
- */
-function centroidLonLat(geo: any): [number, number] | null {
-  const geom = geo?.geometry;
-  if (!geom) return null;
-
-  const coords = geom.coordinates;
-  if (!coords) return null;
-
-  let minLon = Infinity,
-    minLat = Infinity,
-    maxLon = -Infinity,
-    maxLat = -Infinity;
-
-  function visitPoint(pt: any) {
-    const lon = Number(pt?.[0]);
-    const lat = Number(pt?.[1]);
-    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
-    if (lon < minLon) minLon = lon;
-    if (lat < minLat) minLat = lat;
-    if (lon > maxLon) maxLon = lon;
-    if (lat > maxLat) maxLat = lat;
+  if (abs >= 1e12) {
+    return `${(value / 1e12).toFixed(2)}T`;
   }
 
-  // Polygon: [ [ [lon,lat], ... ] , [hole...], ... ]
-  // MultiPolygon: [ Polygon, Polygon, ... ]
-  if (geom.type === "Polygon") {
-    for (const ring of coords) for (const pt of ring) visitPoint(pt);
-  } else if (geom.type === "MultiPolygon") {
-    for (const poly of coords)
-      for (const ring of poly) for (const pt of ring) visitPoint(pt);
-  } else {
-    return null;
+  if (abs >= 1e9) {
+    return `${(value / 1e9).toFixed(2)}B`;
   }
 
-  if (!Number.isFinite(minLon) || !Number.isFinite(minLat)) return null;
-  return [(minLon + maxLon) / 2, (minLat + maxLat) / 2];
+  if (abs >= 1e6) {
+    return `${(value / 1e6).toFixed(2)}M`;
+  }
+
+  if (abs >= 1e3) {
+    return new Intl.NumberFormat(
+      "en",
+      {
+        maximumFractionDigits: 0,
+      },
+    ).format(value);
+  }
+
+  return new Intl.NumberFormat(
+    "en",
+    {
+      maximumFractionDigits: 2,
+    },
+  ).format(value);
 }
 
-/**
- * ✅ FIX for world-atlas@2: FRA appears twice (mainland + overseas).
- * Remove the overseas FRA piece(s) by longitude (western hemisphere).
- */
-function isFranceDuplicateGeo(geo: any): boolean {
-  const iso = iso3FromGeo(geo);
-  if (iso !== "FRA") return false;
+function quantile(
+  sorted: number[],
+  percentile: number,
+) {
+  if (!sorted.length) {
+    return 0;
+  }
 
-  const c = centroidLonLat(geo);
-  if (!c) return false;
+  const index =
+    (sorted.length - 1) *
+    percentile;
 
-  const [lon] = c;
+  const lower =
+    Math.floor(index);
+  const upper =
+    Math.ceil(index);
 
-  // Mainland France ~ +2 lon. French Guiana ~ -53 lon.
-  // Remove any FRA geometry far west.
-  return lon < -20;
+  if (lower === upper) {
+    return sorted[lower];
+  }
+
+  const weight =
+    index - lower;
+
+  return (
+    sorted[lower] *
+      (1 - weight) +
+    sorted[upper] *
+      weight
+  );
 }
 
-/* =======================
-   Component
-======================= */
+function buildThresholds(
+  values: number[],
+) {
+  const sorted = values
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
 
-export default function StratifyMap({
+  return [
+    quantile(sorted, 0.17),
+    quantile(sorted, 0.34),
+    quantile(sorted, 0.5),
+    quantile(sorted, 0.67),
+    quantile(sorted, 0.84),
+  ];
+}
+
+function colorFor(
+  value: number | undefined,
+  thresholds: number[],
+) {
+  if (
+    value == null ||
+    !Number.isFinite(value)
+  ) {
+    return MISSING_FILL;
+  }
+
+  let index = 0;
+
+  while (
+    index < thresholds.length &&
+    value > thresholds[index]
+  ) {
+    index += 1;
+  }
+
+  return COLORS[
+    Math.min(
+      index,
+      COLORS.length - 1,
+    )
+  ];
+}
+
+function ResetViewport({
+  resetSignal,
+}: {
+  resetSignal: number;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    map.setView(
+      [18, 3],
+      1.35,
+      {
+        animate: false,
+      },
+    );
+  }, [map, resetSignal]);
+
+  return null;
+}
+
+function StratifyMapComponent({
   rows,
-  topoJsonUrl,
   selectedIso3,
   onSelectIso3,
   indicatorLabel,
   indicatorUnit,
 }: Props) {
-  const [zoom, setZoom] = useState<number>(1);
-
-  const [tip, setTip] = useState<TooltipState>({
-    show: false,
-    x: 0,
-    y: 0,
-    iso3: "",
-    country: "",
-    region: null,
-    value: undefined,
-  });
-
-  const [geoData, setGeoData] = useState<any>(null);
-  const [geoErr, setGeoErr] = useState<string | null>(null);
-  const [geoLoading, setGeoLoading] = useState<boolean>(false);
+  const [world, setWorld] =
+    useState<any>(null);
+  const [geoError, setGeoError] =
+    useState("");
+  const [
+    resetSignal,
+    setResetSignal,
+  ] = useState(0);
 
   useEffect(() => {
     let alive = true;
-    async function load() {
-      try {
-        setGeoErr(null);
-        setGeoLoading(true);
 
-        const url = topoJsonUrl.includes("?")
-          ? `${topoJsonUrl}&v=1`
-          : `${topoJsonUrl}?v=1`;
+    const controller =
+      new AbortController();
 
-        const res = await fetch(url, { cache: "no-store" });
-        if (!res.ok)
-          throw new Error(
-            `TopoJSON fetch failed: ${res.status} ${res.statusText}`,
-          );
+    fetch(WORLD_MAP_URL, {
+      signal:
+        controller.signal,
+      cache: "force-cache",
+    })
+      .then(
+        async (response) => {
+          if (!response.ok) {
+            throw new Error(
+              `World boundary HTTP ${response.status}`,
+            );
+          }
 
-        const json = await res.json();
-        if (!alive) return;
-        setGeoData(json);
-      } catch (e: any) {
-        if (!alive) return;
-        setGeoErr(e?.message || "Failed to load map data");
-        setGeoData(null);
-      } finally {
-        if (!alive) return;
-        setGeoLoading(false);
-      }
-    }
-    load();
+          return response.json();
+        },
+      )
+      .then((payload) => {
+        if (!alive) {
+          return;
+        }
+
+        setWorld(payload);
+        setGeoError("");
+      })
+      .catch((error) => {
+        if (
+          error?.name ===
+          "AbortError"
+        ) {
+          return;
+        }
+
+        if (!alive) {
+          return;
+        }
+
+        setGeoError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load world boundaries.",
+        );
+      });
+
     return () => {
       alive = false;
+      controller.abort();
     };
-  }, [topoJsonUrl]);
+  }, []);
 
-  const selected = selectedIso3 ? selectedIso3.toUpperCase() : null;
+  const selected =
+    cleanIso3(selectedIso3);
 
-  const rowByIso = useMemo(() => {
-    const m = new Map<string, StratifyMapRow>();
-    for (const r of rows || []) {
-      const iso = cleanISO3(r.iso3);
-      if (isValidISO3(iso) && !m.has(iso)) m.set(iso, r);
-    }
-    return m;
-  }, [rows]);
+  const rowByIso =
+    useMemo(() => {
+      const map =
+        new Map<
+          string,
+          StratifyMapRow
+        >();
 
-  const valueByIso = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const r of rows || []) {
-      const iso = cleanISO3(r.iso3);
-      const v = Number(r.value);
-      if (isValidISO3(iso) && Number.isFinite(v)) m.set(iso, v);
-    }
-    return m;
-  }, [rows]);
+      for (const row of rows) {
+        const iso3 =
+          cleanIso3(row.iso3);
 
-  const values = useMemo(() => Array.from(valueByIso.values()), [valueByIso]);
+        if (
+          iso3.length === 3
+        ) {
+          map.set(
+            iso3,
+            row,
+          );
+        }
+      }
 
-  const quant = useMemo(() => {
-    if (!values.length) return null;
-    return scaleQuantile<number>()
-      .domain(values)
-      .range([0.2, 0.35, 0.5, 0.65, 0.8, 0.95]);
-  }, [values]);
+      return map;
+    }, [rows]);
 
-  const MISSING_FILL = "#e5e7eb";
-  const STROKE = "#94a3b8";
-  const HOVER_FILL = "#64748b";
-  const SELECT_STROKE = "#1f2937";
+  const values =
+    useMemo(
+      () =>
+        rows
+          .map((row) =>
+            Number(
+              row.value,
+            ),
+          )
+          .filter(
+            Number.isFinite,
+          ),
+      [rows],
+    );
 
-  const legendStops = [0.2, 0.35, 0.5, 0.65, 0.8, 0.95];
+  const thresholds =
+    useMemo(
+      () =>
+        buildThresholds(
+          values,
+        ),
+      [values],
+    );
+
+  const renderKey =
+    useMemo(
+      () =>
+        [
+          indicatorLabel,
+          selected,
+          rows.length,
+          ...rows
+            .slice(0, 8)
+            .map(
+              (row) =>
+                `${row.iso3}:${Math.round(
+                  row.value,
+                )}`,
+            ),
+        ].join("|"),
+      [
+        indicatorLabel,
+        selected,
+        rows,
+      ],
+    );
+
+  function baseStyle(
+    iso3: string,
+  ) {
+    const row =
+      rowByIso.get(iso3);
+
+    const isSelected =
+      !!selected &&
+      selected === iso3;
+
+    return {
+      fillColor: colorFor(
+        row?.value,
+        thresholds,
+      ),
+      fillOpacity:
+        row ? 0.88 : 0.72,
+      color: isSelected
+        ? SELECTED_STROKE
+        : DEFAULT_STROKE,
+      weight: isSelected
+        ? 2.4
+        : 0.75,
+      opacity: 1,
+    };
+  }
+
+  function onEachFeature(
+    feature: any,
+    layer: any,
+  ) {
+    const properties =
+      (feature?.properties ??
+        {}) as WorldFeatureProperties;
+
+    const iso3 =
+      cleanIso3(
+        properties.iso3,
+      );
+
+    const row =
+      rowByIso.get(iso3);
+
+    const country =
+      row?.country ||
+      properties.name ||
+      iso3 ||
+      "Country";
+
+    const tooltipValue =
+      row
+        ? `${compact(
+            row.value,
+          )}${
+            indicatorUnit
+              ? ` ${indicatorUnit}`
+              : ""
+          }`
+        : "No data in current scope";
+
+    const tooltip = `
+      <div class="stratify-home-map-tip">
+        <div class="stratify-home-map-tip-country">
+          ${escapeHtml(country)}
+        </div>
+        <div class="stratify-home-map-tip-value">
+          ${escapeHtml(indicatorLabel)}:
+          <strong>${escapeHtml(tooltipValue)}</strong>
+        </div>
+      </div>
+    `;
+
+    layer.bindTooltip(
+      tooltip,
+      {
+        sticky: true,
+        direction: "top",
+        opacity: 0.98,
+        className:
+          "stratify-home-leaflet-tooltip",
+      },
+    );
+
+    layer.on({
+      mouseover: (
+        event: any,
+      ) => {
+        const path =
+          event.target;
+
+        path.setStyle({
+          color:
+            HOVER_STROKE,
+          weight: 2,
+          fillOpacity:
+            row ? 0.96 : 0.78,
+        });
+
+        if (
+          path.bringToFront
+        ) {
+          path.bringToFront();
+        }
+      },
+
+      mouseout: (
+        event: any,
+      ) => {
+        event.target.setStyle(
+          baseStyle(
+            iso3,
+          ),
+        );
+      },
+
+      click: () => {
+        if (
+          !row ||
+          !iso3
+        ) {
+          return;
+        }
+
+        onSelectIso3?.(
+          iso3,
+        );
+      },
+    });
+  }
 
   return (
-    <div className="relative rounded-xl border bg-white p-3">
-      {geoLoading ? (
-        <div className="mb-2 rounded-lg border bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          Loading map…
-        </div>
-      ) : geoErr ? (
-        <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-          {geoErr}
+    <div className="relative h-full min-h-[500px] overflow-hidden rounded-[24px] bg-[#dfeef5]">
+      {!world &&
+      !geoError ? (
+        <div className="pointer-events-none absolute inset-0 z-[800] flex items-center justify-center bg-white/35 backdrop-blur-[1px]">
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white/95 px-4 py-2.5 text-xs font-black text-slate-600 shadow-md">
+            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600" />
+            Preparing Leaflet map
+          </div>
         </div>
       ) : null}
 
-      {/* Zoom controls */}
-      <div className="absolute right-3 top-3 z-10 flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={() => setZoom((z) => clamp(z * 1.3, 1, 8))}
-          className="h-9 w-9 rounded-lg border bg-white shadow text-sm font-bold"
-          aria-label="Zoom in"
-          title="Zoom in"
+      {geoError ? (
+        <div className="absolute left-4 top-4 z-[820] rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 shadow">
+          {geoError}
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        onClick={() =>
+          setResetSignal(
+            (value) =>
+              value + 1,
+          )
+        }
+        className="absolute right-3 top-3 z-[820] rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-slate-600 shadow-md backdrop-blur hover:bg-white"
+      >
+        Reset map
+      </button>
+
+      <MapContainer
+        center={[18, 3]}
+        zoom={1.35}
+        minZoom={1.25}
+        maxZoom={7}
+        zoomSnap={0.25}
+        zoomDelta={0.5}
+        scrollWheelZoom
+        preferCanvas={false}
+        worldCopyJump={false}
+        zoomAnimation={false}
+        fadeAnimation={false}
+        markerZoomAnimation={false}
+        inertia={false}
+        maxBounds={[
+          [-62, -180],
+          [84, 180],
+        ]}
+        maxBoundsViscosity={0.9}
+        attributionControl={false}
+        className="h-full min-h-[500px] w-full"
+        style={{
+          background:
+            "#dfeef5",
+        }}
+      >
+        <Pane
+          name="home-choropleth"
+          style={{
+            zIndex: 350,
+          }}
         >
-          +
-        </button>
-        <button
-          type="button"
-          onClick={() => setZoom((z) => clamp(z / 1.3, 1, 8))}
-          className="h-9 w-9 rounded-lg border bg-white shadow text-sm font-bold"
-          aria-label="Zoom out"
-          title="Zoom out"
-        >
-          −
-        </button>
-        <button
-          type="button"
-          onClick={() => setZoom(1)}
-          className="h-9 w-9 rounded-lg border bg-white shadow text-[11px] font-bold"
-          aria-label="Reset zoom"
-          title="Reset"
-        >
-          ⟳
-        </button>
+          {world ? (
+            <GeoJSON
+              key={renderKey}
+              data={world}
+              style={(
+                feature,
+              ) => {
+                const properties =
+                  (feature
+                    ?.properties ??
+                    {}) as WorldFeatureProperties;
+
+                return baseStyle(
+                  cleanIso3(
+                    properties.iso3,
+                  ),
+                );
+              }}
+              onEachFeature={
+                onEachFeature
+              }
+            />
+          ) : null}
+        </Pane>
+
+        <ResetViewport
+          resetSignal={
+            resetSignal
+          }
+        />
+      </MapContainer>
+
+      <div className="pointer-events-none absolute bottom-3 left-3 z-[700] flex items-center gap-2 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 shadow-md backdrop-blur">
+        <span className="text-[9px] font-black uppercase tracking-[0.09em] text-slate-400">
+          Lower
+        </span>
+
+        <div className="flex gap-0.5">
+          {COLORS.map(
+            (color) => (
+              <span
+                key={color}
+                className="h-3 w-5"
+                style={{
+                  backgroundColor:
+                    color,
+                }}
+              />
+            ),
+          )}
+        </div>
+
+        <span className="text-[9px] font-black uppercase tracking-[0.09em] text-slate-400">
+          Higher
+        </span>
+
+        <span className="ml-1 h-3 w-4 border border-slate-200 bg-[#eef2f7]" />
+
+        <span className="text-[9px] font-bold text-slate-400">
+          No data
+        </span>
       </div>
 
-      {/* Tooltip */}
-      {tip.show ? (
-        <div
-          className="pointer-events-none absolute z-20 max-w-[260px] rounded-lg border bg-white/95 px-3 py-2 text-xs shadow-lg"
-          style={{ left: tip.x + 12, top: Math.max(tip.y - 10, 0) }}
-        >
-          <div className="text-[11px] font-semibold text-slate-900">
-            {tip.country}{" "}
-            <span className="font-normal text-slate-500">({tip.iso3})</span>
-          </div>
-
-          {tip.region ? (
-            <div className="mt-0.5 text-[11px] text-slate-600">
-              Region: {tip.region}
-            </div>
-          ) : null}
-
-          <div className="mt-1 border-t pt-1 text-[11px] text-slate-700">
-            <span className="font-medium">{indicatorLabel}:</span>{" "}
-            <span className="font-semibold text-slate-900">
-              {fmtNumber(tip.value)}
-            </span>
-            {indicatorUnit ? (
-              <span className="text-slate-500"> {indicatorUnit}</span>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
-      <ComposableMap
-        projection="geoMercator"
-        width={1200}
-        height={600}
-        style={{ width: "100%", height: "auto" }}
-      >
-        <ZoomableGroup zoom={zoom}>
-          <Geographies
-            geography={geoData ?? { type: "FeatureCollection", features: [] }}
-          >
-            {({ geographies }: any) => (
-              <>
-                {(geographies as any[]).map((geo, idx) => {
-                  // ✅ FIX: remove France overseas duplicate
-                  if (isFranceDuplicateGeo(geo)) return null;
-
-                  const iso3 = iso3FromGeo(geo);
-                  const dbRow = iso3 ? rowByIso.get(iso3) : undefined;
-                  const value = iso3 ? valueByIso.get(iso3) : undefined;
-
-                  const isSelected = !!selected && !!iso3 && iso3 === selected;
-
-                  const fillColor =
-                    value !== undefined && quant
-                      ? interpolateBlues(quant(value)!)
-                      : MISSING_FILL;
-
-                  const props = (geo as any)?.properties as
-                    | GeoProps
-                    | undefined;
-                  const geoName = String((props as any)?.name ?? "").trim();
-                  const countryName =
-                    dbRow?.country?.trim() || geoName || iso3 || "—";
-
-                  const key =
-                    (geo as any)?.rsmKey ??
-                    (geo as any)?.id ??
-                    `${iso3 || "geo"}-${idx}`;
-
-                  return (
-                    <Geography
-                      key={key}
-                      geography={geo}
-                      fill={fillColor}
-                      stroke={isSelected ? SELECT_STROKE : STROKE}
-                      strokeWidth={isSelected ? 1.2 : 0.8}
-                      style={{
-                        default: {
-                          fill: fillColor,
-                          stroke: isSelected ? SELECT_STROKE : STROKE,
-                          strokeWidth: isSelected ? 1.2 : 0.8,
-                          outline: "none",
-                          cursor: iso3 ? "pointer" : "default",
-                          opacity: 1,
-                        },
-                        hover: {
-                          fill: HOVER_FILL,
-                          stroke: SELECT_STROKE,
-                          strokeWidth: 1.2,
-                          outline: "none",
-                          opacity: 1,
-                        },
-                        pressed: {
-                          fill: fillColor,
-                          stroke: SELECT_STROKE,
-                          strokeWidth: 1.2,
-                          outline: "none",
-                        },
-                      }}
-                      onClick={() => {
-                        if (!iso3) return;
-                        onSelectIso3?.(iso3);
-                      }}
-                      onMouseEnter={(
-                        e: React.MouseEvent<SVGPathElement, MouseEvent>,
-                      ) => {
-                        if (!iso3) return;
-                        const { x, y } = getLocalXY(e);
-                        setTip({
-                          show: true,
-                          x,
-                          y,
-                          iso3,
-                          country: countryName,
-                          region: dbRow?.region ?? null,
-                          value,
-                        });
-                      }}
-                      onMouseMove={(
-                        e: React.MouseEvent<SVGPathElement, MouseEvent>,
-                      ) => {
-                        if (!iso3) return;
-                        const { x, y } = getLocalXY(e);
-                        setTip((prev) =>
-                          prev.show && prev.iso3 === iso3
-                            ? { ...prev, x, y }
-                            : prev,
-                        );
-                      }}
-                      onMouseLeave={() =>
-                        setTip((p) => ({ ...p, show: false }))
-                      }
-                    />
-                  );
-                })}
-              </>
-            )}
-          </Geographies>
-        </ZoomableGroup>
-      </ComposableMap>
-
-      {/* Legend */}
-      <div className="mt-3 flex items-center justify-end text-xs text-slate-500">
-        <div className="flex items-center gap-1">
-          <span>Low</span>
-          {legendStops.map((t) => (
-            <div
-              key={t}
-              className="h-3 w-5"
-              style={{ background: interpolateBlues(t) }}
-            />
-          ))}
-          <span>High</span>
-        </div>
+      <div className="pointer-events-none absolute bottom-3 right-3 z-[700] rounded-lg bg-white/90 px-2 py-1 text-[9px] font-bold text-slate-400 shadow-sm backdrop-blur">
+        Natural Earth | WDI
       </div>
     </div>
   );
 }
+
+export default memo(
+  StratifyMapComponent,
+);

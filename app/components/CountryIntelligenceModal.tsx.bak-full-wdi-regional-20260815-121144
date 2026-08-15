@@ -1,0 +1,1198 @@
+"use client";
+
+import Link from "next/link";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import {
+  ArrowUpRight,
+  BarChart3,
+  Globe2,
+  Loader2,
+  X,
+} from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+
+import CountryWikiCard from "@/app/world/components/CountryWikiCard";
+
+type WdiPoint = {
+  year: number;
+  value: number;
+  unit?: string | null;
+};
+
+type WdiResponse = {
+  iso3: string;
+  country: string;
+  region: string | null;
+  indicator: {
+    code: string;
+    label: string;
+    unit: string | null;
+  };
+  latest: WdiPoint | null;
+  series: WdiPoint[];
+  error?: string;
+};
+
+type TabKey =
+  | "profile"
+  | "wdi";
+
+type Props = {
+  open: boolean;
+  iso3: string | null;
+  countryName?: string | null;
+  region?: string | null;
+  initialIndicator: string;
+  initialIndicatorLabel?: string;
+  onClose: () => void;
+};
+
+const QUICK_PICKS = [
+  {
+    label: "Population",
+    code: "SP.POP.TOTL",
+  },
+  {
+    label: "GDP",
+    code: "NY.GDP.MKTP.CD",
+  },
+  {
+    label: "GDP growth",
+    code: "NY.GDP.MKTP.KD.ZG",
+  },
+  {
+    label: "Inflation",
+    code: "FP.CPI.TOTL.ZG",
+  },
+  {
+    label: "Unemployment",
+    code: "SL.UEM.TOTL.ZS",
+  },
+  {
+    label: "Life expectancy",
+    code: "SP.DYN.LE00.IN",
+  },
+] as const;
+
+function asRecord(
+  value: unknown,
+): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value)
+  );
+}
+
+function asNumber(
+  value: unknown,
+): number | null {
+  if (
+    typeof value === "number" &&
+    Number.isFinite(value)
+  ) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const numeric =
+      Number(value);
+
+    return Number.isFinite(
+      numeric,
+    )
+      ? numeric
+      : null;
+  }
+
+  return null;
+}
+
+function asString(
+  value: unknown,
+  fallback = "",
+) {
+  return typeof value ===
+    "string"
+    ? value
+    : fallback;
+}
+
+function parseWdi(
+  raw: unknown,
+  iso3: string,
+  indicator: string,
+): WdiResponse {
+  if (!asRecord(raw)) {
+    return {
+      iso3,
+      country: iso3,
+      region: null,
+      indicator: {
+        code: indicator,
+        label: indicator,
+        unit: null,
+      },
+      latest: null,
+      series: [],
+      error:
+        "Invalid WDI response.",
+    };
+  }
+
+  if (
+    typeof raw.error ===
+      "string" &&
+    raw.error.trim()
+  ) {
+    return {
+      iso3,
+      country: iso3,
+      region: null,
+      indicator: {
+        code: indicator,
+        label: indicator,
+        unit: null,
+      },
+      latest: null,
+      series: [],
+      error: raw.error,
+    };
+  }
+
+  const indicatorRaw =
+    asRecord(raw.indicator)
+      ? raw.indicator
+      : {};
+
+  const latestRaw =
+    asRecord(raw.latest)
+      ? raw.latest
+      : null;
+
+  const latestYear =
+    latestRaw
+      ? asNumber(
+          latestRaw.year,
+        )
+      : null;
+
+  const latestValue =
+    latestRaw
+      ? asNumber(
+          latestRaw.value,
+        )
+      : null;
+
+  const series = (
+    Array.isArray(raw.series)
+      ? raw.series
+      : []
+  )
+    .map(
+      (
+        point,
+      ): WdiPoint | null => {
+        if (
+          !asRecord(point)
+        ) {
+          return null;
+        }
+
+        const year =
+          asNumber(
+            point.year,
+          );
+        const value =
+          asNumber(
+            point.value,
+          );
+
+        if (
+          year === null ||
+          value === null
+        ) {
+          return null;
+        }
+
+        return {
+          year,
+          value,
+          unit:
+            typeof point.unit ===
+            "string"
+              ? point.unit
+              : null,
+        };
+      },
+    )
+    .filter(
+      (
+        point,
+      ): point is WdiPoint =>
+        point !== null,
+    )
+    .sort(
+      (a, b) =>
+        a.year - b.year,
+    );
+
+  return {
+    iso3,
+    country: asString(
+      raw.country,
+      iso3,
+    ),
+    region:
+      typeof raw.region ===
+      "string"
+        ? raw.region
+        : null,
+    indicator: {
+      code: asString(
+        indicatorRaw.code,
+        indicator,
+      ),
+      label: asString(
+        indicatorRaw.label,
+        indicator,
+      ),
+      unit:
+        typeof indicatorRaw.unit ===
+        "string"
+          ? indicatorRaw.unit
+          : null,
+    },
+    latest:
+      latestYear !== null &&
+      latestValue !== null
+        ? {
+            year:
+              latestYear,
+            value:
+              latestValue,
+            unit:
+              latestRaw &&
+              typeof latestRaw.unit ===
+                "string"
+                ? latestRaw.unit
+                : null,
+          }
+        : null,
+    series,
+  };
+}
+
+function compact(
+  value: number | null,
+) {
+  if (
+    value == null ||
+    !Number.isFinite(value)
+  ) {
+    return "n/a";
+  }
+
+  const abs =
+    Math.abs(value);
+
+  if (abs >= 1e12) {
+    return `${(
+      value / 1e12
+    ).toFixed(2)}T`;
+  }
+
+  if (abs >= 1e9) {
+    return `${(
+      value / 1e9
+    ).toFixed(2)}B`;
+  }
+
+  if (abs >= 1e6) {
+    return `${(
+      value / 1e6
+    ).toFixed(2)}M`;
+  }
+
+  if (abs >= 1e3) {
+    return new Intl.NumberFormat(
+      "en",
+      {
+        maximumFractionDigits: 0,
+      },
+    ).format(value);
+  }
+
+  return new Intl.NumberFormat(
+    "en",
+    {
+      maximumFractionDigits: 2,
+    },
+  ).format(value);
+}
+
+function formatValue(
+  value: number | null,
+  unit?: string | null,
+) {
+  if (
+    value == null ||
+    !Number.isFinite(value)
+  ) {
+    return "n/a";
+  }
+
+  const normalizedUnit =
+    String(unit ?? "")
+      .trim()
+      .toLowerCase();
+
+  if (
+    normalizedUnit.includes(
+      "current us$",
+    ) ||
+    normalizedUnit ===
+      "us$"
+  ) {
+    return `$${compact(
+      value,
+    )}`;
+  }
+
+  if (
+    normalizedUnit === "%" ||
+    normalizedUnit.includes(
+      "percent",
+    )
+  ) {
+    return `${new Intl.NumberFormat(
+      "en",
+      {
+        maximumFractionDigits: 2,
+      },
+    ).format(value)}%`;
+  }
+
+  if (
+    normalizedUnit.includes(
+      "year",
+    )
+  ) {
+    return `${new Intl.NumberFormat(
+      "en",
+      {
+        maximumFractionDigits: 1,
+      },
+    ).format(value)} years`;
+  }
+
+  return `${compact(value)}${
+    unit ? ` ${unit}` : ""
+  }`;
+}
+
+function TabButton({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "rounded-xl px-4 py-2 text-xs font-black transition",
+        active
+          ? "bg-indigo-600 !text-white shadow-sm"
+          : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
+export default function CountryIntelligenceModal({
+  open,
+  iso3,
+  countryName,
+  region,
+  initialIndicator,
+  initialIndicatorLabel,
+  onClose,
+}: Props) {
+  const [
+    activeTab,
+    setActiveTab,
+  ] =
+    useState<TabKey>(
+      "profile",
+    );
+
+  const [
+    indicator,
+    setIndicator,
+  ] = useState(
+    initialIndicator,
+  );
+
+  const [
+    wdi,
+    setWdi,
+  ] =
+    useState<WdiResponse | null>(
+      null,
+    );
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
+
+  const [
+    error,
+    setError,
+  ] = useState("");
+
+  const normalizedIso3 =
+    String(iso3 ?? "")
+      .trim()
+      .toUpperCase();
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    setIndicator(
+      initialIndicator,
+    );
+    setActiveTab(
+      "profile",
+    );
+  }, [
+    open,
+    normalizedIso3,
+    initialIndicator,
+  ]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const onKeyDown = (
+      event: KeyboardEvent,
+    ) => {
+      if (
+        event.key ===
+        "Escape"
+      ) {
+        onClose();
+      }
+    };
+
+    const originalOverflow =
+      document.body.style
+        .overflow;
+
+    document.body.style.overflow =
+      "hidden";
+
+    window.addEventListener(
+      "keydown",
+      onKeyDown,
+    );
+
+    return () => {
+      document.body.style.overflow =
+        originalOverflow;
+
+      window.removeEventListener(
+        "keydown",
+        onKeyDown,
+      );
+    };
+  }, [open, onClose]);
+
+  useEffect(() => {
+    if (
+      !open ||
+      !normalizedIso3 ||
+      activeTab !== "wdi"
+    ) {
+      return;
+    }
+
+    let alive = true;
+
+    const controller =
+      new AbortController();
+
+    setLoading(true);
+    setError("");
+
+    const qs =
+      new URLSearchParams({
+        iso3:
+          normalizedIso3,
+        indicator,
+      });
+
+    fetch(
+      `/api/wdi/country?${qs.toString()}`,
+      {
+        cache: "no-store",
+        signal:
+          controller.signal,
+      },
+    )
+      .then(
+        async (
+          response,
+        ) => {
+          const raw =
+            await response.json();
+
+          if (
+            !response.ok
+          ) {
+            throw new Error(
+              typeof raw?.error ===
+                "string"
+                ? raw.error
+                : "Unable to load WDI country data.",
+            );
+          }
+
+          return parseWdi(
+            raw,
+            normalizedIso3,
+            indicator,
+          );
+        },
+      )
+      .then(
+        (
+          payload,
+        ) => {
+          if (!alive) {
+            return;
+          }
+
+          setWdi(payload);
+
+          if (
+            payload.error
+          ) {
+            setError(
+              payload.error,
+            );
+          }
+        },
+      )
+      .catch(
+        (
+          fetchError,
+        ) => {
+          if (
+            fetchError?.name ===
+            "AbortError" ||
+            !alive
+          ) {
+            return;
+          }
+
+          setError(
+            fetchError instanceof
+              Error
+              ? fetchError.message
+              : "Unable to load WDI country data.",
+          );
+          setWdi(null);
+        },
+      )
+      .finally(() => {
+        if (alive) {
+          setLoading(
+            false,
+          );
+        }
+      });
+
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, [
+    open,
+    normalizedIso3,
+    activeTab,
+    indicator,
+  ]);
+
+  const chartData =
+    useMemo(
+      () =>
+        (
+          wdi?.series ??
+          []
+        ).slice(-5),
+      [wdi],
+    );
+
+  const yoyRows =
+    useMemo(() => {
+      const latestFive =
+        (
+          wdi?.series ??
+          []
+        ).slice(-5);
+
+      return latestFive
+        .map(
+          (
+            point,
+            index,
+          ) => {
+            const previous =
+              index > 0
+                ? latestFive[
+                    index - 1
+                  ]
+                : null;
+
+            const yoy =
+              previous &&
+              previous.value !== 0
+                ? ((point.value -
+                      previous.value) /
+                    Math.abs(
+                      previous.value,
+                    )) *
+                  100
+                : null;
+
+            return {
+              ...point,
+              yoy,
+            };
+          },
+        )
+        .reverse();
+    }, [wdi]);
+
+  const title =
+    wdi?.country ||
+    countryName ||
+    normalizedIso3 ||
+    "Country";
+
+  const regionLabel =
+    wdi?.region ||
+    region ||
+    "Region unavailable";
+
+  if (
+    !open ||
+    !normalizedIso3
+  ) {
+    return null;
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[99990] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-[3px] sm:p-5"
+      onMouseDown={
+        onClose
+      }
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${title} country intelligence`}
+        className="flex h-[90dvh] w-[94vw] max-w-[1320px] flex-col overflow-hidden rounded-[30px] border border-white/70 bg-slate-50 shadow-2xl"
+        onMouseDown={(
+          event,
+        ) =>
+          event.stopPropagation()
+        }
+      >
+        <header className="shrink-0 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-indigo-600">
+                <Globe2 className="h-4 w-4" />
+                Country intelligence
+              </div>
+
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <h2 className="text-2xl font-black tracking-[-0.035em] text-slate-950 sm:text-3xl">
+                  {title}
+                </h2>
+
+                <span className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-500">
+                  {
+                    normalizedIso3
+                  }
+                </span>
+              </div>
+
+              <div className="mt-1 text-xs font-semibold text-slate-500">
+                {
+                  regionLabel
+                }{" "}
+                |{" "}
+                {initialIndicatorLabel ||
+                  initialIndicator}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Link
+                href={`/world/country/${encodeURIComponent(
+                  normalizedIso3,
+                )}?indicator=${encodeURIComponent(
+                  indicator,
+                )}&dataset=wdi`}
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
+              >
+                Open full page
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
+
+              <button
+                type="button"
+                onClick={
+                  onClose
+                }
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-100 hover:text-slate-950"
+                aria-label="Close country intelligence"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <TabButton
+              active={
+                activeTab ===
+                "profile"
+              }
+              onClick={() =>
+                setActiveTab(
+                  "profile",
+                )
+              }
+            >
+              Country profile
+            </TabButton>
+
+            <TabButton
+              active={
+                activeTab ===
+                "wdi"
+              }
+              onClick={() =>
+                setActiveTab(
+                  "wdi",
+                )
+              }
+            >
+              WDI indicator
+            </TabButton>
+          </div>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          {activeTab ===
+          "profile" ? (
+            <div className="p-3 sm:p-5">
+              <CountryWikiCard
+                iso3={
+                  normalizedIso3
+                }
+                countryName={
+                  countryName
+                }
+                region={
+                  region
+                }
+                embedded
+              />
+            </div>
+          ) : (
+            <div className="p-3 sm:p-5">
+              <section className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
+                <aside className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-indigo-600" />
+
+                    <div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                      Quick indicators
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    {QUICK_PICKS.map(
+                      (
+                        item,
+                      ) => {
+                        const active =
+                          indicator ===
+                          item.code;
+
+                        return (
+                          <button
+                            key={
+                              item.code
+                            }
+                            type="button"
+                            onClick={() =>
+                              setIndicator(
+                                item.code,
+                              )
+                            }
+                            className={[
+                              "w-full rounded-xl border px-3 py-2.5 text-left transition",
+                              active
+                                ? "border-indigo-600 bg-indigo-600 !text-white shadow-sm"
+                                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+                            ].join(
+                              " ",
+                            )}
+                          >
+                            <div className="text-xs font-black">
+                              {
+                                item.label
+                              }
+                            </div>
+
+                            <div
+                              className={[
+                                "mt-0.5 text-[9px] font-bold",
+                                active
+                                  ? "text-indigo-100"
+                                  : "text-slate-400",
+                              ].join(
+                                " ",
+                              )}
+                            >
+                              {
+                                item.code
+                              }
+                            </div>
+                          </button>
+                        );
+                      },
+                    )}
+                  </div>
+                </aside>
+
+                <div className="space-y-4">
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div className="rounded-[22px] border border-indigo-100 bg-indigo-50 p-4">
+                      <div className="text-[9px] font-black uppercase tracking-[0.1em] text-indigo-500">
+                        Active indicator
+                      </div>
+
+                      <div className="mt-1 text-sm font-black text-indigo-950">
+                        {wdi?.indicator
+                          .label ||
+                          initialIndicatorLabel ||
+                          indicator}
+                      </div>
+                    </div>
+
+                    <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
+                        Latest value
+                      </div>
+
+                      <div className="mt-1 text-xl font-black text-slate-950">
+                        {formatValue(
+                          wdi
+                            ?.latest
+                            ?.value ??
+                            null,
+                          wdi
+                            ?.indicator
+                            ?.unit,
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
+                        Latest year
+                      </div>
+
+                      <div className="mt-1 text-xl font-black text-slate-950">
+                        {wdi
+                          ?.latest
+                          ?.year ??
+                          "n/a"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                          Trend (Bar) + YoY%
+                        </div>
+
+                        <h3 className="mt-1 text-lg font-black text-slate-950">
+                          {wdi?.indicator
+                            .label ||
+                            initialIndicatorLabel ||
+                            indicator}
+                        </h3>
+                      </div>
+
+                      {loading ? (
+                        <div className="inline-flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2 text-[10px] font-black text-indigo-700">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Loading
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {error ? (
+                      <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">
+                        {
+                          error
+                        }
+                      </div>
+                    ) : null}
+
+                    {!error &&
+                    !loading &&
+                    chartData.length ===
+                      0 ? (
+                      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm font-semibold text-slate-500">
+                        No historical WDI records are available for this indicator.
+                      </div>
+                    ) : null}
+
+                    {chartData.length >
+                    0 ? (
+                      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+                        <div className="h-[300px] min-w-0">
+                          <ResponsiveContainer
+                            width="100%"
+                            height="100%"
+                          >
+                            <BarChart
+                              data={
+                                chartData
+                              }
+                              margin={{
+                                top: 10,
+                                right: 10,
+                                bottom: 0,
+                                left: 4,
+                              }}
+                              barCategoryGap="22%"
+                            >
+                              <CartesianGrid
+                                stroke="#e2e8f0"
+                                strokeDasharray="3 5"
+                                vertical={
+                                  false
+                                }
+                              />
+
+                              <XAxis
+                                dataKey="year"
+                                tick={{
+                                  fill: "#64748b",
+                                  fontSize: 11,
+                                }}
+                                axisLine={
+                                  false
+                                }
+                                tickLine={
+                                  false
+                                }
+                              />
+
+                              <YAxis
+                                tick={{
+                                  fill: "#64748b",
+                                  fontSize: 11,
+                                }}
+                                axisLine={
+                                  false
+                                }
+                                tickLine={
+                                  false
+                                }
+                                width={
+                                  66
+                                }
+                                tickFormatter={(
+                                  value,
+                                ) =>
+                                  compact(
+                                    Number(
+                                      value,
+                                    ),
+                                  )
+                                }
+                              />
+
+                              <Tooltip
+                                cursor={{
+                                  fill:
+                                    "rgba(15, 23, 42, 0.04)",
+                                }}
+                                formatter={(
+                                  value,
+                                ) => [
+                                  formatValue(
+                                    Number(
+                                      value,
+                                    ),
+                                    wdi
+                                      ?.indicator
+                                      ?.unit,
+                                  ),
+                                  wdi
+                                    ?.indicator
+                                    ?.label ||
+                                    "Value",
+                                ]}
+                                labelFormatter={(
+                                  label,
+                                ) =>
+                                  `Year ${label}`
+                                }
+                              />
+
+                              <Bar
+                                dataKey="value"
+                                fill="#22c55e"
+                                radius={[
+                                  8,
+                                  8,
+                                  0,
+                                  0,
+                                ]}
+                                maxBarSize={
+                                  42
+                                }
+                              />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+
+                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                          <div className="grid grid-cols-[64px_minmax(0,1fr)_68px] border-b border-slate-200 bg-slate-50 px-3 py-2.5 text-[10px] font-black text-slate-500">
+                            <div>
+                              Year
+                            </div>
+
+                            <div className="text-right">
+                              Value
+                            </div>
+
+                            <div className="text-right">
+                              YoY%
+                            </div>
+                          </div>
+
+                          <div>
+                            {yoyRows.map(
+                              (
+                                row,
+                              ) => (
+                                <div
+                                  key={
+                                    row.year
+                                  }
+                                  className="grid grid-cols-[64px_minmax(0,1fr)_68px] items-center border-b border-slate-100 px-3 py-3 text-xs last:border-b-0"
+                                >
+                                  <div className="font-semibold text-slate-600">
+                                    {
+                                      row.year
+                                    }
+                                  </div>
+
+                                  <div className="truncate text-right font-black text-slate-800">
+                                    {formatValue(
+                                      row.value,
+                                      wdi
+                                        ?.indicator
+                                        ?.unit,
+                                    )}
+                                  </div>
+
+                                  <div className="text-right">
+                                    {row.yoy ===
+                                    null ? (
+                                      <span className="inline-flex min-w-[42px] justify-center rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-black text-slate-400">
+                                        -
+                                      </span>
+                                    ) : (
+                                      <span
+                                        className={[
+                                          "inline-flex min-w-[52px] justify-center rounded-full border px-2 py-1 text-[10px] font-black",
+                                          row.yoy >=
+                                          0
+                                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                            : "border-rose-200 bg-rose-50 text-rose-700",
+                                        ].join(
+                                          " ",
+                                        )}
+                                      >
+                                        {row.yoy >=
+                                        0
+                                          ? "+"
+                                          : ""}
+                                        {row.yoy.toFixed(
+                                          1,
+                                        )}
+                                        %
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </section>
+            </div>
+          )}
+        </div>
+
+        <footer className="shrink-0 border-t border-slate-200 bg-white px-4 py-2.5 text-[10px] font-semibold text-slate-400 sm:px-6">
+          Source: World Bank WDI for indicator data. Country narrative and economy profile use the existing Stratify country-profile sources.
+        </footer>
+      </div>
+    </div>
+  );
+}

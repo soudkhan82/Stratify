@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -64,7 +64,6 @@ type Props = {
   iso3: string;
   countryName?: string | null;
   region?: string | null;
-  embedded?: boolean;
 };
 
 type TabKey = "profile" | "economy" | "external";
@@ -732,7 +731,7 @@ function TabButton({
   );
 }
 
-export default function CountryWikiCard({ iso3, countryName, region, embedded = false }: Props) {
+export default function CountryWikiCard({ iso3, countryName, region }: Props) {
   const [payload, setPayload] = useState<WikiPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -966,21 +965,19 @@ export default function CountryWikiCard({ iso3, countryName, region, embedded = 
               {fetchedAt ? ` · Updated: ${fetchedAt}` : ""}
             </div>
 
-            {!embedded ? (
-              <button
-                type="button"
-                onClick={() => setOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-full bg-slate-950 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800"
-              >
-                <Info className="h-3.5 w-3.5" />
-                View full profile
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-full bg-slate-950 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800"
+            >
+              <Info className="h-3.5 w-3.5" />
+              View full profile
+            </button>
           </div>
         </CardContent>
       </Card>
 
-      {!embedded && open ? (
+      {open ? (
         <div
           className="fixed inset-0 z-[99999] flex items-stretch justify-center bg-white/95 p-0 backdrop-blur-sm"
           onClick={() => setOpen(false)}

@@ -6,6 +6,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   BarChart3,
@@ -18,7 +19,6 @@ import {
 } from "lucide-react";
 
 import type { StratifyMapRow } from "@/app/components/StratifyMap";
-import CountryIntelligenceModal from "@/app/components/CountryIntelligenceModal";
 
 const StratifyMap = dynamic(
   () =>
@@ -215,7 +215,10 @@ function regionParam(
 }
 
 export default function Page() {
-const [
+  const router =
+    useRouter();
+
+  const [
     region,
     setRegion,
   ] = useState("World");
@@ -255,13 +258,6 @@ const [
     countryQuery,
     setCountryQuery,
   ] = useState("");
-
-  const [
-    countryModalIso3,
-    setCountryModalIso3,
-  ] = useState<string | null>(
-    null,
-  );
 
   const currentIndicator =
     useMemo(
@@ -574,17 +570,17 @@ const [
       normalized,
     );
     setCountryQuery("");
-    setCountryModalIso3(
-      normalized,
-    );
   }
+
   function openProfile(
     iso3: string,
   ) {
-    setCountryModalIso3(
-      String(iso3)
-        .trim()
-        .toUpperCase(),
+    router.push(
+      `/world/country/${encodeURIComponent(
+        iso3,
+      )}?indicator=${encodeURIComponent(
+        indicator,
+      )}&dataset=wdi`,
     );
   }
 
@@ -598,9 +594,6 @@ const [
     );
     setCountryQuery(
       "",
-    );
-    setCountryModalIso3(
-      null,
     );
   }
 
@@ -1125,38 +1118,6 @@ const [
           </div>
         </section>
       </div>
-
-      <CountryIntelligenceModal
-        open={!!countryModalIso3}
-        iso3={countryModalIso3}
-        countryName={
-          countryModalIso3
-            ? mapRows.find(
-                (row) =>
-                  row.iso3 ===
-                  countryModalIso3,
-              )?.country ?? null
-            : null
-        }
-        region={
-          countryModalIso3
-            ? mapRows.find(
-                (row) =>
-                  row.iso3 ===
-                  countryModalIso3,
-              )?.region ?? null
-            : null
-        }
-        initialIndicator={indicator}
-        initialIndicatorLabel={
-          currentIndicator.label
-        }
-        onClose={() =>
-          setCountryModalIso3(
-            null,
-          )
-        }
-      />
     </main>
   );
 }
