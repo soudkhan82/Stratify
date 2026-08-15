@@ -1,259 +1,302 @@
-import { NextResponse } from "next/server";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
+import {
+  NextRequest,
+  NextResponse,
+} from "next/server";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+import {
+  searchGooglePlaces,
+} from "@/app/lib/google-places";
 
-type Business = {
-  id: string;
-  name: string;
-  module: string;
-  country: string;
-  countryCode: string;
-  city: string;
-  lat: number;
-  lng: number;
-  coverage: string;
-  roles: string[];
-  commerceGroups: string[];
-  itemKeys: string[];
-  description: string;
-  website: string;
-  sourceUrl: string;
-  verified: boolean;
-  featured?: boolean;
-  sourceType?: string;
-  verificationStatus?: string;
-  locationPrecision?: string;
-};
+export const runtime =
+  "nodejs";
+export const dynamic =
+  "force-dynamic";
 
-type SeedPayload = {
-  generatedAt: string;
-  sourcePolicy: string;
-  businesses: Business[];
-};
-
-function normalize(value: string | null) {
-  return String(value ?? "")
-    .trim()
-    .toLowerCase();
+function clean(
+  value: string | null,
+) {
+  return String(
+    value ?? "",
+  )
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-async function readSeed(): Promise<SeedPayload> {
-  const filePath = path.join(
-    process.cwd(),
-    "public",
-    "data",
-    "business-network",
-    "businesses.json",
-  );
+function roleCategory(
+  role: string,
+) {
+  const normalized =
+    role
+      .trim()
+      .toLowerCase();
 
-  const raw = await readFile(
-    filePath,
-    "utf8",
-  );
+  if (
+    normalized.includes(
+      "export",
+    ) ||
+    normalized.includes(
+      "trader",
+    )
+  ) {
+    return "exporter";
+  }
 
-  return JSON.parse(raw) as SeedPayload;
+  if (
+    normalized.includes(
+      "process",
+    ) ||
+    normalized.includes(
+      "mill",
+    )
+  ) {
+    return "processor";
+  }
+
+  if (
+    normalized.includes(
+      "input",
+    ) ||
+    normalized.includes(
+      "fertil",
+    ) ||
+    normalized.includes(
+      "seed",
+    )
+  ) {
+    return "agri-inputs";
+  }
+
+  if (
+    normalized.includes(
+      "logistic",
+    ) ||
+    normalized.includes(
+      "storage",
+    ) ||
+    normalized.includes(
+      "warehouse",
+    )
+  ) {
+    return "logistics";
+  }
+
+  if (
+    normalized.includes(
+      "supplier",
+    ) ||
+    normalized.includes(
+      "wholesale",
+    )
+  ) {
+    return "supplier";
+  }
+
+  return "all";
 }
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
 ) {
   try {
-    const { searchParams } =
-      new URL(request.url);
+    const params =
+      request.nextUrl
+        .searchParams;
 
-    const moduleKey = normalize(
-      searchParams.get("module") ||
-        "agriculture",
-    );
-    const item = normalize(
-      searchParams.get("item"),
-    );
-    const group = normalize(
-      searchParams.get("group"),
-    );
-    const role = normalize(
-      searchParams.get("role"),
-    );
-    const q = normalize(
-      searchParams.get("q"),
-    );
+    const moduleKey =
+      clean(
+        params.get(
+          "module",
+        ),
+      ) ||
+      "agriculture";
 
-    const requestedLimit = Number(
-      searchParams.get("limit") ??
-        120,
-    );
+    const item =
+      clean(
+        params.get(
+          "item",
+        ),
+      );
+    const group =
+      clean(
+        params.get(
+          "group",
+        ),
+      );
+    const role =
+      clean(
+        params.get(
+          "role",
+        ),
+      );
+    const q =
+      clean(
+        params.get(
+          "q",
+        ),
+      );
+    const location =
+      clean(
+        params.get(
+          "location",
+        ),
+      );
 
-    const limit = Math.max(
-      20,
-      Math.min(
-        200,
-        Number.isFinite(
-          requestedLimit,
-        )
-          ? Math.trunc(
-              requestedLimit,
-            )
-          : 120,
-      ),
-    );
+    if (
+      location.length < 2
+    ) {
+      return NextResponse.json(
+        {
+          ok: true,
+          module:
+            moduleKey,
+          item,
+          group,
+          location,
+          directorySize:
+            null,
+          totalMatches: 0,
+          count: 0,
+          businesses: [],
+          sourcePolicy:
+            "Select a country to load live Google Places business matches.",
+        },
+        {
+          headers: {
+            "Cache-Control":
+              "private, no-store, max-age=0",
+          },
+        },
+      );
+    }
 
-    const seed = await readSeed();
+    const result =
+      await searchGooglePlaces(
+        {
+          sector:
+            moduleKey,
+          category:
+            role
+              ? roleCategory(
+                  role,
+                )
+              : "all",
+          tag:
+            item ||
+            null,
+          q:
+            q ||
+            null,
+          location,
+          limit:
+            Number(
+              params.get(
+                "limit",
+              ) ??
+                60,
+            ),
+        },
+      );
 
-    const ranked =
-      seed.businesses
-        .filter((business) => {
-          if (
-            normalize(
-              business.module,
-            ) !== moduleKey
-          ) {
-            return false;
-          }
-
-          if (
-            role &&
-            !business.roles.some(
-              (value) =>
-                normalize(value) ===
-                role,
-            )
-          ) {
-            return false;
-          }
-
-          if (q) {
-            const haystack = [
-              business.name,
-              business.country,
-              business.city,
-              business.description,
-              ...business.roles,
-              ...business
-                .commerceGroups,
-            ]
-              .join(" ")
-              .toLowerCase();
-
-            if (
-              !haystack.includes(q)
-            ) {
-              return false;
-            }
-          }
-
-          const itemMatch =
-            !!item &&
-            business.itemKeys.some(
-              (value) =>
-                normalize(value) ===
-                item,
-            );
-
-          const groupMatch =
-            !!group &&
-            business.commerceGroups.some(
-              (value) =>
-                normalize(value) ===
-                group,
-            );
-
-          const generalMatch =
-            business.commerceGroups.some(
-              (value) =>
-                normalize(value) ===
-                "agriculture",
-            );
-
-          return (
-            itemMatch ||
-            groupMatch ||
-            generalMatch
-          );
-        })
-        .map((business) => {
-          const itemMatch =
-            business.itemKeys.some(
-              (value) =>
-                normalize(value) ===
-                item,
-            );
-
-          const groupMatch =
-            business.commerceGroups.some(
-              (value) =>
-                normalize(value) ===
-                group,
-            );
-
-          const matchType =
-            itemMatch
-              ? "exact-item"
-              : groupMatch
-                ? "category"
-                : "agriculture-sector";
-
-          const matchScore =
-            (itemMatch
-              ? 120
-              : groupMatch
-                ? 70
-                : 15) +
-            (business.verified
-              ? 25
-              : 0) +
-            (business.featured
-              ? 10
-              : 0);
-
-          return {
-            ...business,
-            matchType,
-            matchScore,
-          };
-        })
-        .sort((a, b) => {
-          if (
-            b.matchScore !==
-            a.matchScore
-          ) {
-            return (
-              b.matchScore -
-              a.matchScore
-            );
-          }
-
-          return a.name.localeCompare(
-            b.name,
-          );
-        });
-
-    const rows =
-      ranked.slice(0, limit);
+    const businesses =
+      result.places.map(
+        (
+          place,
+          index,
+        ) => ({
+          id:
+            place.id,
+          organizationId:
+            place.id,
+          name:
+            place.name,
+          module:
+            moduleKey,
+          country:
+            place.country ||
+            location,
+          countryCode:
+            place.countryCode,
+          city:
+            place.city,
+          lat:
+            place.lat,
+          lng:
+            place.lng,
+          coverage:
+            location,
+          roles:
+            place
+              .matchedServices,
+          commerceGroups:
+            group
+              ? [group]
+              : [],
+          itemKeys:
+            item
+              ? [item]
+              : [],
+          description:
+            `Live Google Places match for ${place.matchedQueries.join(
+              " | ",
+            )}.`,
+          website:
+            place.googleMapsUri,
+          googleMapsUri:
+            place.googleMapsUri,
+          sourceUrl:
+            place.googleMapsUri,
+          verified: false,
+          featured: false,
+          sourceType:
+            "google-places-new",
+          verificationStatus:
+            "google-live",
+          locationPrecision:
+            "google-place",
+          matchType:
+            "google-text-search",
+          matchScore:
+            Math.max(
+              1,
+              100 - index,
+            ),
+          primaryType:
+            place.primaryType,
+          types:
+            place.types,
+          businessStatus:
+            place.businessStatus,
+        }),
+      );
 
     return NextResponse.json(
       {
         ok: true,
-        generatedAt:
-          seed.generatedAt,
-        sourcePolicy:
-          seed.sourcePolicy,
-        module: moduleKey,
+        source:
+          "Google Places (New)",
+        module:
+          moduleKey,
         item,
         group,
+        location,
         directorySize:
-          seed.businesses.length,
+          null,
         totalMatches:
-          ranked.length,
-        count: rows.length,
-        businesses: rows,
+          businesses.length,
+        count:
+          businesses.length,
+        businesses,
+        queries:
+          result.queries,
+        partialErrors:
+          result.errors,
+        sourcePolicy:
+          "Live Google Places (New) results. Google Maps attribution is required when these results are displayed.",
       },
       {
         headers: {
           "Cache-Control":
-            "public, s-maxage=3600, stale-while-revalidate=86400",
+            "private, no-store, max-age=0",
         },
       },
     );
@@ -264,10 +307,12 @@ export async function GET(
         error:
           error instanceof Error
             ? error.message
-            : "Unable to load business network.",
+            : "Unable to load Google Places business matches.",
         businesses: [],
       },
-      { status: 500 },
+      {
+        status: 500,
+      },
     );
   }
 }

@@ -13,7 +13,7 @@ const SOURCE_NOTES = {
   macroFinance:
     "Macro & Finance sources: World Bank monetary and financial indicators, IMF World Economic Outlook (WEO), IMF Government Finance Statistics (GFS), IMF Fiscal Monitor, IMF Global Debt Database, and World Bank International Debt Statistics (IDS). Updated periodically for analytical use.",
   agriculture:
-    "Agriculture Atlas source: FAOSTAT Crops and Livestock Products (QCL). Country production uses the packaged analytical dataset; related business discovery is powered live by Google Places (New) after a country is selected.",
+    "Agriculture Atlas source: FAOSTAT Crops and Livestock Products (QCL), accessed on demand through the FAOSTAT API. Country points are representative locations from the packaged world-countries reference dataset; values are national annual totals.",
 
   debt:
     "Data sources: IMF World Economic Outlook (WEO) - General Government Gross Debt, IMF Global Debt Database, World Bank International Debt Statistics (IDS), and World Bank WDI debt indicators. Updated periodically for analytical use.",
@@ -31,7 +31,7 @@ const SOURCE_NOTES = {
     "Data sources: S&P 500 constituent universe, SEC EDGAR company submissions, company investor relations / public filings, and curated public market-profile datasets. Updated periodically for analytical use.",
 
   connect:
-    "Stratify Connect uses live Google Places API (New) for business and organization discovery and Google Maps JavaScript API for mapped place results. Google Places content is requested on demand rather than maintained as a permanent local directory.",
+    "Stratify Connect combines curated and source-linked organization records with external discovery and verification sources including Foursquare OS Places, IATI, ReliefWeb and GLEIF. Verification status is shown explicitly.",
   credits:
     "Product background: Stratify Analytics is built from public development, fiscal, energy, agriculture, debt, and corporate intelligence datasets curated for analytical use.",
 

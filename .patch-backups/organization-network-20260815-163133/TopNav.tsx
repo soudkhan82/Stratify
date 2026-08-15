@@ -12,7 +12,6 @@ const NAV_ITEMS = [
   { label: "Agriculture", href: "/agriculture" },
   { label: "History", href: "/history" },
   { label: "Corporate 500", href: "/corporate-intelligence" },
-  { label: "Connect", href: "/connect" },
   { label: "Credits", href: "/credits" },
 ];
 
@@ -22,7 +21,6 @@ const MOBILE_ITEMS = [
   { label: "Macro", href: "/macro-finance" },
   { label: "Agri", href: "/agriculture" },
   { label: "History", href: "/history" },
-  { label: "Connect", href: "/connect" },
 ];
 
 function isActivePath(pathname: string, href: string) {

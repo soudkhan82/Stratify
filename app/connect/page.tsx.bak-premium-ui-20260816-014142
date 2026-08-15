@@ -1,0 +1,1556 @@
+"use client";
+
+import dynamic from "next/dynamic";
+import countries from "world-countries";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  Building2,
+  Check,
+  ChevronDown,
+  ExternalLink,
+  Globe2,
+  Loader2,
+  MapPinned,
+  Phone,
+  Search,
+  ShieldCheck,
+  X,
+} from "lucide-react";
+
+import {
+  CONNECT_SECTORS,
+  getConnectSector,
+} from "@/app/lib/stratify-connect-config";
+
+import type {
+  ConnectGooglePlace,
+} from "./_components/OrganizationMap";
+
+const OrganizationMap =
+  dynamic(
+    () =>
+      import(
+        "./_components/OrganizationMap"
+      ),
+    {
+      ssr: false,
+      loading: () => (
+        <div className="flex min-h-[600px] items-center justify-center rounded-[20px] bg-slate-100">
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading map
+          </div>
+        </div>
+      ),
+    },
+  );
+
+type SearchPayload = {
+  ok: boolean;
+  source?: string;
+  sector?: string;
+  sectorLabel?: string;
+  category?: string;
+  categoryLabel?: string;
+  location?: string;
+  queryCount?: number;
+  queries?: string[];
+  totalMatches?: number;
+  places?: ConnectGooglePlace[];
+  organizations?: ConnectGooglePlace[];
+  partialErrors?: string[];
+  sourcePolicy?: string;
+  error?: string;
+};
+
+type PlaceDetails = {
+  id: string;
+  name: string;
+  address: string;
+  businessStatus: string;
+  googleMapsUri: string;
+  websiteUri: string;
+  internationalPhoneNumber: string;
+  nationalPhoneNumber: string;
+  source: string;
+};
+
+type DetailsPayload = {
+  ok: boolean;
+  place?: PlaceDetails;
+  error?: string;
+};
+
+type SearchInput = {
+  sector: string;
+  category: string;
+  tag: string;
+  q: string;
+  location: string;
+  signal?: AbortSignal;
+};
+
+type RawCountry = {
+  name?: {
+    common?: string;
+  };
+};
+
+type CropMeta = {
+  key: string;
+  label: string;
+  group?: string;
+};
+
+type AgricultureMeta = {
+  crops?: CropMeta[];
+};
+
+type SelectOption = {
+  value: string;
+  label: string;
+  meta?: string;
+};
+
+type SearchableSelectProps = {
+  label: string;
+  value: string;
+  options: SelectOption[];
+  placeholder: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  allowClear?: boolean;
+};
+
+const COUNTRY_OPTIONS: SelectOption[] =
+  Array.from(
+    new Set(
+      (
+        countries as RawCountry[]
+      )
+        .map(
+          (country) =>
+            String(
+              country.name
+                ?.common ??
+                "",
+            ).trim(),
+        )
+        .filter(Boolean),
+    ),
+  )
+    .sort((a, b) =>
+      a.localeCompare(b),
+    )
+    .map((name) => ({
+      value: name,
+      label: name,
+    }));
+
+function titleCase(
+  value: string,
+) {
+  return String(
+    value ?? "",
+  )
+    .replace(
+      /[_-]+/g,
+      " ",
+    )
+    .split(" ")
+    .filter(Boolean)
+    .map(
+      (part) =>
+        part
+          .charAt(0)
+          .toUpperCase() +
+        part.slice(1),
+    )
+    .join(" ");
+}
+
+async function requestPlaces(
+  input: SearchInput,
+) {
+  const params =
+    new URLSearchParams();
+
+  params.set(
+    "sector",
+    input.sector,
+  );
+  params.set(
+    "category",
+    input.category,
+  );
+  params.set(
+    "location",
+    input.location.trim(),
+  );
+  params.set(
+    "limit",
+    "60",
+  );
+
+  if (input.tag.trim()) {
+    params.set(
+      "tag",
+      input.tag.trim(),
+    );
+  }
+
+  if (input.q.trim()) {
+    params.set(
+      "q",
+      input.q.trim(),
+    );
+  }
+
+  const response =
+    await fetch(
+      `/api/organizations?${params.toString()}`,
+      {
+        cache: "no-store",
+        signal:
+          input.signal,
+      },
+    );
+
+  const payload =
+    (await response.json()) as SearchPayload;
+
+  if (
+    !response.ok ||
+    !payload.ok
+  ) {
+    throw new Error(
+      payload.error ||
+        "Unable to search Google Places.",
+    );
+  }
+
+  return payload;
+}
+
+function SearchableSelect({
+  label,
+  value,
+  options,
+  placeholder,
+  onChange,
+  disabled = false,
+  allowClear = true,
+}: SearchableSelectProps) {
+  const rootRef =
+    useRef<HTMLDivElement | null>(
+      null,
+    );
+  const inputRef =
+    useRef<HTMLInputElement | null>(
+      null,
+    );
+
+  const selected =
+    options.find(
+      (option) =>
+        option.value === value,
+    );
+
+  const [
+    query,
+    setQuery,
+  ] = useState(
+    selected?.label ?? "",
+  );
+  const [
+    open,
+    setOpen,
+  ] = useState(false);
+
+  useEffect(() => {
+    setQuery(
+      selected?.label ??
+        "",
+    );
+  }, [
+    selected?.label,
+    value,
+  ]);
+
+  useEffect(() => {
+    const onPointerDown = (
+      event: MouseEvent,
+    ) => {
+      if (
+        rootRef.current &&
+        !rootRef.current.contains(
+          event.target as Node,
+        )
+      ) {
+        setOpen(false);
+
+        if (
+          selected?.label
+        ) {
+          setQuery(
+            selected.label,
+          );
+        } else if (
+          !value
+        ) {
+          setQuery("");
+        }
+      }
+    };
+
+    document.addEventListener(
+      "mousedown",
+      onPointerDown,
+    );
+
+    return () =>
+      document.removeEventListener(
+        "mousedown",
+        onPointerDown,
+      );
+  }, [
+    selected?.label,
+    value,
+  ]);
+
+  const filtered =
+    useMemo(() => {
+      const needle =
+        query
+          .trim()
+          .toLowerCase();
+
+      if (!needle) {
+        return options.slice(
+          0,
+          120,
+        );
+      }
+
+      return options
+        .filter(
+          (option) =>
+            option.label
+              .toLowerCase()
+              .includes(
+                needle,
+              ) ||
+            option.meta
+              ?.toLowerCase()
+              .includes(
+                needle,
+              ),
+        )
+        .slice(0, 120);
+    }, [
+      options,
+      query,
+    ]);
+
+  function choose(
+    option: SelectOption,
+  ) {
+    onChange(
+      option.value,
+    );
+    setQuery(
+      option.label,
+    );
+    setOpen(false);
+  }
+
+  function clear() {
+    onChange("");
+    setQuery("");
+    setOpen(false);
+    window.setTimeout(
+      () =>
+        inputRef.current?.focus(),
+      0,
+    );
+  }
+
+  return (
+    <div
+      ref={rootRef}
+      className="relative"
+    >
+      <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-slate-500">
+        {label}
+      </div>
+
+      <div
+        className={[
+          "relative flex h-11 items-center rounded-xl border bg-white transition",
+          open
+            ? "border-indigo-300 ring-2 ring-indigo-100"
+            : "border-slate-200 hover:border-slate-300",
+          disabled
+            ? "cursor-not-allowed bg-slate-50 opacity-60"
+            : "",
+        ].join(" ")}
+      >
+        <Search className="pointer-events-none ml-3 h-3.5 w-3.5 shrink-0 text-slate-400" />
+
+        <input
+          ref={inputRef}
+          value={query}
+          disabled={disabled}
+          onFocus={() =>
+            setOpen(true)
+          }
+          onChange={(event) => {
+            setQuery(
+              event.target.value,
+            );
+            setOpen(true);
+          }}
+          onKeyDown={(event) => {
+            if (
+              event.key ===
+              "Escape"
+            ) {
+              setOpen(false);
+              setQuery(
+                selected?.label ??
+                  "",
+              );
+            }
+
+            if (
+              event.key ===
+                "Enter" &&
+              filtered.length
+            ) {
+              event.preventDefault();
+              choose(
+                filtered[0],
+              );
+            }
+          }}
+          placeholder={placeholder}
+          className="h-full min-w-0 flex-1 bg-transparent px-2 text-sm font-normal text-slate-800 outline-none placeholder:text-slate-400"
+        />
+
+        {allowClear &&
+        value &&
+        !disabled ? (
+          <button
+            type="button"
+            onClick={
+              clear
+            }
+            className="mr-1 flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            aria-label={`Clear ${label}`}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => {
+            setOpen(
+              (current) =>
+                !current,
+            );
+            inputRef.current?.focus();
+          }}
+          className="mr-1 flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none"
+          aria-label={`Open ${label}`}
+        >
+          <ChevronDown
+            className={[
+              "h-4 w-4 transition-transform",
+              open
+                ? "rotate-180"
+                : "",
+            ].join(" ")}
+          />
+        </button>
+      </div>
+
+      {open &&
+      !disabled ? (
+        <div className="absolute left-0 right-0 top-[66px] z-[500] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.14)]">
+          <div className="max-h-[300px] overflow-y-auto overscroll-contain p-1.5">
+            {filtered.length ? (
+              filtered.map(
+                (option) => {
+                  const active =
+                    option.value ===
+                    value;
+
+                  return (
+                    <button
+                      key={
+                        option.value
+                      }
+                      type="button"
+                      onMouseDown={(
+                        event,
+                      ) =>
+                        event.preventDefault()
+                      }
+                      onClick={() =>
+                        choose(
+                          option,
+                        )
+                      }
+                      className={[
+                        "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition",
+                        active
+                          ? "bg-indigo-50 text-indigo-800"
+                          : "text-slate-700 hover:bg-slate-50",
+                      ].join(" ")}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[13px] font-medium">
+                          {
+                            option.label
+                          }
+                        </div>
+
+                        {option.meta ? (
+                          <div className="mt-0.5 truncate text-[10px] font-normal text-slate-400">
+                            {
+                              option.meta
+                            }
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {active ? (
+                        <Check className="h-4 w-4 shrink-0 text-indigo-600" />
+                      ) : null}
+                    </button>
+                  );
+                },
+              )
+            ) : (
+              <div className="px-3 py-8 text-center text-xs font-normal text-slate-500">
+                No matching options
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export default function ConnectPage() {
+  const [
+    sector,
+    setSector,
+  ] = useState(
+    "agriculture",
+  );
+  const [
+    category,
+    setCategory,
+  ] = useState(
+    "all",
+  );
+  const [
+    location,
+    setLocation,
+  ] = useState("");
+  const [
+    tag,
+    setTag,
+  ] = useState("");
+  const [
+    q,
+    setQ,
+  ] = useState("");
+  const [
+    payload,
+    setPayload,
+  ] =
+    useState<SearchPayload | null>(
+      null,
+    );
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
+  const [
+    error,
+    setError,
+  ] = useState("");
+  const [
+    selectedId,
+    setSelectedId,
+  ] =
+    useState<string | null>(
+      null,
+    );
+  const [
+    detailsById,
+    setDetailsById,
+  ] =
+    useState<
+      Record<
+        string,
+        PlaceDetails
+      >
+    >({});
+  const [
+    detailLoadingId,
+    setDetailLoadingId,
+  ] =
+    useState<string | null>(
+      null,
+    );
+  const [
+    initialized,
+    setInitialized,
+  ] = useState(false);
+  const [
+    agricultureCrops,
+    setAgricultureCrops,
+  ] = useState<CropMeta[]>([]);
+
+  const sectorConfig =
+    useMemo(
+      () =>
+        getConnectSector(
+          sector,
+        ),
+      [sector],
+    );
+
+  const sectorOptions =
+    useMemo<SelectOption[]>(
+      () =>
+        CONNECT_SECTORS.map(
+          (item) => ({
+            value:
+              item.value,
+            label:
+              item.label,
+            meta:
+              item.description,
+          }),
+        ),
+      [],
+    );
+
+  const categoryOptions =
+    useMemo<SelectOption[]>(
+      () =>
+        sectorConfig.categories.map(
+          (item) => ({
+            value:
+              item.value,
+            label:
+              item.label,
+          }),
+        ),
+      [sectorConfig],
+    );
+
+  useEffect(() => {
+    let alive = true;
+
+    fetch(
+      "/data/agriculture/meta.json?v=connect-searchable",
+      {
+        cache:
+          "force-cache",
+      },
+    )
+      .then(
+        async (
+          response,
+        ) => {
+          if (
+            !response.ok
+          ) {
+            throw new Error(
+              `Agriculture metadata HTTP ${response.status}`,
+            );
+          }
+
+          return (await response.json()) as AgricultureMeta;
+        },
+      )
+      .then((meta) => {
+        if (!alive) {
+          return;
+        }
+
+        setAgricultureCrops(
+          Array.isArray(
+            meta.crops,
+          )
+            ? [
+                ...meta.crops,
+              ].sort(
+                (
+                  a,
+                  b,
+                ) =>
+                  a.label.localeCompare(
+                    b.label,
+                  ),
+              )
+            : [],
+        );
+      })
+      .catch(() => {
+        if (alive) {
+          setAgricultureCrops(
+            [],
+          );
+        }
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const specialtyOptions =
+    useMemo<
+      SelectOption[]
+    >(() => {
+      if (
+        sector ===
+        "agriculture"
+      ) {
+        return agricultureCrops.map(
+          (crop) => ({
+            value: crop.key,
+            label:
+              crop.label,
+            meta:
+              crop.group
+                ? titleCase(
+                    crop.group,
+                  )
+                : undefined,
+          }),
+        );
+      }
+
+      const unique =
+        new Map<
+          string,
+          string
+        >();
+
+      for (
+        const categoryItem of
+        sectorConfig.categories
+      ) {
+        for (
+          const term of
+          categoryItem.terms
+        ) {
+          const value =
+            String(
+              term ?? "",
+            ).trim();
+
+          if (!value) {
+            continue;
+          }
+
+          unique.set(
+            value.toLowerCase(),
+            titleCase(
+              value,
+            ),
+          );
+        }
+      }
+
+      return Array.from(
+        unique.entries(),
+      )
+        .map(
+          ([
+            value,
+            label,
+          ]) => ({
+            value,
+            label,
+          }),
+        )
+        .sort(
+          (a, b) =>
+            a.label.localeCompare(
+              b.label,
+            ),
+        );
+    }, [
+      agricultureCrops,
+      sector,
+      sectorConfig,
+    ]);
+
+  useEffect(() => {
+    const params =
+      new URLSearchParams(
+        window.location.search,
+      );
+
+    const requestedSector =
+      params.get(
+        "sector",
+      ) ||
+      "agriculture";
+    const config =
+      getConnectSector(
+        requestedSector,
+      );
+
+    const requestedCategory =
+      params.get(
+        "category",
+      ) ||
+      "all";
+
+    setSector(
+      config.value,
+    );
+    setCategory(
+      config.categories.some(
+        (item) =>
+          item.value ===
+          requestedCategory,
+      )
+        ? requestedCategory
+        : "all",
+    );
+    setLocation(
+      params.get(
+        "location",
+      ) ||
+        "",
+    );
+    setTag(
+      params.get(
+        "tag",
+      ) ||
+        "",
+    );
+    setQ(
+      params.get(
+        "q",
+      ) ||
+        "",
+    );
+    setInitialized(
+      true,
+    );
+  }, []);
+
+  useEffect(() => {
+    if (
+      !initialized
+    ) {
+      return;
+    }
+
+    if (!location) {
+      setPayload(null);
+      setSelectedId(
+        null,
+      );
+      setLoading(false);
+      setError("");
+      return;
+    }
+
+    const controller =
+      new AbortController();
+
+    const delay =
+      q.trim()
+        ? 550
+        : 180;
+
+    const timer =
+      window.setTimeout(
+        async () => {
+          setLoading(true);
+          setError("");
+
+          try {
+            const nextPayload =
+              await requestPlaces(
+                {
+                  sector,
+                  category,
+                  location,
+                  tag,
+                  q,
+                  signal:
+                    controller.signal,
+                },
+              );
+
+            setPayload(
+              nextPayload,
+            );
+
+            setSelectedId(
+              (current) =>
+                nextPayload
+                  .places?.some(
+                    (
+                      place,
+                    ) =>
+                      place.id ===
+                      current,
+                  )
+                  ? current
+                  : nextPayload
+                      .places?.[0]
+                      ?.id ??
+                    null,
+            );
+
+            const params =
+              new URLSearchParams();
+
+            params.set(
+              "sector",
+              sector,
+            );
+            params.set(
+              "category",
+              category,
+            );
+            params.set(
+              "location",
+              location,
+            );
+
+            if (tag) {
+              params.set(
+                "tag",
+                tag,
+              );
+            }
+
+            if (
+              q.trim()
+            ) {
+              params.set(
+                "q",
+                q.trim(),
+              );
+            }
+
+            window.history.replaceState(
+              null,
+              "",
+              `/connect?${params.toString()}`,
+            );
+          } catch (
+            requestError
+          ) {
+            if (
+              controller.signal
+                .aborted
+            ) {
+              return;
+            }
+
+            setPayload(null);
+            setSelectedId(
+              null,
+            );
+            setError(
+              requestError instanceof
+                Error
+                ? requestError.message
+                : "Unable to search Google Places.",
+            );
+          } finally {
+            if (
+              !controller.signal
+                .aborted
+            ) {
+              setLoading(
+                false,
+              );
+            }
+          }
+        },
+        delay,
+      );
+
+    return () => {
+      window.clearTimeout(
+        timer,
+      );
+      controller.abort();
+    };
+  }, [
+    initialized,
+    sector,
+    category,
+    location,
+    tag,
+    q,
+  ]);
+
+  const places =
+    payload?.places ??
+    payload?.organizations ??
+    [];
+
+  async function loadDetails(
+    placeId: string,
+  ) {
+    if (
+      detailsById[
+        placeId
+      ]
+    ) {
+      return;
+    }
+
+    setDetailLoadingId(
+      placeId,
+    );
+
+    try {
+      const response =
+        await fetch(
+          `/api/google-places/details?placeId=${encodeURIComponent(
+            placeId,
+          )}`,
+          {
+            cache:
+              "no-store",
+          },
+        );
+
+      const detailsPayload =
+        (await response.json()) as DetailsPayload;
+
+      if (
+        !response.ok ||
+        !detailsPayload.ok ||
+        !detailsPayload.place
+      ) {
+        throw new Error(
+          detailsPayload.error ||
+            "Unable to load place details.",
+        );
+      }
+
+      setDetailsById(
+        (current) => ({
+          ...current,
+          [placeId]:
+            detailsPayload.place!,
+        }),
+      );
+    } catch {
+      // Search result remains usable even if details fail.
+    } finally {
+      setDetailLoadingId(
+        null,
+      );
+    }
+  }
+
+  function changeSector(
+    nextSector: string,
+  ) {
+    const config =
+      getConnectSector(
+        nextSector,
+      );
+
+    setSector(
+      config.value,
+    );
+    setCategory(
+      "all",
+    );
+    setTag("");
+    setSelectedId(
+      null,
+    );
+    setError("");
+  }
+
+  const resultSummary =
+    !location
+      ? "Choose a country to begin"
+      : loading
+        ? "Updating live results..."
+        : payload
+          ? `${places.length} places Â· ${payload.queryCount ?? 0} search variants`
+          : "Ready";
+
+  return (
+    <main className="min-h-screen bg-[#f5f7fa] px-3 py-4 text-slate-900 sm:px-5">
+      <div className="mx-auto w-full max-w-[1500px]">
+        <section className="rounded-[22px] border border-slate-200/80 bg-white px-4 py-4 shadow-[0_6px_24px_rgba(15,23,42,0.045)] sm:px-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                <Globe2 className="h-5 w-5" />
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-xl font-semibold tracking-[-0.02em] text-slate-900">
+                    Stratify Connect
+                  </h1>
+
+                  <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[9px] font-medium text-emerald-700">
+                    Google Places live
+                  </span>
+                </div>
+
+                <p className="mt-0.5 truncate text-xs font-normal text-slate-500">
+                  Global business and organization discovery across Stratify sectors.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs font-normal text-slate-500">
+              {loading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-600" />
+              ) : (
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              )}
+
+              {resultSummary}
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[1.02fr_1.1fr_1.15fr_1.15fr_1.45fr]">
+            <SearchableSelect
+              label="Sector"
+              value={sector}
+              options={
+                sectorOptions
+              }
+              placeholder="Find sector..."
+              allowClear={false}
+              onChange={
+                changeSector
+              }
+            />
+
+            <SearchableSelect
+              label="Category"
+              value={category}
+              options={
+                categoryOptions
+              }
+              placeholder="Find category..."
+              allowClear={false}
+              onChange={(value) => {
+                setCategory(
+                  value ||
+                    "all",
+                );
+                setSelectedId(
+                  null,
+                );
+              }}
+            />
+
+            <SearchableSelect
+              label="Country"
+              value={location}
+              options={
+                COUNTRY_OPTIONS
+              }
+              placeholder="Type country..."
+              onChange={(value) => {
+                setLocation(
+                  value,
+                );
+                setSelectedId(
+                  null,
+                );
+              }}
+            />
+
+            <SearchableSelect
+              label={
+                sector ===
+                "agriculture"
+                  ? "Crop"
+                  : "Specialty"
+              }
+              value={tag}
+              options={
+                specialtyOptions
+              }
+              placeholder={
+                sector ===
+                "agriculture"
+                  ? "Type crop..."
+                  : "Type specialty..."
+              }
+              onChange={(value) => {
+                setTag(
+                  value,
+                );
+                setSelectedId(
+                  null,
+                );
+              }}
+            />
+
+            <div>
+              <div className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-slate-500">
+                Company / keyword
+              </div>
+
+              <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-white transition focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-100">
+                <Building2 className="ml-3 h-3.5 w-3.5 shrink-0 text-slate-400" />
+
+                <input
+                  value={q}
+                  onChange={(event) =>
+                    setQ(
+                      event.target.value,
+                    )
+                  }
+                  disabled={
+                    !location
+                  }
+                  placeholder={
+                    location
+                      ? "Optional name or keyword..."
+                      : "Choose country first"
+                  }
+                  className="h-full min-w-0 flex-1 bg-transparent px-2 text-sm font-normal text-slate-800 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
+                />
+
+                {q ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setQ("")
+                    }
+                    className="mr-2 flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                    aria-label="Clear keyword"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+            <div className="text-[11px] font-normal text-slate-500">
+              {sectorConfig.description}
+            </div>
+
+            {(location ||
+              tag ||
+              q ||
+              category !==
+                "all") ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setCategory(
+                    "all",
+                  );
+                  setLocation("");
+                  setTag("");
+                  setQ("");
+                  setPayload(
+                    null,
+                  );
+                  setSelectedId(
+                    null,
+                  );
+                  setError("");
+                }}
+                className="text-[11px] font-medium text-slate-500 transition hover:text-slate-900"
+              >
+                Clear filters
+              </button>
+            ) : null}
+          </div>
+        </section>
+
+        {error ? (
+          <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-medium text-rose-700">
+            {error}
+          </div>
+        ) : null}
+
+        <section className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_410px]">
+          <div className="overflow-hidden rounded-[22px] border border-slate-200/80 bg-white p-1.5 shadow-[0_6px_24px_rgba(15,23,42,0.045)]">
+            <OrganizationMap
+              places={places}
+              selectedId={
+                selectedId
+              }
+              onSelect={
+                setSelectedId
+              }
+            />
+          </div>
+
+          <aside className="flex h-[650px] max-h-[calc(100vh-125px)] min-h-[600px] flex-col overflow-hidden rounded-[22px] border border-slate-200/80 bg-white shadow-[0_6px_24px_rgba(15,23,42,0.045)]">
+            <div className="shrink-0 border-b border-slate-100 px-4 py-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <MapPinned className="h-4 w-4 text-indigo-600" />
+
+                    <h2 className="text-[15px] font-semibold text-slate-900">
+                      Places
+                    </h2>
+                  </div>
+
+                  <div className="mt-1 text-[11px] font-normal text-slate-500">
+                    {!location
+                      ? "Select a country to load live results."
+                      : loading
+                        ? "Refreshing Google Places..."
+                        : payload
+                          ? `${places.length} unique results`
+                          : "Waiting for filters"}
+                  </div>
+                </div>
+
+                <div
+                  className={[
+                    "rounded-full px-2.5 py-1 text-[9px] font-medium",
+                    loading
+                      ? "bg-indigo-50 text-indigo-600"
+                      : "bg-slate-50 text-slate-500",
+                  ].join(" ")}
+                >
+                  {payload?.queryCount
+                    ? `${payload.queryCount} queries`
+                    : "Live"}
+                </div>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              {places.length ? (
+                places.map(
+                  (place) => {
+                    const active =
+                      selectedId ===
+                      place.id;
+
+                    const details =
+                      detailsById[
+                        place.id
+                      ];
+
+                    return (
+                      <article
+                        key={
+                          place.id
+                        }
+                        onClick={() =>
+                          setSelectedId(
+                            place.id,
+                          )
+                        }
+                        className={[
+                          "relative cursor-pointer border-b border-slate-100 px-4 py-3.5 transition last:border-b-0",
+                          active
+                            ? "bg-indigo-50/55"
+                            : "hover:bg-slate-50/70",
+                        ].join(" ")}
+                      >
+                        {active ? (
+                          <span className="absolute bottom-0 left-0 top-0 w-[3px] bg-indigo-500" />
+                        ) : null}
+
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={[
+                              "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[12px] font-medium",
+                              active
+                                ? "bg-indigo-600 text-white"
+                                : "bg-slate-100 text-slate-600",
+                            ].join(" ")}
+                          >
+                            {place.name
+                              .charAt(0)
+                              .toUpperCase()}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <h3 className="text-[13px] font-semibold leading-5 text-slate-900">
+                              {place.name}
+                            </h3>
+
+                            <div className="mt-0.5 line-clamp-2 text-[11px] font-normal leading-4 text-slate-500">
+                              {place.address}
+                            </div>
+
+                            {place.matchedServices
+                              .length ? (
+                              <div className="mt-2 truncate text-[10px] font-normal text-indigo-600">
+                                {place.matchedServices
+                                  .slice(
+                                    0,
+                                    4,
+                                  )
+                                  .map(
+                                    titleCase,
+                                  )
+                                  .join(
+                                    " Â· ",
+                                  )}
+                              </div>
+                            ) : null}
+
+                            {details ? (
+                              <div className="mt-2.5 space-y-1.5 rounded-lg bg-white/80 px-3 py-2.5 text-[11px] text-slate-600 ring-1 ring-slate-100">
+                                {details
+                                  .internationalPhoneNumber ||
+                                details
+                                  .nationalPhoneNumber ? (
+                                  <div className="flex items-center gap-2">
+                                    <Phone className="h-3.5 w-3.5 text-slate-400" />
+                                    <span>
+                                      {details.internationalPhoneNumber ||
+                                        details.nationalPhoneNumber}
+                                    </span>
+                                  </div>
+                                ) : null}
+
+                                {details.websiteUri ? (
+                                  <a
+                                    href={
+                                      details.websiteUri
+                                    }
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    onClick={(
+                                      event,
+                                    ) =>
+                                      event.stopPropagation()
+                                    }
+                                    className="inline-flex items-center gap-1.5 font-medium text-indigo-600 hover:text-indigo-800"
+                                  >
+                                    Website
+                                    <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                ) : null}
+                              </div>
+                            ) : null}
+
+                            <div className="mt-2.5 flex items-center gap-3">
+                              {!details ? (
+                                <button
+                                  type="button"
+                                  disabled={
+                                    detailLoadingId ===
+                                    place.id
+                                  }
+                                  onClick={(
+                                    event,
+                                  ) => {
+                                    event.stopPropagation();
+                                    loadDetails(
+                                      place.id,
+                                    );
+                                  }}
+                                  className="inline-flex items-center gap-1.5 text-[10px] font-medium text-indigo-600 transition hover:text-indigo-800 disabled:opacity-50"
+                                >
+                                  {detailLoadingId ===
+                                  place.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Phone className="h-3 w-3" />
+                                  )}
+
+                                  Contact details
+                                </button>
+                              ) : null}
+
+                              {place.googleMapsUri ? (
+                                <a
+                                  href={
+                                    place.googleMapsUri
+                                  }
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(
+                                    event,
+                                  ) =>
+                                    event.stopPropagation()
+                                  }
+                                  className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-500 transition hover:text-slate-800"
+                                >
+                                  Google Maps
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  },
+                )
+              ) : (
+                <div className="flex h-full items-center justify-center p-7">
+                  <div className="max-w-[260px] text-center">
+                    {loading ? (
+                      <Loader2 className="mx-auto h-6 w-6 animate-spin text-indigo-500" />
+                    ) : (
+                      <ShieldCheck className="mx-auto h-7 w-7 text-slate-300" />
+                    )}
+
+                    <div className="mt-3 text-sm font-medium text-slate-700">
+                      {!location
+                        ? "Choose a country"
+                        : loading
+                          ? "Finding places"
+                          : "No matching places"}
+                    </div>
+
+                    <p className="mt-1.5 text-xs font-normal leading-5 text-slate-500">
+                      {!location
+                        ? "Use the searchable filters above. Results refresh automatically."
+                        : loading
+                          ? "Google Places is updating the map and directory."
+                          : "Try a broader category or clear the specialty filter."}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="shrink-0 border-t border-slate-100 bg-slate-50/60 px-4 py-2.5 text-[9px] font-normal leading-4 text-slate-400">
+              Live Google Places results. Stratify combines duplicate Place IDs across search variants.
+            </div>
+          </aside>
+        </section>
+      </div>
+    </main>
+  );
+}

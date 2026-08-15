@@ -30,6 +30,7 @@ import {
   YAxis,
 } from "recharts";
 import type {
+  AgricultureMapMode,
   AgricultureMapRow,
   BusinessMapRow,
 } from "./_components/AgricultureMap";
@@ -116,8 +117,6 @@ type Business = BusinessMapRow & {
 type BusinessPayload = {
   ok?: boolean;
   count?: number;
-  totalMatches?: number;
-  directorySize?: number;
   businesses?: Business[];
   sourcePolicy?: string;
   error?: string;
@@ -401,6 +400,31 @@ function Selector({
   );
 }
 
+function MapModeButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "rounded-lg px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.08em] transition",
+        active
+          ? "bg-slate-900 text-white"
+          : "bg-white text-slate-600 hover:bg-slate-100",
+      ].join(" ")}
+    >
+      {label}
+    </button>
+  );
+}
+
 export default function AgriculturePage() {
   const [meta, setMeta] =
     useState<MetaPayload | null>(
@@ -437,6 +461,13 @@ export default function AgriculturePage() {
       "producers",
     );
   const [
+    mapMode,
+    setMapMode,
+  ] =
+    useState<AgricultureMapMode>(
+      "production",
+    );
+  const [
     businesses,
     setBusinesses,
   ] = useState<Business[]>([]);
@@ -456,10 +487,6 @@ export default function AgriculturePage() {
     businessPolicy,
     setBusinessPolicy,
   ] = useState("");
-  const [
-    businessTotalMatches,
-    setBusinessTotalMatches,
-  ] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -649,25 +676,6 @@ export default function AgriculturePage() {
   useEffect(() => {
     if (!cropData) {
       setBusinesses([]);
-      setBusinessTotalMatches(0);
-      setBusinessLoading(false);
-      return;
-    }
-
-    const selectedCountry =
-      cropData.countries.find(
-        (item) =>
-          item.iso3 ===
-          selectedIso3,
-      )?.country ?? "";
-
-    if (!selectedCountry) {
-      setBusinesses([]);
-      setBusinessTotalMatches(0);
-      setBusinessPolicy(
-        "Select a country to load live Google Places business matches.",
-      );
-      setBusinessLoading(false);
       return;
     }
 
@@ -682,13 +690,11 @@ export default function AgriculturePage() {
         module: "agriculture",
         item: crop,
         group: commerceGroup,
-        location: selectedCountry,
-        limit: "60",
       });
 
     fetch(
       `/api/business-network?${qs.toString()}`,
-      { cache: "no-store" },
+      { cache: "no-cache" },
     )
       .then(
         async (response) => {
@@ -701,7 +707,7 @@ export default function AgriculturePage() {
           ) {
             throw new Error(
               payload.error ||
-                "Unable to load Google Places business results.",
+                "Unable to load business network.",
             );
           }
 
@@ -717,14 +723,9 @@ export default function AgriculturePage() {
           payload.businesses ??
             [],
         );
-        setBusinessTotalMatches(
-          payload.totalMatches ??
-            payload.businesses?.length ??
-            0,
-        );
         setBusinessPolicy(
           payload.sourcePolicy ??
-            "Live business listings supplied by Google Places (New).",
+            "",
         );
       })
       .catch(() => {
@@ -733,10 +734,6 @@ export default function AgriculturePage() {
         }
 
         setBusinesses([]);
-        setBusinessTotalMatches(0);
-        setBusinessPolicy(
-          "Google Places business results are temporarily unavailable.",
-        );
       })
       .finally(() => {
         if (active) {
@@ -753,7 +750,6 @@ export default function AgriculturePage() {
     crop,
     commerceGroup,
     cropData,
-    selectedIso3,
   ]);
 
   const rows =
@@ -1088,21 +1084,16 @@ const cropGroups =
     setSideTab(
       "producers",
     );
+    setMapMode(
+      "production",
+    );
   }
 
   function showBusinesses() {
-    if (
-      !selectedIso3 &&
-      topRows[0]
-    ) {
-      setSelectedIso3(
-        topRows[0].iso3,
-      );
-    }
-
     setSideTab(
       "businesses",
     );
+    setMapMode("both");
   }
 
   return (
@@ -1184,10 +1175,18 @@ const cropGroups =
                   value={businessQuery}
                   onChange={(event) => {
                     setBusinessQuery(event.target.value);
-                    showBusinesses();
+                    setSideTab("businesses");
+
+                    if (mapMode === "production") {
+                      setMapMode("both");
+                    }
                   }}
                   onFocus={() => {
-                    showBusinesses();
+                    setSideTab("businesses");
+
+                    if (mapMode === "production") {
+                      setMapMode("both");
+                    }
                   }}
                   placeholder="Name, country, supplier, exporter..."
                   className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-9 text-sm font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
@@ -1303,6 +1302,45 @@ const cropGroups =
         <section className="relative mt-4">
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_430px]">
             <div className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white p-2 shadow-sm">
+              <div className="absolute right-5 top-5 z-[760] flex gap-1 rounded-xl border border-slate-200 bg-white/95 p-1 shadow-md backdrop-blur">
+                <MapModeButton
+                  active={
+                    mapMode ===
+                    "production"
+                  }
+                  label="Production"
+                  onClick={() =>
+                    setMapMode(
+                      "production",
+                    )
+                  }
+                />
+                <MapModeButton
+                  active={
+                    mapMode ===
+                    "businesses"
+                  }
+                  label="Businesses"
+                  onClick={() =>
+                    setMapMode(
+                      "businesses",
+                    )
+                  }
+                />
+                <MapModeButton
+                  active={
+                    mapMode ===
+                    "both"
+                  }
+                  label="Both"
+                  onClick={() =>
+                    setMapMode(
+                      "both",
+                    )
+                  }
+                />
+              </div>
+
               {loading ? (
                 <div className="pointer-events-none absolute left-5 top-5 z-[750] flex items-center gap-2 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-black text-slate-700 shadow-md backdrop-blur">
                   <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
@@ -1312,11 +1350,13 @@ const cropGroups =
 
               <AgricultureMap
                 rows={rows}
-                businesses={[]}
+                businesses={
+                  visibleBusinesses
+                }
                 selectedIso3={
                   selectedIso3
                 }
-                mode="production"
+                mode={mapMode}
                 onSelect={selectRow}
               />
             </div>
@@ -1469,33 +1509,13 @@ const cropGroups =
                         </div>
 
                         <p className="mt-1 text-xs font-semibold text-slate-500">
-                          {cropData?.crop ?? "Selected crop"} |{" "}
-                          {selected?.country ?? "Select country"} |{" "}
-                          {businessQuery || businessRole !== "all"
-                            ? visibleBusinesses.length
-                            : businessTotalMatches || visibleBusinesses.length}{" "}
-                          live matches
+                          {cropData?.crop ?? "Selected crop"} | {visibleBusinesses.length} matches
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        {selected ? (
-                          <a
-                            href={`/connect?sector=agriculture&tag=${encodeURIComponent(
-                              crop,
-                            )}&location=${encodeURIComponent(
-                              selected.country,
-                            )}`}
-                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-black text-indigo-700 transition hover:bg-indigo-50"
-                          >
-                            Google Map
-                          </a>
-                        ) : null}
-
-                        {businessLoading ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
-                        ) : null}
-                      </div>
+                      {businessLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-amber-600" />
+                      ) : null}
                     </div>
 
                     <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -1628,15 +1648,25 @@ const cropGroups =
                               <div className="mt-2 flex gap-2">
                                 <a
                                   href={
-                                    business.sourceUrl ||
                                     business.website
                                   }
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-black text-indigo-700 transition hover:bg-indigo-50"
+                                  className="inline-flex items-center gap-1 rounded-lg border border-amber-500 bg-amber-400 px-2.5 py-1.5 text-[10px] font-black !text-slate-950 shadow-sm transition hover:bg-amber-300"
                                 >
-                                  Google Maps
+                                  Website
                                   <ExternalLink className="h-3 w-3" />
+                                </a>
+
+                                <a
+                                  href={
+                                    business.sourceUrl
+                                  }
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-black text-slate-600"
+                                >
+                                  Official source
                                 </a>
                               </div>
                             </div>
@@ -1649,29 +1679,18 @@ const cropGroups =
                     visibleBusinesses.length ===
                       0 ? (
                       <div className="p-5 text-sm font-semibold text-slate-500">
-                        {selected
-                          ? "No Google Places matches were returned for this crop and country."
-                          : "Select a producer country to load live Google Places business matches."}
+                        No curated business matches yet for this crop. The directory framework is ready for additional verified listings.
                       </div>
                     ) : null}
                   </div>
 
-                  <div className="border-t border-slate-100 bg-slate-50 px-4 py-2">
-                    <div
-                      translate="no"
-                      className="text-xs font-normal text-[#5e5e5e]"
-                    >
-                      Google Maps
+                  {businessPolicy ? (
+                    <div className="border-t border-slate-100 bg-slate-50 px-4 py-2 text-[9px] font-semibold leading-4 text-slate-400">
+                      {
+                        businessPolicy
+                      }
                     </div>
-
-                    {businessPolicy ? (
-                      <div className="mt-1 text-[9px] font-semibold leading-4 text-slate-400">
-                        {
-                          businessPolicy
-                        }
-                      </div>
-                    ) : null}
-                  </div>
+                  ) : null}
                 </>
               )}
             </aside>
@@ -1767,7 +1786,6 @@ const cropGroups =
             </div>
             <div className="mt-2 text-2xl font-black text-slate-950">
               {
-                businessTotalMatches ||
                 visibleBusinesses.length
               }
             </div>
@@ -1977,7 +1995,7 @@ const cropGroups =
         </section>
 
         <section className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[11px] font-semibold leading-5 text-slate-500 shadow-sm">
-          Production source: FAOSTAT QCL local snapshot. Business discovery is powered live by Google Places (New) after a country is selected. Google Places results are not plotted on the Natural Earth production map; use Stratify Connect for the Google Maps business view.
+          Production source: FAOSTAT QCL local snapshot. Business Network listings are curated from official company websites. Business map points represent listed headquarters or primary offices and do not imply that every operation or supply origin is located at that point.
         </section>
       </div>
     </main>
