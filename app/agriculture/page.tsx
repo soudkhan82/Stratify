@@ -480,6 +480,10 @@ export default function AgriculturePage() {
     setBusinessRole,
   ] = useState("all");
   const [
+    businessQuery,
+    setBusinessQuery,
+  ] = useState("");
+  const [
     businessPolicy,
     setBusinessPolicy,
   ] = useState("");
@@ -585,14 +589,7 @@ export default function AgriculturePage() {
           setCropData(parsed);
           setLoading(false);
 
-          if (
-            year >
-            parsed.latestYear
-          ) {
-            setYear(
-              parsed.latestYear,
-            );
-          }
+          setYear(parsed.latestYear);
 
           return () => {
             active = false;
@@ -627,14 +624,7 @@ export default function AgriculturePage() {
 
         setCropData(payload);
 
-        if (
-          year >
-          payload.latestYear
-        ) {
-          setYear(
-            payload.latestYear,
-          );
-        }
+        setYear(payload.latestYear);
 
         try {
           sessionStorage.setItem(
@@ -693,6 +683,7 @@ export default function AgriculturePage() {
 
     setBusinessLoading(true);
     setBusinessRole("all");
+    setBusinessQuery("");
 
     const qs =
       new URLSearchParams({
@@ -985,34 +976,7 @@ export default function AgriculturePage() {
       countryQuery,
       rows,
     ]);
-
-  const years =
-    useMemo(() => {
-      const max =
-        cropData?.latestYear ??
-        meta?.latestYear ??
-        2024;
-
-      const min =
-        cropData?.minYear ??
-        meta?.minYear ??
-        1961;
-
-      const values: number[] =
-        [];
-
-      for (
-        let current = max;
-        current >= min;
-        current -= 1
-      ) {
-        values.push(current);
-      }
-
-      return values;
-    }, [cropData, meta]);
-
-  const cropGroups =
+const cropGroups =
     useMemo(() => {
       const groups: Map<
         string,
@@ -1064,22 +1028,47 @@ export default function AgriculturePage() {
 
   const visibleBusinesses =
     useMemo(() => {
-      if (
-        businessRole ===
-        "all"
-      ) {
-        return businesses;
-      }
+      const query =
+        businessQuery
+          .trim()
+          .toLowerCase();
 
       return businesses.filter(
-        (business) =>
-          business.roles.includes(
-            businessRole,
-          ),
+        (business) => {
+          const roleMatch =
+            businessRole === "all" ||
+            business.roles.includes(
+              businessRole,
+            );
+
+          if (!roleMatch) {
+            return false;
+          }
+
+          if (!query) {
+            return true;
+          }
+
+          const haystack = [
+            business.name,
+            business.country,
+            business.city,
+            business.coverage,
+            business.description,
+            ...business.roles,
+          ]
+            .join(" ")
+            .toLowerCase();
+
+          return haystack.includes(
+            query,
+          );
+        },
       );
     }, [
       businesses,
       businessRole,
+      businessQuery,
     ]);
 
   function selectRow(
@@ -1174,26 +1163,47 @@ export default function AgriculturePage() {
               )}
             </Selector>
 
-            <Selector
-              label="Year"
-              value={year}
-              onChange={(value) =>
-                setYear(
-                  Number(value),
-                )
-              }
-            >
-              {years.map(
-                (item) => (
-                  <option
-                    key={item}
-                    value={item}
+            <div className="relative min-w-[220px] flex-1">
+              <label className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                Search businesses
+              </label>
+
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                <input
+                  value={businessQuery}
+                  onChange={(event) => {
+                    setBusinessQuery(event.target.value);
+                    setSideTab("businesses");
+
+                    if (mapMode === "production") {
+                      setMapMode("both");
+                    }
+                  }}
+                  onFocus={() => {
+                    setSideTab("businesses");
+
+                    if (mapMode === "production") {
+                      setMapMode("both");
+                    }
+                  }}
+                  placeholder="Name, country, supplier, exporter..."
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-9 text-sm font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                />
+
+                {businessQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => setBusinessQuery("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-xs font-black text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    aria-label="Clear business search"
                   >
-                    {item}
-                  </option>
-                ),
-              )}
-            </Selector>
+                    X
+                  </button>
+                ) : null}
+              </div>
+            </div>
 
             <div className="relative min-w-[240px] flex-[1.25]">
               <label className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
@@ -1290,7 +1300,7 @@ export default function AgriculturePage() {
         ) : null}
 
         <section className="relative mt-4">
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_350px]">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_430px]">
             <div className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-white p-2 shadow-sm">
               <div className="absolute right-5 top-5 z-[760] flex gap-1 rounded-xl border border-slate-200 bg-white/95 p-1 shadow-md backdrop-blur">
                 <MapModeButton
@@ -1499,7 +1509,7 @@ export default function AgriculturePage() {
                         </div>
 
                         <p className="mt-1 text-xs font-semibold text-slate-500">
-                          {cropData?.crop ?? "Selected crop"} | {businesses.length} matches
+                          {cropData?.crop ?? "Selected crop"} | {visibleBusinesses.length} matches
                         </p>
                       </div>
 
@@ -1629,7 +1639,7 @@ export default function AgriculturePage() {
                                   )}
                               </div>
 
-                              <p className="mt-2 line-clamp-2 text-[11px] font-medium leading-4 text-slate-500">
+                              <p className="mt-2 line-clamp-3 text-[11px] font-medium leading-[1.45] text-slate-500">
                                 {
                                   business.description
                                 }
@@ -1776,7 +1786,7 @@ export default function AgriculturePage() {
             </div>
             <div className="mt-2 text-2xl font-black text-slate-950">
               {
-                businesses.length
+                visibleBusinesses.length
               }
             </div>
             <div className="mt-1 text-xs font-semibold text-slate-600">

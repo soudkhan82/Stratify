@@ -267,6 +267,21 @@ function AgricultureMapComponent({
         }}
       >
         <Pane
+          name="agriculture-tooltip-layer"
+          style={{
+            zIndex: 900,
+            pointerEvents: "none",
+          }}
+        />
+
+        <Pane
+          name="agriculture-popup-layer"
+          style={{
+            zIndex: 1000,
+          }}
+        />
+
+        <Pane
           name="agriculture-basemap"
           style={{
             zIndex: 200,
@@ -313,7 +328,7 @@ function AgricultureMapComponent({
                       onSelect(row),
                   }}
                 >
-                  <Tooltip
+                  <Tooltip pane="agriculture-tooltip-layer"
                     direction="top"
                     opacity={0.98}
                     sticky
@@ -341,7 +356,7 @@ function AgricultureMapComponent({
                     </div>
                   </Tooltip>
 
-                  <Popup>
+                  <Popup pane="agriculture-popup-layer">
                     <div className="min-w-[190px]">
                       <div className="text-[15px] font-black text-slate-950">
                         {row.country}
@@ -414,7 +429,7 @@ function AgricultureMapComponent({
                     weight: 2,
                   }}
                 >
-                  <Tooltip
+                  <Tooltip pane="agriculture-tooltip-layer"
                     direction="top"
                     opacity={0.98}
                     sticky
@@ -437,7 +452,7 @@ function AgricultureMapComponent({
                     </div>
                   </Tooltip>
 
-                  <Popup>
+                  <Popup pane="agriculture-popup-layer">
                     <div className="min-w-[220px]">
                       <div className="text-[15px] font-black text-slate-950">
                         {business.name}
