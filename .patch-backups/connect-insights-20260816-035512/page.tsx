@@ -69,32 +69,6 @@ type SearchPayload = {
   error?: string;
 };
 
-type PlacePhotoAttribution = {
-  displayName: string;
-  uri: string;
-  photoUri: string;
-};
-
-type PlacePhoto = {
-  name: string;
-  widthPx: number;
-  heightPx: number;
-  authorAttributions: PlacePhotoAttribution[];
-};
-
-type PlaceReview = {
-  name: string;
-  rating: number | null;
-  relativeTime: string;
-  text: string;
-  googleMapsUri: string;
-  author: {
-    displayName: string;
-    uri: string;
-    photoUri: string;
-  };
-};
-
 type PlaceDetails = {
   id: string;
   name: string;
@@ -104,17 +78,7 @@ type PlaceDetails = {
   websiteUri: string;
   internationalPhoneNumber: string;
   nationalPhoneNumber: string;
-  rating: number | null;
-  userRatingCount: number;
-  openNow: boolean | null;
-  photos: PlacePhoto[];
   source: string;
-};
-
-type ReviewsPayload = {
-  ok: boolean;
-  reviews?: PlaceReview[];
-  error?: string;
 };
 
 type DetailsPayload = {
@@ -422,7 +386,7 @@ function SearchableSelect({
       ref={rootRef}
       className="relative min-w-0"
     >
-      <div className="mb-1.5 pl-0.5 text-[11px] font-medium tracking-[-0.01em] text-slate-500">
+      <div className="mb-1.5 pl-0.5 text-[11.5px] font-medium tracking-[-0.01em] text-slate-600">
         {label}
       </div>
 
@@ -553,7 +517,7 @@ function SearchableSelect({
                       ].join(" ")}
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-[13px] font-normal">
+                        <div className="truncate text-[13px] font-normal text-slate-700">
                           {
                             option.label
                           }
@@ -647,23 +611,6 @@ export default function ConnectPage() {
   const [
     detailLoadingId,
     setDetailLoadingId,
-  ] =
-    useState<string | null>(
-      null,
-    );
-  const [
-    reviewsById,
-    setReviewsById,
-  ] =
-    useState<
-      Record<
-        string,
-        PlaceReview[]
-      >
-    >({});
-  const [
-    reviewLoadingId,
-    setReviewLoadingId,
   ] =
     useState<string | null>(
       null,
@@ -1173,68 +1120,6 @@ export default function ConnectPage() {
     }
   }
 
-  async function loadReviews(
-    placeId: string,
-  ) {
-    if (
-      reviewsById[
-        placeId
-      ]
-    ) {
-      return;
-    }
-
-    setReviewLoadingId(
-      placeId,
-    );
-
-    try {
-      const response =
-        await fetch(
-          `/api/google-places/reviews?placeId=${encodeURIComponent(
-            placeId,
-          )}`,
-          {
-            cache:
-              "no-store",
-          },
-        );
-
-      const reviewsPayload =
-        (await response.json()) as ReviewsPayload;
-
-      if (
-        !response.ok ||
-        !reviewsPayload.ok
-      ) {
-        throw new Error(
-          reviewsPayload.error ||
-            "Unable to load reviews.",
-        );
-      }
-
-      setReviewsById(
-        (current) => ({
-          ...current,
-          [placeId]:
-            reviewsPayload.reviews ??
-            [],
-        }),
-      );
-    } catch {
-      setReviewsById(
-        (current) => ({
-          ...current,
-          [placeId]: [],
-        }),
-      );
-    } finally {
-      setReviewLoadingId(
-        null,
-      );
-    }
-  }
-
   function changeSector(
     nextSector: string,
   ) {
@@ -1297,17 +1182,17 @@ export default function ConnectPage() {
 
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-[21px] font-semibold tracking-[-0.035em] text-slate-800">
+                <h1 className="text-[22px] font-semibold tracking-[-0.03em] text-slate-800">
                   Stratify Connect
                 </h1>
 
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200/70 bg-emerald-50/80 px-2.5 py-1 text-[9px] font-medium text-emerald-700">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200/70 bg-emerald-50/80 px-2.5 py-1 text-[9.5px] font-medium text-emerald-700">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                   Google Places live
                 </span>
               </div>
 
-              <p className="mt-0.5 text-[11px] font-normal text-slate-500">
+              <p className="mt-0.5 text-[12px] font-normal text-slate-500">
                 Global organization discovery across 27 economic sectors.
               </p>
             </div>
@@ -1315,10 +1200,10 @@ export default function ConnectPage() {
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="rounded-[11px] border border-slate-200/80 bg-slate-50/80 px-3 py-1.5">
-              <span className="text-[9px] font-medium uppercase tracking-[0.08em] text-slate-400">
+              <span className="text-[9.5px] font-medium uppercase tracking-[0.07em] text-slate-400">
                 Results
               </span>
-              <span className="ml-2 text-[12px] font-semibold text-slate-700">
+              <span className="ml-2 text-[12.5px] font-medium text-slate-700">
                 {loading
                   ? "Updating"
                   : `${places.length} places`}
@@ -1326,10 +1211,10 @@ export default function ConnectPage() {
             </div>
 
             <div className="rounded-[11px] border border-slate-200/80 bg-slate-50/80 px-3 py-1.5">
-              <span className="text-[9px] font-medium uppercase tracking-[0.08em] text-slate-400">
+              <span className="text-[9.5px] font-medium uppercase tracking-[0.07em] text-slate-400">
                 Queries
               </span>
-              <span className="ml-2 text-[12px] font-semibold text-slate-700">
+              <span className="ml-2 text-[12.5px] font-medium text-slate-700">
                 {payload?.queryCount ?? 0}
               </span>
             </div>
@@ -1357,10 +1242,10 @@ export default function ConnectPage() {
             <div className="shrink-0 border-b border-slate-100 bg-[linear-gradient(145deg,rgba(248,250,252,0.98),rgba(238,242,255,0.72))] px-3.5 py-3">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <div className="text-[13px] font-semibold tracking-[-0.015em] text-slate-700">
+                  <div className="text-[14px] font-semibold tracking-[-0.01em] text-slate-700">
                     Economic sectors
                   </div>
-                  <div className="mt-0.5 text-[9.5px] font-normal text-slate-400">
+                  <div className="mt-0.5 text-[10px] font-normal text-slate-500">
                     A-Z directory
                   </div>
                 </div>
@@ -1428,7 +1313,7 @@ export default function ConnectPage() {
                         >
                           <span
                             className={[
-                              "flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[10px] font-semibold",
+                              "flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[10px] font-medium",
                               active
                                 ? "bg-white/15 text-white"
                                 : "bg-slate-50 text-slate-400 ring-1 ring-slate-200/80 group-hover:bg-indigo-50 group-hover:text-indigo-600",
@@ -1442,7 +1327,7 @@ export default function ConnectPage() {
                           </span>
 
                           <div className="min-w-0 flex-1">
-                            <div className="truncate text-[11.5px] font-medium">
+                            <div className="truncate text-[12px] font-medium">
                               {item.label}
                             </div>
                           </div>
@@ -1474,7 +1359,7 @@ export default function ConnectPage() {
                 Active sector
               </div>
 
-              <div className="mt-1 text-[12px] font-semibold text-slate-700">
+              <div className="mt-1 text-[12.5px] font-medium text-slate-700">
                 {sectorConfig.label}
               </div>
             </div>
@@ -1484,7 +1369,7 @@ export default function ConnectPage() {
             <section className="relative z-[90] shrink-0 rounded-[22px] border border-white/90 bg-white/90 px-3.5 py-3 shadow-[0_10px_30px_rgba(30,41,59,0.06)] backdrop-blur-xl">
               <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="text-[13px] font-semibold tracking-[-0.015em] text-slate-700">
+                  <div className="text-[14px] font-semibold tracking-[-0.01em] text-slate-700">
                     {sectorConfig.label}
                   </div>
 
@@ -1610,8 +1495,8 @@ export default function ConnectPage() {
                   }}
                 />
 
-                <div>
-                  <div className="mb-1.5 pl-0.5 text-[11px] font-medium tracking-[-0.01em] text-slate-500">
+                <div className="min-w-0">
+                  <div className="mb-1.5 pl-0.5 text-[11.5px] font-medium tracking-[-0.01em] text-slate-600">
                     Company or keyword
                   </div>
 
@@ -1653,22 +1538,22 @@ export default function ConnectPage() {
               </div>
 
               <div className="mt-2.5 flex min-h-[28px] flex-wrap items-center gap-1.5 border-t border-slate-100 pt-2.5">
-                <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[9px] font-medium text-indigo-600">
+                <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[9.5px] font-medium text-indigo-600">
                   {sectorConfig.label}
                 </span>
 
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-medium text-slate-500">
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[9.5px] font-medium text-slate-500">
                   {categoryLabel}
                 </span>
 
                 {location ? (
-                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[9px] font-medium text-emerald-700">
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[9.5px] font-medium text-emerald-700">
                     {location}
                   </span>
                 ) : null}
 
                 {specialtyLabel ? (
-                  <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[9px] font-medium text-sky-700">
+                  <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[9.5px] font-medium text-sky-700">
                     {specialtyLabel}
                   </span>
                 ) : null}
@@ -1683,10 +1568,10 @@ export default function ConnectPage() {
                   </div>
 
                   <div className="min-w-0">
-                    <div className="text-[12.5px] font-semibold text-slate-700">
+                    <div className="text-[14px] font-semibold text-slate-700">
                       Geographic coverage
                     </div>
-                    <div className="truncate text-[9.5px] font-normal text-slate-400">
+                    <div className="truncate text-[10px] font-normal text-slate-500">
                       Live Google Places mapped for the active filters
                     </div>
                   </div>
@@ -1694,12 +1579,12 @@ export default function ConnectPage() {
 
                 <div className="hidden items-center gap-1.5 sm:flex">
                   {location ? (
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-medium text-slate-500">
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[9.5px] font-medium text-slate-500">
                       {location}
                     </span>
                   ) : null}
 
-                  <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[9px] font-medium text-indigo-600">
+                  <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[9.5px] font-medium text-indigo-600">
                     {sectorConfig.label}
                   </span>
                 </div>
@@ -1730,7 +1615,7 @@ export default function ConnectPage() {
                   <div className="min-w-0">
                     <h2 style={{ fontSize: "15px", fontWeight: 600, lineHeight: "20px", letterSpacing: "-0.01em", color: "#334155" }}>Organizations</h2>
 
-                    <div className="mt-0.5 text-[11px] font-normal text-slate-500">
+                    <div className="mt-0.5 text-[12px] font-normal text-slate-500">
                       {!location
                         ? "Choose a country to begin"
                         : loading
@@ -1764,11 +1649,6 @@ export default function ConnectPage() {
                           place.id
                         ];
 
-                      const reviews =
-                        reviewsById[
-                          place.id
-                        ];
-
                       return (
                         <article
                           key={place.id}
@@ -1778,7 +1658,7 @@ export default function ConnectPage() {
                             )
                           }
                           className={[
-                            "group relative cursor-pointer overflow-hidden rounded-[17px] border bg-white px-4 py-3.5 shadow-[0_3px_12px_rgba(15,23,42,0.035)] transition-all duration-200",
+                            "group relative cursor-pointer overflow-hidden rounded-[16px] border bg-white px-3.5 py-3 shadow-[0_3px_12px_rgba(15,23,42,0.035)] transition-all duration-200",
                             active
                               ? "border-indigo-200 bg-[linear-gradient(120deg,#ffffff_0%,#f5f7ff_100%)] shadow-[0_8px_22px_rgba(79,70,229,0.09)]"
                               : "border-slate-200/70 hover:-translate-y-[1px] hover:border-indigo-100 hover:shadow-[0_8px_24px_rgba(15,23,42,0.07)]",
@@ -1839,76 +1719,11 @@ export default function ConnectPage() {
                               ) : null}
 
                               {details ? (
-                                <div className="mt-2.5 space-y-2.5 rounded-[12px] border border-slate-200/70 bg-slate-50 px-3 py-2.5">
-                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px] font-normal text-slate-600">
-                                    {details.rating != null ? (
-                                      <span className="font-medium text-amber-700">
-                                        Rating {details.rating.toFixed(1)}
-                                      </span>
-                                    ) : null}
-
-                                    {details.userRatingCount > 0 ? (
-                                      <span>
-                                        {details.userRatingCount.toLocaleString()} reviews
-                                      </span>
-                                    ) : null}
-
-                                    {details.openNow != null ? (
-                                      <span
-                                        className={
-                                          details.openNow
-                                            ? "font-medium text-emerald-700"
-                                            : "font-medium text-slate-500"
-                                        }
-                                      >
-                                        {details.openNow ? "Open now" : "Closed now"}
-                                      </span>
-                                    ) : null}
-                                  </div>
-
-                                  {details.photos.length ? (
-                                    <div>
-                                      <div className="grid grid-cols-2 gap-1.5">
-                                        {details.photos
-                                          .slice(0, 2)
-                                          .map((photo) => (
-                                            <img
-                                              key={photo.name}
-                                              src={`/api/google-places/photo?name=${encodeURIComponent(
-                                                photo.name,
-                                              )}&width=420`}
-                                              alt={`${place.name} photo`}
-                                              className="h-[78px] w-full rounded-lg object-cover"
-                                              loading="lazy"
-                                            />
-                                          ))}
-                                      </div>
-
-                                      {details.photos[0]?.authorAttributions?.[0]?.displayName ? (
-                                        <div className="mt-1 text-[8.5px] font-normal text-slate-400">
-                                          Photo:{" "}
-                                          {details.photos[0].authorAttributions[0].uri ? (
-                                            <a
-                                              href={details.photos[0].authorAttributions[0].uri}
-                                              target="_blank"
-                                              rel="noreferrer"
-                                              onClick={(event) =>
-                                                event.stopPropagation()
-                                              }
-                                              className="hover:text-slate-600"
-                                            >
-                                              {details.photos[0].authorAttributions[0].displayName}
-                                            </a>
-                                          ) : (
-                                            details.photos[0].authorAttributions[0].displayName
-                                          )}
-                                        </div>
-                                      ) : null}
-                                    </div>
-                                  ) : null}
-
-                                  {details.internationalPhoneNumber ||
-                                  details.nationalPhoneNumber ? (
+                                <div className="mt-2.5 rounded-[11px] border border-slate-200/70 bg-slate-50 px-3 py-2.5">
+                                  {details
+                                    .internationalPhoneNumber ||
+                                  details
+                                    .nationalPhoneNumber ? (
                                     <div className="flex items-center gap-2 text-[10.5px] font-normal text-slate-600">
                                       <Phone className="h-3.5 w-3.5 text-indigo-400" />
                                       <span>
@@ -1918,85 +1733,23 @@ export default function ConnectPage() {
                                     </div>
                                   ) : null}
 
-                                  <div className="flex flex-wrap items-center gap-3">
-                                    {details.websiteUri ? (
-                                      <a
-                                        href={details.websiteUri}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        onClick={(event) =>
-                                          event.stopPropagation()
-                                        }
-                                        className="inline-flex items-center gap-1 text-[10px] font-medium text-indigo-700 hover:text-indigo-900"
-                                      >
-                                        Official website
-                                        <ExternalLink className="h-3 w-3" />
-                                      </a>
-                                    ) : null}
-
-                                    {details.userRatingCount > 0 ? (
-                                      <button
-                                        type="button"
-                                        disabled={reviewLoadingId === place.id}
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          loadReviews(place.id);
-                                        }}
-                                        className="text-[10px] font-medium text-indigo-700 hover:text-indigo-900 disabled:opacity-50"
-                                      >
-                                        {reviewLoadingId === place.id
-                                          ? "Loading reviews..."
-                                          : reviews
-                                            ? `${reviews.length} review snippets`
-                                            : "View reviews"}
-                                      </button>
-                                    ) : null}
-                                  </div>
-
-                                  {reviews?.length ? (
-                                    <div className="space-y-2 border-t border-slate-200 pt-2">
-                                      {reviews.map((review) => (
-                                        <div
-                                          key={review.name}
-                                          className="rounded-lg bg-white px-2.5 py-2 ring-1 ring-slate-100"
-                                        >
-                                          <div className="flex items-center justify-between gap-2">
-                                            <div className="truncate text-[9.5px] font-medium text-slate-700">
-                                              {review.author.displayName || "Google user"}
-                                            </div>
-
-                                            <div className="shrink-0 text-[9px] font-normal text-slate-400">
-                                              {review.rating != null
-                                                ? `Rating ${review.rating}`
-                                                : ""}
-                                              {review.relativeTime
-                                                ? ` - ${review.relativeTime}`
-                                                : ""}
-                                            </div>
-                                          </div>
-
-                                          {review.text ? (
-                                            <p className="mt-1 line-clamp-3 text-[9.5px] font-normal leading-[14px] text-slate-600">
-                                              {review.text}
-                                            </p>
-                                          ) : null}
-
-                                          {review.googleMapsUri ? (
-                                            <a
-                                              href={review.googleMapsUri}
-                                              target="_blank"
-                                              rel="noreferrer"
-                                              onClick={(event) =>
-                                                event.stopPropagation()
-                                              }
-                                              className="mt-1 inline-block text-[8.5px] font-medium text-indigo-600"
-                                            >
-                                              View on Google
-                                            </a>
-                                          ) : null}
-                                        </div>
-                                      ))}
-                                    </div>
+                                  {details.websiteUri ? (
+                                    <a
+                                      href={
+                                        details.websiteUri
+                                      }
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      onClick={(
+                                        event,
+                                      ) =>
+                                        event.stopPropagation()
+                                      }
+                                      className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] font-medium text-indigo-700 transition hover:text-indigo-800"
+                                    >
+                                      Official website
+                                      <ExternalLink className="h-3 w-3" />
+                                    </a>
                                   ) : null}
                                 </div>
                               ) : null}
@@ -2026,7 +1779,7 @@ export default function ConnectPage() {
                                       <Phone className="h-3 w-3" />
                                     )}
 
-                                    Details & insights
+                                    Contact details
                                   </button>
                                 ) : null}
 
@@ -2086,7 +1839,7 @@ export default function ConnectPage() {
             </div>
 
             <div className="shrink-0 border-t border-slate-100 bg-white/90 px-4 py-2.5 text-[9.5px] font-normal leading-4 text-slate-500">
-              Live Google Places results. Duplicate Place IDs are merged across Stratify query variants.
+              Live Google Places results ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· duplicate Place IDs are merged across Stratify query variants.
             </div>
           </aside>
         </section>
