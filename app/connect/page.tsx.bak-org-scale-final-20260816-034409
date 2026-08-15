@@ -1613,7 +1613,7 @@ export default function ConnectPage() {
                   </div>
 
                   <div className="min-w-0">
-                    <h2 style={{ fontSize: "15px", fontWeight: 600, lineHeight: "20px", letterSpacing: "-0.01em", color: "#334155" }}>Organizations</h2>
+                    <h2 className="text-[14px] font-medium tracking-[-0.01em] text-slate-800">Organizations</h2>
 
                     <div className="mt-0.5 text-[12px] font-normal text-slate-500">
                       {!location
@@ -1687,7 +1687,7 @@ export default function ConnectPage() {
                             </div>
 
                             <div className="min-w-0 flex-1">
-                              <h3 style={{ fontSize: "12px", fontWeight: 500, lineHeight: "16px", letterSpacing: "-0.003em", color: "#334155" }}>{place.name}</h3>
+                              <h3 className="text-[12.5px] font-medium leading-[17px] tracking-[-0.005em] text-slate-800">{place.name}</h3>
 
                               <div className="mt-1 line-clamp-2 text-[11px] font-normal leading-[16px] text-slate-600">
                                 {place.address}
@@ -1839,7 +1839,7 @@ export default function ConnectPage() {
             </div>
 
             <div className="shrink-0 border-t border-slate-100 bg-white/90 px-4 py-2.5 text-[9.5px] font-normal leading-4 text-slate-500">
-              Live Google Places results ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· duplicate Place IDs are merged across Stratify query variants.
+              Live Google Places results ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· duplicate Place IDs are merged across Stratify query variants.
             </div>
           </aside>
         </section>
