@@ -1650,8 +1650,8 @@ const cropGroups =
                       0 ? (
                       <div className="p-5 text-sm font-semibold text-slate-500">
                         {selected
-                          ? "No Google Places matches were returned for this crop and country."
-                          : "Select a producer country to load live Google Places business matches."}
+                          ? "No matching businesses were found for this crop and country."
+                          : "Select a producer country to load matching businesses."}
                       </div>
                     ) : null}
                   </div>
@@ -1974,10 +1974,6 @@ const cropGroups =
               </table>
             </div>
           </div>
-        </section>
-
-        <section className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[11px] font-semibold leading-5 text-slate-500 shadow-sm">
-          Production source: FAOSTAT QCL local snapshot. Business discovery is powered live by Google Places (New) after a country is selected. Google Places results are not plotted on the Natural Earth production map; use Stratify Connect for the Google Maps business view.
         </section>
       </div>
     </main>

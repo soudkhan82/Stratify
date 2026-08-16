@@ -48,7 +48,7 @@ function loadGoogleMaps(
   ) {
     return Promise.reject(
       new Error(
-        "Google Maps can only load in the browser.",
+        "Map service is unavailable.",
       ),
     );
   }
@@ -96,7 +96,7 @@ function loadGoogleMaps(
               null;
             reject(
               new Error(
-                "Google Maps loaded without the maps library.",
+                "Map service could not initialize.",
               ),
             );
           }
@@ -141,7 +141,7 @@ function loadGoogleMaps(
               null;
             reject(
               new Error(
-                "Unable to load Google Maps JavaScript API.",
+                "Unable to load map service.",
               ),
             );
           };
@@ -251,7 +251,7 @@ function GooglePlacesMap({
 
     if (!apiKey) {
       setError(
-        "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is missing.",
+        "Map service is unavailable.",
       );
       return;
     }
@@ -675,7 +675,7 @@ function GooglePlacesMap({
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/90 p-6 backdrop-blur-[2px]">
           <div className="max-w-md rounded-2xl border border-rose-100 bg-rose-50/80 px-5 py-4 text-center shadow-sm">
             <div className="text-sm font-semibold text-rose-800">
-              Google Maps could not load
+              Map could not load
             </div>
 
             <div className="mt-2 text-xs font-normal leading-5 text-rose-700">
@@ -697,7 +697,7 @@ function GooglePlacesMap({
             </div>
 
             <div className="mt-1 text-xs font-normal text-slate-500">
-              Google Places results will appear here.
+              Results will appear here.
             </div>
           </div>
         </div>

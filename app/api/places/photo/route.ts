@@ -20,7 +20,7 @@ export async function GET(
       return NextResponse.json(
         {
           error:
-            "GOOGLE_PLACES_API_KEY is not configured.",
+            "Service is unavailable.",
         },
         {
           status: 500,
@@ -44,7 +44,7 @@ export async function GET(
       return NextResponse.json(
         {
           error:
-            "Invalid Google photo resource name.",
+            "Invalid photo resource.",
         },
         {
           status: 400,
@@ -112,7 +112,7 @@ export async function GET(
       return NextResponse.json(
         {
           error:
-            "Unable to load Google Place photo.",
+            "Unable to load photo.",
         },
         {
           status:
@@ -140,7 +140,7 @@ export async function GET(
         error:
           error instanceof Error
             ? error.message
-            : "Unable to load Google Place photo.",
+            : "Unable to load photo.",
       },
       {
         status: 500,

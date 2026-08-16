@@ -157,8 +157,6 @@ export async function GET(
           totalMatches: 0,
           count: 0,
           businesses: [],
-          sourcePolicy:
-            "Select a country to load live Google Places business matches.",
         },
         {
           headers: {
@@ -235,10 +233,7 @@ export async function GET(
             item
               ? [item]
               : [],
-          description:
-            `Live Google Places match for ${place.matchedQueries.join(
-              " | ",
-            )}.`,
+          description: place.address || "Matching business result.",
           website:
             place.googleMapsUri,
           googleMapsUri:
@@ -248,13 +243,13 @@ export async function GET(
           verified: false,
           featured: false,
           sourceType:
-            "google-places-new",
+            "live",
           verificationStatus:
-            "google-live",
+            "live",
           locationPrecision:
-            "google-place",
+            "place",
           matchType:
-            "google-text-search",
+            "search",
           matchScore:
             Math.max(
               1,
@@ -272,8 +267,6 @@ export async function GET(
     return NextResponse.json(
       {
         ok: true,
-        source:
-          "Google Places (New)",
         module:
           moduleKey,
         item,
@@ -286,13 +279,7 @@ export async function GET(
         count:
           businesses.length,
         businesses,
-        queries:
-          result.queries,
-        partialErrors:
-          result.errors,
-        sourcePolicy:
-          "Live Google Places (New) results. Google Maps attribution is required when these results are displayed.",
-      },
+        },
       {
         headers: {
           "Cache-Control":
@@ -304,10 +291,7 @@ export async function GET(
     return NextResponse.json(
       {
         ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to load Google Places business matches.",
+        error: "Unable to load business matches.",
         businesses: [],
       },
       {

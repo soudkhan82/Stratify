@@ -515,10 +515,6 @@ function AgricultureMapComponent({
           </div>
         ) : null}
       </div>
-
-      <div className="pointer-events-none absolute bottom-3 right-3 z-[600] rounded-lg bg-white/85 px-2 py-1 text-[9px] font-bold text-slate-400 backdrop-blur">
-        Base map: Natural Earth
-      </div>
     </div>
   );
 }

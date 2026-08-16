@@ -4,7 +4,7 @@ import {
 } from "next/server";
 
 import {
-  getGooglePlaceReviews,
+  getGooglePlaceDetails,
 } from "@/app/lib/google-places";
 
 export const runtime =
@@ -37,15 +37,15 @@ export async function GET(
       );
     }
 
-    const reviews =
-      await getGooglePlaceReviews(
+    const place =
+      await getGooglePlaceDetails(
         placeId,
       );
 
     return NextResponse.json(
       {
         ok: true,
-        reviews,
+        place,
       },
       {
         headers: {
@@ -61,8 +61,7 @@ export async function GET(
         error:
           error instanceof Error
             ? error.message
-            : "Unable to load Google reviews.",
-        reviews: [],
+            : "Unable to load place details.",
       },
       {
         status: 500,

@@ -42,7 +42,7 @@ export async function GET(
         {
           ok: false,
           error:
-            "Enter a country, city or region before searching Google Places.",
+            "Enter a country, city or region before searching.",
           places: [],
           organizations: [],
         },
@@ -88,8 +88,6 @@ export async function GET(
     return NextResponse.json(
       {
         ok: true,
-        source:
-          result.source,
         sector:
           result.sector,
         sectorLabel:
@@ -100,24 +98,14 @@ export async function GET(
           result.categoryLabel,
         location:
           result.location,
-        queryCount:
-          result.queryCount,
-        queries:
-          result.queries,
         totalMatches:
           result.totalMatches,
         count:
           result.places
             .length,
-        places:
-          result.places,
-        organizations:
-          result.places,
-        partialErrors:
-          result.errors,
-        sourcePolicy:
-          "Live Google Places (New) results. Stratify does not persist Google Places content; place details are requested on demand.",
-      },
+        places: result.places.map((place) => ({ ...place, source: "live", matchedQueries: [] })),
+        organizations: result.places.map((place) => ({ ...place, source: "live", matchedQueries: [] })),
+        },
       {
         headers: {
           "Cache-Control":
@@ -129,10 +117,7 @@ export async function GET(
     return NextResponse.json(
       {
         ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to search Google Places.",
+        error: "Unable to load organizations.",
         places: [],
         organizations: [],
       },

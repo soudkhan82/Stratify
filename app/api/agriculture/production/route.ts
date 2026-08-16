@@ -6,10 +6,6 @@ export async function GET() {
   return NextResponse.json(
     {
       ok: true,
-      mode: "static-local-cache",
-      source: "FAOSTAT Crops and livestock products (QCL)",
-      message:
-        "Agriculture Atlas now serves compact FAOSTAT bulk snapshots from /data/agriculture/*.json. The live authenticated FAOSTAT API is no longer used at page runtime.",
     },
     {
       headers: {

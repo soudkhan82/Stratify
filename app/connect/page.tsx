@@ -1209,7 +1209,7 @@ export default function ConnectPage() {
     try {
       const response =
         await fetch(
-          `/api/google-places/details?placeId=${encodeURIComponent(
+          `/api/places/details?placeId=${encodeURIComponent(
             placeId,
           )}`,
           {
@@ -1266,7 +1266,7 @@ export default function ConnectPage() {
     try {
       const response =
         await fetch(
-          `/api/google-places/reviews?placeId=${encodeURIComponent(
+          `/api/places/reviews?placeId=${encodeURIComponent(
             placeId,
           )}`,
           {
@@ -2144,7 +2144,7 @@ export default function ConnectPage() {
                                       key={
                                         photo.name
                                       }
-                                      src={`/api/google-places/photo?name=${encodeURIComponent(
+                                      src={`/api/places/photo?name=${encodeURIComponent(
                                         photo.name,
                                       )}&width=${index === 0 ? 900 : 560}`}
                                       alt={`${insightPlace.name} photo`}
