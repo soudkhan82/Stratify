@@ -59,25 +59,6 @@ function normalizeRegion(value: string | null) {
   return region;
 }
 
-/*
- * Stratify Homepage uses stable GEOGRAPHIC regions for discovery.
- *
- * World Bank changed its administrative/economic regional classification
- * from FY26, moving Afghanistan and Pakistan out of South Asia.
- * For the Homepage "Region" filter we intentionally keep the conventional
- * geographic South Asia grouping, independent of provider classifications.
- */
-const GEO_REGION_OVERRIDES: Record<string, string> = {
-  AFG: "South Asia",
-  BGD: "South Asia",
-  BTN: "South Asia",
-  IND: "South Asia",
-  MDV: "South Asia",
-  NPL: "South Asia",
-  PAK: "South Asia",
-  LKA: "South Asia",
-};
-
 function canonicalWorldBankRegion(value: unknown) {
   const region = clean(value);
   const lower = region.toLowerCase();
@@ -134,11 +115,8 @@ async function fetchWorldBankCountryMeta() {
   for (const row of rows) {
     const iso3 = clean(row?.id).toUpperCase();
     const country = clean(row?.name);
-    const providerRegion = canonicalWorldBankRegion(row?.region?.value);
+    const region = canonicalWorldBankRegion(row?.region?.value);
     const regionId = clean(row?.region?.id).toUpperCase();
-
-    // Homepage Region filter is geographic, not provider-administrative.
-    const region = GEO_REGION_OVERRIDES[iso3] ?? providerRegion;
 
     if (iso3.length !== 3 || !country || regionId === "NA" || !region) continue;
     map.set(iso3, { country, region });

@@ -252,15 +252,6 @@ const [
       setLoading(true);
       setError("");
 
-      // Never display the previous indicator while the new one is loading.
-      setRows([]);
-      setSelectedIso3(null);
-      setCountryQuery("");
-      setMapYear(null);
-      setMapSource(currentIndicator.sourceLabel);
-      setMapObservationType("actual");
-      setMapVintage(null);
-
       try {
         const params =
           new URLSearchParams();
@@ -575,34 +566,125 @@ const [
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#eef2ff_0,_#f8fafc_38%,_#f1f5f9_100%)]">
-      <div className="mx-auto w-full max-w-[1480px] px-4 py-4 sm:px-6 lg:px-8">
-        <section className="rounded-[26px] border border-slate-200 bg-white px-5 py-4 shadow-sm sm:px-6">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-indigo-600">
+      <div className="mx-auto w-full max-w-[1480px] px-4 py-5 sm:px-6 lg:px-8">
+        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div className="max-w-3xl">
+              <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.15em] text-indigo-600">
                 <Globe2 className="h-4 w-4" />
                 Global intelligence
               </div>
 
-              <h1 className="mt-1 text-[28px] font-black tracking-[-0.035em] text-slate-950 sm:text-[32px]">
+              <h1 className="mt-1 text-[32px] font-black tracking-[-0.04em] text-slate-950 sm:text-[38px]">
                 World Intelligence Dashboard
               </h1>
 
-              <p className="mt-1 max-w-3xl text-[13px] font-medium leading-5 text-slate-600">
+              <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-600">
                 Explore World Bank and IMF economic indicators on one interactive choropleth, then pin any country for fast economic intelligence.
               </p>
             </div>
 
-            <div className="flex shrink-0 flex-wrap gap-2">
-              <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-[10px] font-black text-indigo-700">
+            <div className="flex flex-wrap gap-2">
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-[11px] font-black text-indigo-700">
                 World Bank WDI
               </div>
-              <div className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-2 text-[10px] font-black text-violet-700">
+              <div className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-2 text-[11px] font-black text-violet-700">
                 IMF WEO
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black text-slate-600">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-black text-slate-600">
                 Leaflet + Natural Earth
               </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(180px,0.8fr)_minmax(260px,1.2fr)_auto]">
+            <label>
+              <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                Region
+              </span>
+
+              <select
+                value={
+                  region
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setRegion(
+                    event.target
+                      .value,
+                  )
+                }
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              >
+                {REGIONS.map(
+                  (
+                    item,
+                  ) => (
+                    <option
+                      key={
+                        item
+                      }
+                      value={
+                        item
+                      }
+                    >
+                      {
+                        item
+                      }
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+
+            <label>
+              <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                Indicator
+              </span>
+
+              <select
+                value={
+                  indicator
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setIndicator(
+                    event.target
+                      .value,
+                  )
+                }
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              >
+                {ECONOMIC_INDICATOR_GROUPS.map((group) => (
+                  <optgroup key={group} label={group}>
+                    {ECONOMIC_INDICATORS
+                      .filter((item) => item.group === group)
+                      .map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.label}
+                        </option>
+                      ))}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
+
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={
+                  resetDashboard
+                }
+                disabled={
+                  loading
+                }
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 shadow-sm transition hover:bg-slate-100 disabled:opacity-50"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reset
+              </button>
             </div>
           </div>
         </section>
@@ -613,92 +695,7 @@ const [
           </section>
         ) : null}
 
-        <section className="mt-4 grid gap-4 xl:grid-cols-[245px_minmax(0,1fr)_390px]">
-          <aside className="self-start rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm xl:sticky xl:top-[92px]">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.12em] text-indigo-600">
-                  Map controls
-                </div>
-                <div className="mt-1 text-sm font-black text-slate-900">
-                  Explore indicators
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={resetDashboard}
-                disabled={loading}
-                title="Reset map filters"
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 transition hover:bg-slate-100 disabled:opacity-50"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-              </button>
-            </div>
-
-            <div className="mt-4 space-y-4">
-              <label className="block">
-                <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  Region
-                </span>
-
-                <select
-                  value={region}
-                  onChange={(event) => setRegion(event.target.value)}
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                >
-                  {REGIONS.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block">
-                <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  Indicator
-                </span>
-
-                <select
-                  value={indicator}
-                  onChange={(event) => setIndicator(event.target.value)}
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                >
-                  {ECONOMIC_INDICATOR_GROUPS.map((group) => (
-                    <optgroup key={group} label={group}>
-                      {ECONOMIC_INDICATORS
-                        .filter((item) => item.group === group)
-                        .map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.label}
-                          </option>
-                        ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="mt-4 border-t border-slate-100 pt-3">
-              <div className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
-                Current view
-              </div>
-
-              <div className="mt-1 text-xs font-black leading-5 text-slate-800">
-                {currentIndicator.label}
-              </div>
-
-              <div className="mt-0.5 text-[10px] font-semibold leading-4 text-slate-500">
-                {region} Ã‚Â· {mapYear ?? "Latest"}
-              </div>
-
-              <div className="mt-0.5 text-[10px] font-semibold leading-4 text-indigo-600">
-                {mapSource}
-              </div>
-            </div>
-          </aside>
-
+        <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
           <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
             <div className="flex min-h-[72px] flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
               <div>
@@ -713,49 +710,30 @@ const [
                   }
                 </div>
 
-                <div className="mt-0.5 flex max-w-[760px] flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-semibold leading-5 text-slate-500">
-                  <span>{currentIndicator.description}</span>
-                  <span className="text-slate-300">â€¢</span>
-                  <span className="whitespace-nowrap">
-                    Data year: <strong className="text-slate-700">{loading ? "Loading..." : mapYear ?? "Latest available"}</strong>
-                  </span>
-                  <span className="text-slate-300">â€¢</span>
-                  <span className="whitespace-nowrap">Source: {mapSource}</span>
-                  <span className="text-slate-300">â€¢</span>
-                  <span className="whitespace-nowrap">Scope: {region}</span>
+                <div className="text-xs font-semibold text-slate-500">
+                  {currentIndicator.description} {" "}
+                  | {mapYear ?? "Latest"} {" "}
+                  | {mapSource} {" "}
+                  | Scope: {region}
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
                 {loading ? (
-                  <div className="inline-flex items-center gap-2.5 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs font-black uppercase tracking-[0.08em] text-indigo-800 shadow-sm">
-                    <Loader2 className="h-5 w-5 animate-spin" />
+                  <div className="inline-flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-indigo-700">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     Updating data
                   </div>
                 ) : null}
 
                 <div className="rounded-xl bg-slate-100 px-3 py-2 text-[10px] font-black text-slate-600">
                   {mapRows.length} countries
-                  {mapObservationType === "weo-outlook" ? " Ã‚Â· WEO" : ""}
+                  {mapObservationType === "weo-outlook" ? " · WEO" : ""}
                 </div>
               </div>
             </div>
 
-            <div className="relative p-2">
-              {loading ? (
-                <div className="absolute inset-2 z-[1200] flex items-center justify-center rounded-[22px] bg-slate-100/80 backdrop-blur-[2px]">
-                  <div className="mx-4 flex min-w-[280px] max-w-[430px] flex-col items-center rounded-2xl border border-indigo-200 bg-white px-7 py-6 text-center shadow-2xl">
-                    <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
-                    <div className="mt-3 text-base font-black text-slate-950">
-                      Loading {currentIndicator.label}
-                    </div>
-                    <div className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-                      Loading the latest available country dataset and data year.
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
+            <div className="p-2">
               <StratifyMap
                 rows={
                   mapRows
@@ -838,7 +816,7 @@ const [
                             </span>
                           </span>
 
-                          <span className="max-w-[58%] shrink-0 break-words text-right text-[11px] font-black leading-4 text-indigo-700">
+                          <span className="shrink-0 text-xs font-black text-indigo-700">
                             {displayValue(
                               row.value,
                               currentIndicator.unit,
@@ -894,7 +872,7 @@ const [
                       {currentIndicator.description}
                     </div>
                     <div className="mt-2 text-[10px] font-black uppercase tracking-[0.08em] text-indigo-500">
-                      {mapSource}{mapYear ? ` Ã‚Â· ${mapYear}` : ""}{mapObservationType === "weo-outlook" ? " Ã‚Â· WEO outlook" : ""}
+                      {mapSource}{mapYear ? ` · ${mapYear}` : ""}{mapObservationType === "weo-outlook" ? " · WEO outlook" : ""}
                     </div>
                   </div>
 
@@ -953,8 +931,8 @@ const [
                     Hover a country for an instant value. Click a country to pin its intelligence here.
                   </p>
                   <div className="mt-2 text-[10px] font-black uppercase tracking-[0.08em] text-indigo-600">
-                    {mapSource}{mapYear ? ` Ã‚Â· ${mapYear}` : ""}{mapObservationType === "weo-outlook" ? " Ã‚Â· WEO outlook" : ""}
-                    {mapVintage ? ` Ã‚Â· ${mapVintage}` : ""}
+                    {mapSource}{mapYear ? ` · ${mapYear}` : ""}{mapObservationType === "weo-outlook" ? " · WEO outlook" : ""}
+                    {mapVintage ? ` · ${mapVintage}` : ""}
                   </div>
 
                   <div className="mt-4 grid grid-cols-2 gap-3">
@@ -979,7 +957,7 @@ const [
                         Median
                       </div>
 
-                      <div className="mt-1 break-words text-sm font-black leading-5 text-slate-900">
+                      <div className="mt-1 truncate text-base font-black text-slate-900">
                         {median == null
                           ? "n/a"
                           : displayValue(
@@ -992,7 +970,7 @@ const [
                 </div>
               )}
 
-              <div className={loading || sortedRows.length === 0 ? "hidden" : "border-t border-slate-100 px-5 py-4"}>
+              <div className="border-t border-slate-100 px-5 py-4">
                 <div className="flex items-center gap-2">
                   <TrendingUp className="h-4 w-4 text-emerald-600" />
 
@@ -1050,7 +1028,7 @@ const [
                             </div>
                           </div>
 
-                          <div className="max-w-[58%] shrink-0 break-words text-right text-[11px] font-black leading-4 text-indigo-700">
+                          <div className="shrink-0 text-xs font-black text-indigo-700">
                             {displayValue(
                               row.value,
                               currentIndicator.unit,
@@ -1075,7 +1053,7 @@ const [
               {currentIndicator.label}
             </div>
             <div className="mt-0.5 text-[10px] font-semibold text-slate-400">
-              {mapSource}{mapYear ? ` Ã‚Â· ${mapYear}` : ""}
+              {mapSource}{mapYear ? ` · ${mapYear}` : ""}
             </div>
           </div>
 

@@ -252,15 +252,6 @@ const [
       setLoading(true);
       setError("");
 
-      // Never display the previous indicator while the new one is loading.
-      setRows([]);
-      setSelectedIso3(null);
-      setCountryQuery("");
-      setMapYear(null);
-      setMapSource(currentIndicator.sourceLabel);
-      setMapObservationType("actual");
-      setMapVintage(null);
-
       try {
         const params =
           new URLSearchParams();
@@ -690,7 +681,7 @@ const [
               </div>
 
               <div className="mt-0.5 text-[10px] font-semibold leading-4 text-slate-500">
-                {region} Ã‚Â· {mapYear ?? "Latest"}
+                {region} Â· {mapYear ?? "Latest"}
               </div>
 
               <div className="mt-0.5 text-[10px] font-semibold leading-4 text-indigo-600">
@@ -713,49 +704,30 @@ const [
                   }
                 </div>
 
-                <div className="mt-0.5 flex max-w-[760px] flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-semibold leading-5 text-slate-500">
-                  <span>{currentIndicator.description}</span>
-                  <span className="text-slate-300">â€¢</span>
-                  <span className="whitespace-nowrap">
-                    Data year: <strong className="text-slate-700">{loading ? "Loading..." : mapYear ?? "Latest available"}</strong>
-                  </span>
-                  <span className="text-slate-300">â€¢</span>
-                  <span className="whitespace-nowrap">Source: {mapSource}</span>
-                  <span className="text-slate-300">â€¢</span>
-                  <span className="whitespace-nowrap">Scope: {region}</span>
+                <div className="text-xs font-semibold text-slate-500">
+                  {currentIndicator.description} {" "}
+                  | {mapYear ?? "Latest"} {" "}
+                  | {mapSource} {" "}
+                  | Scope: {region}
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
                 {loading ? (
-                  <div className="inline-flex items-center gap-2.5 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs font-black uppercase tracking-[0.08em] text-indigo-800 shadow-sm">
-                    <Loader2 className="h-5 w-5 animate-spin" />
+                  <div className="inline-flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-indigo-700">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     Updating data
                   </div>
                 ) : null}
 
                 <div className="rounded-xl bg-slate-100 px-3 py-2 text-[10px] font-black text-slate-600">
                   {mapRows.length} countries
-                  {mapObservationType === "weo-outlook" ? " Ã‚Â· WEO" : ""}
+                  {mapObservationType === "weo-outlook" ? " Â· WEO" : ""}
                 </div>
               </div>
             </div>
 
-            <div className="relative p-2">
-              {loading ? (
-                <div className="absolute inset-2 z-[1200] flex items-center justify-center rounded-[22px] bg-slate-100/80 backdrop-blur-[2px]">
-                  <div className="mx-4 flex min-w-[280px] max-w-[430px] flex-col items-center rounded-2xl border border-indigo-200 bg-white px-7 py-6 text-center shadow-2xl">
-                    <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
-                    <div className="mt-3 text-base font-black text-slate-950">
-                      Loading {currentIndicator.label}
-                    </div>
-                    <div className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-                      Loading the latest available country dataset and data year.
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
+            <div className="p-2">
               <StratifyMap
                 rows={
                   mapRows
@@ -838,7 +810,7 @@ const [
                             </span>
                           </span>
 
-                          <span className="max-w-[58%] shrink-0 break-words text-right text-[11px] font-black leading-4 text-indigo-700">
+                          <span className="shrink-0 text-xs font-black text-indigo-700">
                             {displayValue(
                               row.value,
                               currentIndicator.unit,
@@ -894,7 +866,7 @@ const [
                       {currentIndicator.description}
                     </div>
                     <div className="mt-2 text-[10px] font-black uppercase tracking-[0.08em] text-indigo-500">
-                      {mapSource}{mapYear ? ` Ã‚Â· ${mapYear}` : ""}{mapObservationType === "weo-outlook" ? " Ã‚Â· WEO outlook" : ""}
+                      {mapSource}{mapYear ? ` Â· ${mapYear}` : ""}{mapObservationType === "weo-outlook" ? " Â· WEO outlook" : ""}
                     </div>
                   </div>
 
@@ -953,8 +925,8 @@ const [
                     Hover a country for an instant value. Click a country to pin its intelligence here.
                   </p>
                   <div className="mt-2 text-[10px] font-black uppercase tracking-[0.08em] text-indigo-600">
-                    {mapSource}{mapYear ? ` Ã‚Â· ${mapYear}` : ""}{mapObservationType === "weo-outlook" ? " Ã‚Â· WEO outlook" : ""}
-                    {mapVintage ? ` Ã‚Â· ${mapVintage}` : ""}
+                    {mapSource}{mapYear ? ` Â· ${mapYear}` : ""}{mapObservationType === "weo-outlook" ? " Â· WEO outlook" : ""}
+                    {mapVintage ? ` Â· ${mapVintage}` : ""}
                   </div>
 
                   <div className="mt-4 grid grid-cols-2 gap-3">
@@ -979,7 +951,7 @@ const [
                         Median
                       </div>
 
-                      <div className="mt-1 break-words text-sm font-black leading-5 text-slate-900">
+                      <div className="mt-1 truncate text-base font-black text-slate-900">
                         {median == null
                           ? "n/a"
                           : displayValue(
@@ -992,7 +964,7 @@ const [
                 </div>
               )}
 
-              <div className={loading || sortedRows.length === 0 ? "hidden" : "border-t border-slate-100 px-5 py-4"}>
+              <div className="border-t border-slate-100 px-5 py-4">
                 <div className="flex items-center gap-2">
                   <TrendingUp className="h-4 w-4 text-emerald-600" />
 
@@ -1050,7 +1022,7 @@ const [
                             </div>
                           </div>
 
-                          <div className="max-w-[58%] shrink-0 break-words text-right text-[11px] font-black leading-4 text-indigo-700">
+                          <div className="shrink-0 text-xs font-black text-indigo-700">
                             {displayValue(
                               row.value,
                               currentIndicator.unit,
@@ -1075,7 +1047,7 @@ const [
               {currentIndicator.label}
             </div>
             <div className="mt-0.5 text-[10px] font-semibold text-slate-400">
-              {mapSource}{mapYear ? ` Ã‚Â· ${mapYear}` : ""}
+              {mapSource}{mapYear ? ` Â· ${mapYear}` : ""}
             </div>
           </div>
 
