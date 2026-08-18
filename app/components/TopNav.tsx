@@ -7,6 +7,7 @@ import AuthNavButton from "@/components/AuthNavButton";
 const NAV_ITEMS = [
   { label: "Home", href: "/" },
   { label: "Connect", href: "/connect" },
+  { label: "Intelligence", href: "/intelligence" },
   { label: "Global Pulse", href: "/global-pulse" },
   { label: "Macro & Finance", href: "/macro-finance" },
   { label: "Energy", href: "/energy" },
@@ -19,6 +20,7 @@ const NAV_ITEMS = [
 const MOBILE_ITEMS = [
   { label: "Home", href: "/" },
   { label: "Connect", href: "/connect" },
+  { label: "Intelligence", href: "/intelligence" },
   { label: "Pulse", href: "/global-pulse" },
   { label: "Macro", href: "/macro-finance" },
   { label: "Energy", href: "/energy" },

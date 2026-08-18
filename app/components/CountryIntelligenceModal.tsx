@@ -1129,6 +1129,15 @@ export default function CountryIntelligenceModal({
 
             <div className="flex items-center gap-2">
               <Link
+                href={`/intelligence?country=${encodeURIComponent(
+                  normalizedIso3,
+                )}`}
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-slate-950 px-3 text-xs font-black text-white shadow-sm transition hover:bg-slate-800"
+              >
+                Decision outlook
+                <BarChart3 className="h-3.5 w-3.5" />
+              </Link>
+              <Link
                 href={`/world/country/${encodeURIComponent(
                   normalizedIso3,
                 )}?indicator=${encodeURIComponent(
