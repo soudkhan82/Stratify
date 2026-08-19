@@ -14,6 +14,7 @@ import {
   Database,
   Gauge,
   Globe2,
+  BookOpen,
   Lightbulb,
   Loader2,
   Minus,
@@ -121,6 +122,154 @@ function confidenceMeaning(value: number) {
   if (value >= 50) return "Moderate confidence";
   if (value >= 25) return "Low confidence";
   return "Very limited confidence";
+}
+function indicatorPlainLanguage(label: string) {
+  const key = label.toLowerCase();
+
+  if (key.includes("gdp") && key.includes("growth")) {
+    return {
+      meaning:
+        "Real GDP growth measures how quickly the economy's inflation-adjusted output is expanding or shrinking compared with the previous period.",
+      why:
+        "Stronger sustainable growth usually means more production, income and business activity. Very weak or negative growth can signal economic stress.",
+      read:
+        "Positive values mean the economy is expanding; negative values mean it is contracting.",
+    };
+  }
+
+  if (key.includes("inflation")) {
+    return {
+      meaning:
+        "Inflation measures how quickly the overall price level of goods and services is rising. In simple terms, it shows how fast purchasing power is being eroded.",
+      why:
+        "Persistently high inflation makes household budgets and business planning harder, while very low or negative inflation can also indicate weak demand.",
+      read:
+        "Stratify treats moderate inflation as healthier than either very high inflation or deflation, so this is scored against a target range rather than 'higher is better'.",
+    };
+  }
+
+  if (key.includes("unemployment")) {
+    return {
+      meaning:
+        "Unemployment is the share of people in the labour force who are without work but are available for and actively seeking employment.",
+      why:
+        "A lower unemployment rate generally suggests stronger labour-market conditions and better use of the country's productive workforce.",
+      read:
+        "Lower is generally favourable, although the figure should always be interpreted together with labour-force participation and job quality.",
+    };
+  }
+
+  if (key.includes("reserve")) {
+    return {
+      meaning:
+        "Foreign-exchange reserves are external assets held by a country's central bank, typically including foreign currencies and other reserve assets.",
+      why:
+        "Larger reserve buffers can help a country pay for imports, meet external obligations and absorb currency or balance-of-payments shocks.",
+      read:
+        "Higher reserve strength is generally favourable, but adequacy also depends on the size of imports, debt and the economy.",
+    };
+  }
+
+  if (key.includes("current account")) {
+    return {
+      meaning:
+        "The current account summarizes a country's transactions with the rest of the world in goods, services, income and transfers.",
+      why:
+        "A very large deficit can indicate dependence on external financing, while a very large surplus can reflect economic imbalances of a different kind.",
+      read:
+        "Stratify therefore uses a balanced target range rather than assuming that a larger surplus is always better.",
+    };
+  }
+
+  if (key.includes("export")) {
+    return {
+      meaning:
+        "Exports of goods and services measure the value of products and services sold by residents of the country to buyers abroad.",
+      why:
+        "A stronger export base can support foreign-exchange earnings, jobs, industrial activity and resilience to weakness in domestic demand.",
+      read:
+        "Higher export strength is generally favourable, although the mix, diversification and value added of exports also matter.",
+    };
+  }
+
+  if (key.includes("debt")) {
+    return {
+      meaning:
+        "Government debt represents the accumulated financial obligations of the public sector. It is commonly compared with GDP to judge its size relative to the economy.",
+      why:
+        "A heavy debt burden can limit fiscal flexibility and increase interest costs, especially when borrowing costs or refinancing risks are high.",
+      read:
+        "Lower debt relative to the economy is generally scored more favourably, while the system also considers comparative position and recent direction.",
+    };
+  }
+
+  if (
+    key.includes("fiscal balance") ||
+    key.includes("overall balance") ||
+    key.includes("government balance")
+  ) {
+    return {
+      meaning:
+        "Fiscal balance is the difference between government revenue and government spending over a period, usually expressed as a percentage of GDP.",
+      why:
+        "A negative value is a budget deficit and means spending exceeds revenue. A positive value is a surplus. Persistent large deficits can increase borrowing needs and debt.",
+      read:
+        "A balance closer to sustainable levels is generally healthier; the score should not be read as meaning that the largest possible surplus is always best.",
+    };
+  }
+
+  if (key.includes("tax") && key.includes("revenue")) {
+    return {
+      meaning:
+        "Tax revenue measures the resources collected by government through taxes, often expressed relative to GDP.",
+      why:
+        "Adequate revenue gives governments more capacity to fund public services, infrastructure and debt obligations without excessive borrowing.",
+      read:
+        "Higher revenue capacity is generally favourable, but tax efficiency, fairness and the quality of public spending also matter.",
+    };
+  }
+
+  if (key.includes("gdp") && key.includes("capita")) {
+    return {
+      meaning:
+        "GDP per capita divides the economy's total output by its population, providing a broad measure of average economic output or income per person.",
+      why:
+        "Higher GDP per capita usually indicates greater economic capacity and average material living standards, although it does not show how income is distributed.",
+      read:
+        "Higher is generally favourable, but inequality and cost of living should be considered separately.",
+    };
+  }
+
+  if (key.includes("life expectancy")) {
+    return {
+      meaning:
+        "Life expectancy estimates the average number of years a newborn could expect to live if current mortality patterns continued.",
+      why:
+        "It is a broad outcome indicator reflecting health conditions, living standards, public health systems and social development.",
+      read:
+        "Higher life expectancy is generally favourable.",
+    };
+  }
+
+  if (key.includes("electricity")) {
+    return {
+      meaning:
+        "Access to electricity measures the share of the population that can obtain electricity through grid or reliable off-grid sources.",
+      why:
+        "Broad electricity access supports households, education, healthcare, industry, digital services and overall economic productivity.",
+      read:
+        "Higher population coverage is generally favourable, with 100% representing universal access.",
+    };
+  }
+
+  return {
+    meaning:
+      "This indicator is one of the socioeconomic measures used by Stratify to compare the country's present condition with peers and its own recent history.",
+    why:
+      "It contributes to the relevant intelligence dimension because changes in this measure can strengthen or weaken the country's overall socioeconomic position.",
+    read:
+      "Use the direction, peer rankings and scoring components below together rather than interpreting the raw value in isolation.",
+  };
 }
 
 function compact(value: number) {
@@ -441,10 +590,10 @@ function IndicatorRow({ indicator }: { indicator: IntelligenceIndicatorResult })
                   </button>
 
                   <div
-                    className="pointer-events-none invisible absolute right-0 top-[calc(100%+8px)] z-[1200] w-[390px] max-w-[calc(100vw-32px)] translate-y-1 rounded-2xl border border-slate-200 bg-white p-4.5 text-left opacity-0 shadow-xl transition duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100"
+                    className="pointer-events-auto invisible fixed left-1/2 top-1/2 z-[3000] max-h-[calc(100vh-64px)] w-[680px] max-w-[calc(100vw-48px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto overscroll-contain rounded-[24px] border border-slate-200 bg-white p-5 text-left opacity-0 shadow-2xl transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
                     onClick={(event) => event.stopPropagation()}
                   >
-                    <div className="absolute -top-1.5 right-2.5 h-3 w-3 rotate-45 border-l border-t border-slate-200 bg-white" />
+                    
 
                     <div className="relative">
                       <div className="flex items-start justify-between gap-3">
@@ -453,13 +602,13 @@ function IndicatorRow({ indicator }: { indicator: IntelligenceIndicatorResult })
                             Score explanation
                           </div>
 
-                          <div className="mt-1 text-[15px] font-black leading-5 text-slate-950">
+                          <div className="mt-1 text-[17px] font-black leading-6 text-slate-950">
                             {indicator.label}
                           </div>
                         </div>
 
                         <div className="shrink-0 text-right">
-                          <div className="text-[24px] font-black leading-none tabular-nums text-indigo-700">
+                          <div className="text-[27px] font-black leading-none tabular-nums text-indigo-700">
                             {scoreText(indicator.score, 1)}
                           </div>
 
@@ -469,17 +618,50 @@ function IndicatorRow({ indicator }: { indicator: IntelligenceIndicatorResult })
                         </div>
                       </div>
 
+                      <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3.5">
+                        <div className="flex items-center gap-2">
+                          <BookOpen className="h-4 w-4 shrink-0 text-indigo-600" />
+                          <div className="text-[11px] font-black uppercase tracking-[0.08em] text-indigo-700">
+                            What this indicator means
+                          </div>
+                        </div>
+
+                        <p className="mt-2 text-[12px] font-semibold leading-[1.6] text-slate-700">
+                          {indicatorPlainLanguage(indicator.label).meaning}
+                        </p>
+
+                        <div className="mt-3 grid grid-cols-2 gap-3">
+                          <div className="rounded-xl border border-indigo-100 bg-white px-3 py-2.5">
+                            <div className="text-[10px] font-black uppercase tracking-[0.07em] text-slate-500">
+                              Why it matters
+                            </div>
+                            <p className="mt-1 text-[11px] font-semibold leading-[1.55] text-slate-600">
+                              {indicatorPlainLanguage(indicator.label).why}
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl border border-indigo-100 bg-white px-3 py-2.5">
+                            <div className="text-[10px] font-black uppercase tracking-[0.07em] text-slate-500">
+                              How to read it
+                            </div>
+                            <p className="mt-1 text-[11px] font-semibold leading-[1.55] text-slate-600">
+                              {indicatorPlainLanguage(indicator.label).read}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
                       <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50 px-3.5 py-3">
-                        <div className="text-[12px] font-black text-slate-900">
+                        <div className="text-[13px] font-black text-slate-900">
                           {indicatorScoreMeaning(indicator.score).label}
                         </div>
 
-                        <div className="mt-1 text-[11px] font-semibold leading-[1.55] text-slate-600">
+                        <div className="mt-1.5 text-[12px] font-semibold leading-[1.65] text-slate-600">
                           {indicatorScoreMeaning(indicator.score).text}
                         </div>
                       </div>
 
-                      <div className="mt-3 grid grid-cols-2 gap-2">
+                      <div className="mt-3 grid grid-cols-4 gap-2">
                         {[
                           ["Global", indicator.components.globalPosition, "40%"],
                           ["Regional", indicator.components.regionalPosition, "20%"],
@@ -491,15 +673,15 @@ function IndicatorRow({ indicator }: { indicator: IntelligenceIndicatorResult })
                             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5"
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <span className="text-[10px] font-black uppercase tracking-[0.06em] text-slate-500">
+                              <span className="text-[11px] font-black uppercase tracking-[0.06em] text-slate-500">
                                 {label}
                               </span>
-                              <span className="text-[10px] font-black text-indigo-600">
+                              <span className="text-[11px] font-black text-indigo-600">
                                 {weight}
                               </span>
                             </div>
 
-                            <div className="mt-1 text-[15px] font-black tabular-nums text-slate-900">
+                            <div className="mt-1.5 text-[17px] font-black tabular-nums text-slate-900">
                               {scoreText(value as number | null, 1)}
                             </div>
                           </div>
@@ -508,16 +690,16 @@ function IndicatorRow({ indicator }: { indicator: IntelligenceIndicatorResult })
 
                       <div className="mt-3.5 border-t border-slate-200 pt-3">
                         <div className="flex items-center justify-between gap-3">
-                          <span className="text-[11px] font-black text-slate-800">
+                          <span className="text-[12px] font-black text-slate-800">
                             {confidenceMeaning(indicator.confidence)}
                           </span>
 
-                          <span className="text-[12px] font-black tabular-nums text-indigo-700">
+                          <span className="text-[13px] font-black tabular-nums text-indigo-700">
                             {indicator.confidence}%
                           </span>
                         </div>
 
-                        <div className="mt-1 text-[10px] font-semibold leading-[1.55] text-slate-500">
+                        <div className="mt-1.5 text-[11px] font-semibold leading-[1.65] text-slate-500">
                           Confidence reflects usable benchmark, history and recency coverage. Click the table row for the full breakdown.
                         </div>
                       </div>
@@ -543,17 +725,63 @@ function IndicatorRow({ indicator }: { indicator: IntelligenceIndicatorResult })
           <td colSpan={6} className="px-4 py-4">
             <div className="grid gap-3 md:grid-cols-4">
               {[
-                ["Global position", indicator.components.globalPosition],
-                ["Regional position", indicator.components.regionalPosition],
-                ["Momentum", indicator.components.momentum],
-                ["Stability", indicator.components.stability],
-              ].map(([label, value]) => (
-                <div key={String(label)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                {
+                  label: "Global position",
+                  value: indicator.components.globalPosition,
+                  note:
+                    indicator.components.globalPosition === null
+                      ? "No comparable global benchmark"
+                      : `~${Math.round(indicator.components.globalPosition)}th percentile globally`,
+                },
+                {
+                  label: "Regional position",
+                  value: indicator.components.regionalPosition,
+                  note:
+                    indicator.components.regionalPosition === null
+                      ? "No comparable regional benchmark"
+                      : `~${Math.round(indicator.components.regionalPosition)}th percentile regionally`,
+                },
+                {
+                  label: "Momentum",
+                  value: indicator.components.momentum,
+                  note:
+                    indicator.components.momentum === null
+                      ? "Insufficient recent history"
+                      : indicator.trend === "improving"
+                        ? "Positive recent momentum"
+                        : indicator.trend === "deteriorating"
+                          ? "Recent momentum is weakening"
+                          : "Recent momentum is broadly stable",
+                },
+                {
+                  label: "Stability",
+                  value: indicator.components.stability,
+                  note:
+                    indicator.components.stability === null
+                      ? "Insufficient history"
+                      : indicator.components.stability >= 70
+                        ? "Relatively stable performance"
+                        : indicator.components.stability >= 50
+                          ? "Moderately variable performance"
+                          : indicator.components.stability >= 35
+                            ? "Volatile recent performance"
+                            : "High recent volatility",
+                },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5"
+                >
                   <div className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
-                    {label}
+                    {item.label}
                   </div>
-                  <div className="mt-1 text-lg font-black text-slate-900">
-                    {scoreText(value as number | null, 1)}
+
+                  <div className="mt-1 text-lg font-black tabular-nums text-slate-900">
+                    {scoreText(item.value as number | null, 1)}
+                  </div>
+
+                  <div className="mt-1 text-[10px] font-bold leading-4 text-slate-500">
+                    {item.note}
                   </div>
                 </div>
               ))}
@@ -839,11 +1067,11 @@ function ScoringGuideModal({
                     }`}
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <div className="text-[11px] font-black text-slate-800">
+                      <div className="text-[12px] font-black text-slate-800">
                         {label}
                       </div>
 
-                      <div className="text-[10px] font-black text-indigo-600">
+                      <div className="text-[11px] font-black text-indigo-600">
                         25% overall
                       </div>
                     </div>
@@ -873,7 +1101,7 @@ function ScoringGuideModal({
                       {range}
                     </span>
 
-                    <span className="text-[12px] font-black text-slate-900">
+                    <span className="text-[13px] font-black text-slate-900">
                       {label}
                     </span>
                   </div>
