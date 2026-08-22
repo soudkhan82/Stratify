@@ -86,9 +86,8 @@ type ZoneAccumulator = ZoneBase & {
 
 type QueryJob = {
   zoneId: string;
-  group: "competitors" | "demand" | "ecosystem" | "quality";
+  group: "competitors" | "demand" | "ecosystem";
   type: string;
-  minRating?: number;
 };
 
 function finite(value: unknown, fallback: number) {
@@ -112,47 +111,66 @@ function normalize(values: number[]) {
   return values.map((value) => ((value - min) / (max - min)) * 100);
 }
 
-function band(score: number) {
-  if (score >= 80) return "Strong Opportunity";
-  if (score >= 65) return "Attractive";
-  if (score >= 50) return "Selective Opportunity";
-  if (score >= 35) return "Challenging";
-  return "Low Priority";
+function average(values: number[]) {
+  if (!values.length) return 50;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function bandFromRank(rank: number) {
+  if (rank <= 3) return "Higher Opportunity";
+  if (rank <= 6) return "Mixed Opportunity";
+  return "Lower Opportunity";
 }
 
 function buildReasons(scores: {
   demand: number;
-  whiteSpace: number;
-  ecosystem: number;
   competition: number;
-  quality: number;
+  ecosystem: number;
 }) {
-  const reasons: string[] = [];
-  if (scores.demand >= 65) reasons.push("Strong concentration of demand-generating places relative to this market.");
-  if (scores.whiteSpace >= 65) reasons.push("Favourable white space: demand is stronger than direct competitive pressure.");
-  if (scores.ecosystem >= 65) reasons.push("Supporting commercial ecosystem is stronger than most nearby zones.");
-  if (scores.competition >= 65) reasons.push("Lower direct competitive pressure than most comparison zones.");
-  if (scores.quality >= 65) reasons.push("High-rated establishments indicate stronger local business vitality.");
-  if (!reasons.length) reasons.push("No single signal dominates; this zone needs deeper site-level validation.");
-  return reasons.slice(0, 3);
+  const positives: string[] = [];
+  const cautions: string[] = [];
+
+  if (scores.demand >= 67) positives.push("Demand signals are stronger than most nearby zones.");
+  if (scores.competition >= 67) positives.push("There is more room versus direct competitors.");
+  if (scores.ecosystem >= 67) positives.push("Supporting business activity is stronger than most nearby zones.");
+
+  if (scores.demand < 34) cautions.push("Demand signals are weaker than most nearby zones.");
+  if (scores.competition < 34) cautions.push("Direct competitive pressure is relatively high.");
+  if (scores.ecosystem < 34) cautions.push("Supporting business activity is relatively weak.");
+
+  const combined = [...positives, ...cautions];
+  if (!combined.length) {
+    combined.push("The main signals are mixed, so this zone needs site-level validation.");
+  }
+
+  return combined.slice(0, 2);
 }
 
 async function fetchJson(url: string, init: RequestInit, timeoutMs = 15000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
-    const response = await fetch(url, { ...init, signal: controller.signal, cache: "no-store" });
+    const response = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+      cache: "no-store",
+    });
+
     const text = await response.text();
     let json: any = null;
+
     try {
       json = text ? JSON.parse(text) : null;
     } catch {
       throw new Error(`Google API returned non-JSON (${response.status}).`);
     }
+
     if (!response.ok) {
       const message = json?.error?.message || `Google API returned HTTP ${response.status}.`;
       throw new Error(message);
     }
+
     return json;
   } finally {
     clearTimeout(timer);
@@ -167,12 +185,16 @@ async function resolveMarket(apiKey: string, market: string) {
       "X-Goog-Api-Key": apiKey,
       "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location",
     },
-    body: JSON.stringify({ textQuery: market, pageSize: 1 }),
+    body: JSON.stringify({
+      textQuery: market,
+      pageSize: 1,
+    }),
   });
 
   const place = Array.isArray(json?.places) ? json.places[0] : null;
   const lat = Number(place?.location?.latitude);
   const lng = Number(place?.location?.longitude);
+
   if (!place || !Number.isFinite(lat) || !Number.isFinite(lng)) {
     throw new Error(`Could not resolve the market '${market}'. Try 'City, Country'.`);
   }
@@ -198,10 +220,12 @@ function createGrid(lat: number, lng: number, zoneKm: number): ZoneBase[] {
     for (let col = -1; col <= 1; col += 1) {
       const centerLat = lat - row * (zoneKm / latKm);
       const centerLng = lng + col * (zoneKm / lngKm);
+
       const south = centerLat - half / latKm;
       const north = centerLat + half / latKm;
       const west = centerLng - half / lngKm;
       const east = centerLng + half / lngKm;
+
       const polygon: Coordinate[] = [
         { latitude: south, longitude: west },
         { latitude: south, longitude: east },
@@ -209,15 +233,21 @@ function createGrid(lat: number, lng: number, zoneKm: number): ZoneBase[] {
         { latitude: north, longitude: west },
         { latitude: south, longitude: west },
       ];
+
       zones.push({
         id: `zone-${index + 1}`,
         label: `Zone ${labels[index]}`,
-        center: { latitude: centerLat, longitude: centerLng },
+        center: {
+          latitude: centerLat,
+          longitude: centerLng,
+        },
         polygon,
       });
+
       index += 1;
     }
   }
+
   return zones;
 }
 
@@ -225,7 +255,6 @@ async function aggregateCount(
   apiKey: string,
   zone: ZoneBase,
   placeType: string,
-  minRating?: number,
 ) {
   const filter: Record<string, unknown> = {
     locationFilter: {
@@ -240,10 +269,6 @@ async function aggregateCount(
     },
     operatingStatus: ["OPERATING_STATUS_OPERATIONAL"],
   };
-
-  if (minRating !== undefined) {
-    filter.ratingFilter = { minRating };
-  }
 
   const json = await fetchJson(AGGREGATE_URL, {
     method: "POST",
@@ -263,28 +288,61 @@ async function aggregateCount(
 
 async function runInBatches<T>(jobs: Array<() => Promise<T>>, batchSize = 8) {
   const results: T[] = [];
+
   for (let i = 0; i < jobs.length; i += batchSize) {
     const batch = jobs.slice(i, i + batchSize);
     results.push(...(await Promise.all(batch.map((job) => job()))));
   }
+
   return results;
+}
+
+function normalizedGroupByType(
+  zones: ZoneAccumulator[],
+  types: string[],
+  group: "demand" | "ecosystem",
+) {
+  const perType = new Map<string, number[]>();
+
+  types.forEach((type) => {
+    const values = zones.map((zone) => zone.breakdown[`${group}:${type}`] ?? 0);
+    perType.set(type, normalize(values));
+  });
+
+  return zones.map((_, zoneIndex) =>
+    average(types.map((type) => perType.get(type)?.[zoneIndex] ?? 50)),
+  );
 }
 
 export async function POST(request: Request) {
   try {
     const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+
     if (!apiKey) {
-      return NextResponse.json({ ok: false, error: "GOOGLE_PLACES_API_KEY is not configured on the Stratify server." }, { status: 500 });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "GOOGLE_PLACES_API_KEY is not configured on the Stratify server.",
+        },
+        { status: 500 },
+      );
     }
 
     const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+
     const market = String(body?.market ?? "").trim().slice(0, 120);
     const requestedModel = String(body?.model ?? "pharmacy") as ModelKey;
     const model = MODELS[requestedModel] ? requestedModel : "pharmacy";
     const zoneKm = clamp(finite(body?.zoneKm, 1.5), 0.5, 5);
 
     if (market.length < 2) {
-      return NextResponse.json({ ok: false, error: "A city or market is required." }, { status: 400 });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "A city or market is required.",
+        },
+        { status: 400 },
+      );
     }
 
     const resolved = await resolveMarket(apiKey, market);
@@ -292,6 +350,7 @@ export async function POST(request: Request) {
     const zones = createGrid(resolved.lat, resolved.lng, zoneKm);
 
     const accumulators = new Map<string, ZoneAccumulator>();
+
     zones.forEach((zone) => {
       accumulators.set(zone.id, {
         ...zone,
@@ -304,18 +363,40 @@ export async function POST(request: Request) {
     });
 
     const jobs: QueryJob[] = [];
+
     zones.forEach((zone) => {
-      jobs.push({ zoneId: zone.id, group: "competitors", type: definition.competitorType });
-      definition.demandTypes.forEach((type) => jobs.push({ zoneId: zone.id, group: "demand", type }));
-      definition.ecosystemTypes.forEach((type) => jobs.push({ zoneId: zone.id, group: "ecosystem", type }));
-      jobs.push({ zoneId: zone.id, group: "quality", type: definition.competitorType, minRating: 4.0 });
+      jobs.push({
+        zoneId: zone.id,
+        group: "competitors",
+        type: definition.competitorType,
+      });
+
+      definition.demandTypes.forEach((type) => {
+        jobs.push({
+          zoneId: zone.id,
+          group: "demand",
+          type,
+        });
+      });
+
+      definition.ecosystemTypes.forEach((type) => {
+        jobs.push({
+          zoneId: zone.id,
+          group: "ecosystem",
+          type,
+        });
+      });
     });
 
     const values = await runInBatches(
       jobs.map((job) => async () => {
         const zone = zones.find((item) => item.id === job.zoneId)!;
-        const count = await aggregateCount(apiKey, zone, job.type, job.minRating);
-        return { ...job, count };
+        const count = await aggregateCount(apiKey, zone, job.type);
+
+        return {
+          ...job,
+          count,
+        };
       }),
       8,
     );
@@ -323,45 +404,74 @@ export async function POST(request: Request) {
     values.forEach((result) => {
       const zone = accumulators.get(result.zoneId);
       if (!zone) return;
+
       zone[result.group] += result.count;
-      zone.breakdown[`${result.group}:${result.type}${result.minRating ? ":4+" : ""}`] = result.count;
+      zone.breakdown[`${result.group}:${result.type}`] = result.count;
     });
 
     const rawZones = zones.map((zone) => accumulators.get(zone.id)!);
-    const demandNorm = normalize(rawZones.map((zone) => zone.demand));
-    const ecosystemNorm = normalize(rawZones.map((zone) => zone.ecosystem));
-    const competitorNorm = normalize(rawZones.map((zone) => zone.competitors));
-    const competitionFavourability = competitorNorm.map((value) => 100 - value);
-    const qualityRatio = rawZones.map((zone) => zone.quality / Math.max(1, zone.competitors));
-    const qualityNorm = normalize(qualityRatio);
+
+    const demandNorm = normalizedGroupByType(
+      rawZones,
+      definition.demandTypes,
+      "demand",
+    );
+
+    const ecosystemNorm = normalizedGroupByType(
+      rawZones,
+      definition.ecosystemTypes,
+      "ecosystem",
+    );
+
+    const competitorNorm = normalize(
+      rawZones.map((zone) => zone.competitors),
+    );
+
+    const competitionRoom = competitorNorm.map(
+      (value) => 100 - value,
+    );
 
     const scored = rawZones.map((zone, index) => {
       const demand = demandNorm[index];
+      const competition = competitionRoom[index];
       const ecosystem = ecosystemNorm[index];
-      const competition = competitionFavourability[index];
-      const quality = qualityNorm[index];
-      const whiteSpace = demand * 0.65 + competition * 0.35;
+
       const opportunity =
-        demand * 0.30 +
-        whiteSpace * 0.25 +
-        ecosystem * 0.20 +
-        competition * 0.15 +
-        quality * 0.10;
-      const signalVolume = zone.competitors + zone.demand + zone.ecosystem;
-      const signalCoverage = signalVolume >= 30 ? 95 : signalVolume >= 15 ? 82 : signalVolume >= 7 ? 68 : signalVolume >= 3 ? 52 : 35;
+        demand * 0.40 +
+        competition * 0.35 +
+        ecosystem * 0.25;
+
+      // Kept in the response for compatibility with the current Android types.
+      // They are not used in the simplified Opportunity Map score.
+      const whiteSpace =
+        demand * 0.60 +
+        competition * 0.40;
+
+      const signalVolume =
+        zone.competitors +
+        zone.demand +
+        zone.ecosystem;
+
+      const signalCoverage =
+        signalVolume >= 30 ? 95 :
+        signalVolume >= 15 ? 82 :
+        signalVolume >= 7 ? 68 :
+        signalVolume >= 3 ? 52 : 35;
+
       const scores = {
         opportunity: round1(opportunity),
         demand: round1(demand),
         whiteSpace: round1(whiteSpace),
         ecosystem: round1(ecosystem),
         competition: round1(competition),
-        quality: round1(quality),
+        quality: 0,
       };
+
       return {
         id: zone.id,
         label: zone.label,
         rank: 0,
-        band: band(opportunity),
+        band: "",
         center: zone.center,
         polygon: zone.polygon,
         scores,
@@ -369,21 +479,45 @@ export async function POST(request: Request) {
           competitors: zone.competitors,
           demand: zone.demand,
           ecosystem: zone.ecosystem,
-          quality: zone.quality,
+          quality: 0,
           signalCoverage,
           breakdown: zone.breakdown,
         },
-        reasons: buildReasons(scores),
+        reasons: buildReasons({
+          demand,
+          competition,
+          ecosystem,
+        }),
       };
     });
 
     scored.sort((a, b) => b.scores.opportunity - a.scores.opportunity);
-    scored.forEach((zone, index) => { zone.rank = index + 1; });
 
-    const totalSignals = scored.reduce((sum, zone) => sum + zone.raw.competitors + zone.raw.demand + zone.raw.ecosystem, 0);
+    scored.forEach((zone, index) => {
+      zone.rank = index + 1;
+      zone.band = bandFromRank(zone.rank);
+    });
+
+    const totalSignals = scored.reduce(
+      (sum, zone) =>
+        sum +
+        zone.raw.competitors +
+        zone.raw.demand +
+        zone.raw.ecosystem,
+      0,
+    );
+
     const warnings: string[] = [];
-    if (totalSignals < 25) warnings.push("Sparse place coverage in this market. Treat the ranking as directional and validate with local data.");
-    warnings.push("The score measures relative attractiveness inside the analysed 3 Ã— 3 grid; it is not a financial return forecast.");
+
+    if (totalSignals < 25) {
+      warnings.push(
+        "Place coverage is sparse in this market. Treat the ranking as directional and validate with local data.",
+      );
+    }
+
+    warnings.push(
+      "This is a relative comparison of nine nearby zones, not a financial return forecast.",
+    );
 
     return NextResponse.json({
       ok: true,
@@ -391,7 +525,7 @@ export async function POST(request: Request) {
       model,
       modelLabel: definition.label,
       zoneKm,
-      grid: "3 Ã— 3 comparative urban grid",
+      grid: "3 x 3 local comparison",
       queryCount: jobs.length,
       generatedAt: new Date().toISOString(),
       source: "Google Places Aggregate API + Stratify scoring",
@@ -399,19 +533,29 @@ export async function POST(request: Request) {
       bestZone: scored[0] ?? null,
       zones: scored,
       methodology: {
-        summary: "Each zone is compared with the other eight zones in the same local market. Place counts are normalized locally before weighting, so the result highlights relative white space and ecosystem strength rather than treating raw counts as universally good or bad.",
+        summary: "Each zone is compared with the other eight zones in the same local market. The Opportunity Score uses three signals only: demand, room versus direct competition and local supporting activity.",
         weights: {
-          demand: 0.30,
-          whiteSpace: 0.25,
-          ecosystem: 0.20,
-          competition: 0.15,
-          quality: 0.10,
+          demand: 0.40,
+          whiteSpace: 0,
+          ecosystem: 0.25,
+          competition: 0.35,
+          quality: 0,
         },
       },
       warnings,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Geo Intelligence analysis failed.";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Geo Intelligence analysis failed.";
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: message,
+      },
+      { status: 500 },
+    );
   }
 }
