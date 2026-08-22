@@ -24,14 +24,12 @@ type Profile = {
 const PROFILES: Record<string, Profile> = {
   agriculture: {
     label: "Agriculture",
-    // Keep the primary market count deliberately narrow.
-    // Generic supplier/manufacturer types are NOT agriculture-specific.
-    focusTypes: ["farm", "ranch", "farmers_market"],
+    focusTypes: ["farm", "ranch", "supplier", "farmers_market"],
     ecosystem: [
-      { label: "Farmers markets", types: ["farmers_market"] },
-      { label: "Garden centers", types: ["garden_center"] },
-      { label: "Veterinary services", types: ["veterinary_care"] },
-      { label: "General storage (context)", types: ["storage"] },
+      { label: "Suppliers and wholesalers", types: ["supplier", "wholesaler"] },
+      { label: "Manufacturing", types: ["manufacturer"] },
+      { label: "Storage and shipping", types: ["storage", "shipping_service"] },
+      { label: "Markets", types: ["farmers_market", "market"] },
     ],
   },
 
@@ -439,9 +437,7 @@ function regionCapable(place: Awaited<ReturnType<typeof resolveMarket>>) {
 
 function typeFilter(types: string[]) {
   return {
-    includedPrimaryTypes: Array.from(
-      new Set(types.filter(Boolean)),
-    ),
+    includedTypes: Array.from(new Set(types.filter(Boolean))),
   };
 }
 
@@ -691,20 +687,6 @@ export async function POST(request: Request) {
 
     const resolved = await resolveMarket(apiKey, market);
     const profile = profileFor({ sector, category, keyword });
-
-    if (
-      (action === "analyze" || action === "list") &&
-      !hasPoint
-    ) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "A valid tapped map point is required for this analysis.",
-        },
-        { status: 400 },
-      );
-    }
 
     if (action === "resolve") {
       if (resolved.lat === null || resolved.lng === null) {
@@ -992,8 +974,6 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       action: pointAnalysis ? "analyze" : "legacy",
-      scopeVerified: pointAnalysis && location.mode === "circle",
-      scopeMode: location.mode,
 
       market: {
         query: market,

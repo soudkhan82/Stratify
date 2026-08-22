@@ -24,14 +24,12 @@ type Profile = {
 const PROFILES: Record<string, Profile> = {
   agriculture: {
     label: "Agriculture",
-    // Keep the primary market count deliberately narrow.
-    // Generic supplier/manufacturer types are NOT agriculture-specific.
-    focusTypes: ["farm", "ranch", "farmers_market"],
+    focusTypes: ["farm", "ranch", "supplier", "farmers_market"],
     ecosystem: [
-      { label: "Farmers markets", types: ["farmers_market"] },
-      { label: "Garden centers", types: ["garden_center"] },
-      { label: "Veterinary services", types: ["veterinary_care"] },
-      { label: "General storage (context)", types: ["storage"] },
+      { label: "Suppliers and wholesalers", types: ["supplier", "wholesaler"] },
+      { label: "Manufacturing", types: ["manufacturer"] },
+      { label: "Storage and shipping", types: ["storage", "shipping_service"] },
+      { label: "Markets", types: ["farmers_market", "market"] },
     ],
   },
 
@@ -439,9 +437,7 @@ function regionCapable(place: Awaited<ReturnType<typeof resolveMarket>>) {
 
 function typeFilter(types: string[]) {
   return {
-    includedPrimaryTypes: Array.from(
-      new Set(types.filter(Boolean)),
-    ),
+    includedTypes: Array.from(new Set(types.filter(Boolean))),
   };
 }
 
@@ -469,73 +465,6 @@ async function aggregateCount(
 
   const count = Number(json?.count ?? 0);
   return Number.isFinite(count) && count >= 0 ? count : 0;
-}
-
-async function aggregatePlaceIds(
-  apiKey: string,
-  locationFilter: Record<string, unknown>,
-  types: string[],
-  extra: Record<string, unknown> = {},
-) {
-  const count = await aggregateCount(
-    apiKey,
-    locationFilter,
-    types,
-    extra,
-  );
-
-  if (count > 100) {
-    return {
-      count,
-      canList: false,
-      placeIds: [] as string[],
-    };
-  }
-
-  if (count <= 0) {
-    return {
-      count: 0,
-      canList: true,
-      placeIds: [] as string[],
-    };
-  }
-
-  const json = await fetchGoogleJson(AGGREGATE_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Goog-Api-Key": apiKey,
-    },
-    body: JSON.stringify({
-      insights: ["INSIGHT_PLACES"],
-      filter: {
-        locationFilter,
-        typeFilter: typeFilter(types),
-        ...extra,
-      },
-    }),
-  });
-
-  const placeIds = Array.isArray(json?.placeInsights)
-    ? json.placeInsights
-        .map((item: unknown) => {
-          const place =
-            item && typeof item === "object"
-              ? clean((item as { place?: unknown }).place, 220)
-              : "";
-
-          return place.startsWith("places/")
-            ? place.slice("places/".length)
-            : place;
-        })
-        .filter(Boolean)
-    : [];
-
-  return {
-    count,
-    canList: true,
-    placeIds: Array.from(new Set(placeIds)),
-  };
 }
 
 async function buildLocationFilter(
@@ -661,23 +590,8 @@ export async function POST(request: Request) {
 
     const radiusMeters =
       Number.isFinite(requestedRadius)
-        ? Math.round(
-            Math.min(
-              50000,
-              Math.max(100, requestedRadius),
-            ),
-          )
+        ? Math.round(Math.min(50000, Math.max(100, requestedRadius)))
         : 5000;
-
-    const segment =
-      clean(body?.segment, 40) || "operational";
-
-    const requestedTypes = Array.isArray(body?.types)
-      ? body!.types
-          .map((item) => clean(item, 80))
-          .filter(Boolean)
-          .slice(0, 10)
-      : [];
 
     if (market.length < 2) {
       return NextResponse.json(
@@ -692,27 +606,12 @@ export async function POST(request: Request) {
     const resolved = await resolveMarket(apiKey, market);
     const profile = profileFor({ sector, category, keyword });
 
-    if (
-      (action === "analyze" || action === "list") &&
-      !hasPoint
-    ) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "A valid tapped map point is required for this analysis.",
-        },
-        { status: 400 },
-      );
-    }
-
     if (action === "resolve") {
       if (resolved.lat === null || resolved.lng === null) {
         return NextResponse.json(
           {
             ok: false,
-            error:
-              "The selected location has no usable map coordinates.",
+            error: "The selected location has no usable map coordinates.",
           },
           { status: 400 },
         );
@@ -738,8 +637,7 @@ export async function POST(request: Request) {
     }
 
     const location =
-      (action === "analyze" || action === "list") &&
-      hasPoint
+      action === "analyze" && hasPoint
         ? {
             filter: {
               circle: {
@@ -751,100 +649,9 @@ export async function POST(request: Request) {
               },
             },
             mode: "circle" as const,
-            label: `${Math.round(
-              (radiusMeters / 1000) * 10,
-            ) / 10} km around selected map point`,
+            label: `${Math.round((radiusMeters / 1000) * 10) / 10} km around selected map point`,
           }
         : await buildLocationFilter(apiKey, resolved);
-
-    if (action === "list") {
-      if (!hasPoint) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error:
-              "A map point is required to drill into listings.",
-          },
-          { status: 400 },
-        );
-      }
-
-      const allowedTypes = new Set([
-        ...profile.focusTypes,
-        ...profile.ecosystem.flatMap((item) => item.types),
-      ]);
-
-      const effectiveTypes =
-        requestedTypes.length > 0
-          ? requestedTypes.filter((item) =>
-              allowedTypes.has(item),
-            )
-          : profile.focusTypes;
-
-      if (!effectiveTypes.length) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error:
-              "The requested listing group is not available for this analysis.",
-          },
-          { status: 400 },
-        );
-      }
-
-      const extra: Record<string, unknown> = {};
-
-      if (segment === "temporary") {
-        extra.operatingStatus = [
-          "OPERATING_STATUS_TEMPORARILY_CLOSED",
-        ];
-      } else if (segment === "permanent") {
-        extra.operatingStatus = [
-          "OPERATING_STATUS_PERMANENTLY_CLOSED",
-        ];
-      } else {
-        extra.operatingStatus = [
-          "OPERATING_STATUS_OPERATIONAL",
-        ];
-
-        if (segment === "rated45") {
-          extra.ratingFilter = { minRating: 4.5 };
-        } else if (segment === "rated4") {
-          extra.ratingFilter = { minRating: 4.0 };
-        }
-      }
-
-      const listing = await aggregatePlaceIds(
-        apiKey,
-        location.filter,
-        effectiveTypes,
-        extra,
-      );
-
-      return NextResponse.json({
-        ok: true,
-        action: "list",
-        label:
-          clean(body?.label, 120) || profile.label,
-        segment,
-        types: effectiveTypes,
-        center: {
-          lat: requestedLat,
-          lng: requestedLng,
-        },
-        radiusMeters,
-        count: listing.count,
-        canList: listing.canList,
-        placeIds: listing.placeIds,
-        source: "Google Places Aggregate API",
-        attribution: "Google Maps",
-        message: listing.canList
-          ? listing.count === 0
-            ? "No matching places were found in this circle."
-            : `${listing.count} exact matching places are available for listing drill-down.`
-          : `${listing.count} places match. Reduce the analysis radius until the count is 100 or fewer to retrieve exact Place IDs.`,
-      });
-    }
 
     const tasks: Array<() => Promise<{ key: string; count: number }>> = [
       async () => ({
@@ -970,7 +777,6 @@ export async function POST(request: Request) {
 
     const ecosystem = profile.ecosystem.map((item, index) => ({
       label: item.label,
-      types: item.types,
       count: values.get(`ecosystem:${index}`) ?? 0,
     }));
 
@@ -992,8 +798,6 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       action: pointAnalysis ? "analyze" : "legacy",
-      scopeVerified: pointAnalysis && location.mode === "circle",
-      scopeMode: location.mode,
 
       market: {
         query: market,
