@@ -679,21 +679,7 @@ export async function POST(request: Request) {
           .slice(0, 10)
       : [];
 
-    const pointAction =
-      action === "analyze" || action === "list";
-
-    if (pointAction && !hasPoint) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "A valid GPS or tapped map point is required for this analysis.",
-        },
-        { status: 400 },
-      );
-    }
-
-    if (!pointAction && market.length < 2) {
+    if (market.length < 2) {
       return NextResponse.json(
         {
           ok: false,
@@ -703,20 +689,22 @@ export async function POST(request: Request) {
       );
     }
 
+    const resolved = await resolveMarket(apiKey, market);
     const profile = profileFor({ sector, category, keyword });
 
-    const resolved =
-      pointAction && hasPoint
-        ? {
-            id: "",
-            name: market || "Selected map point",
-            address: market || "GPS / map point",
-            primaryType: "",
-            types: [] as string[],
-            lat: requestedLat,
-            lng: requestedLng,
-          }
-        : await resolveMarket(apiKey, market);
+    if (
+      (action === "analyze" || action === "list") &&
+      !hasPoint
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "A valid tapped map point is required for this analysis.",
+        },
+        { status: 400 },
+      );
+    }
 
     if (action === "resolve") {
       if (resolved.lat === null || resolved.lng === null) {
@@ -974,10 +962,7 @@ export async function POST(request: Request) {
     const rows = await runInBatches(tasks, 5);
     const values = new Map(rows.map((item) => [item.key, item.count]));
 
-    const operationalAggregate =
-      values.get("operational") ?? 0;
-    let operational = operationalAggregate;
-
+    const operational = values.get("operational") ?? 0;
     const rated4Plus = values.get("rated4") ?? 0;
     const rated45Plus = values.get("rated45") ?? 0;
     const temporarilyClosed = values.get("temporary") ?? 0;
@@ -994,38 +979,6 @@ export async function POST(request: Request) {
 
     const pointAnalysis =
       action === "analyze" && hasPoint;
-
-    let primaryPlaceIds: string[] = [];
-    let exactIdCount: number | null = null;
-    let listingVerified: boolean | null = null;
-
-    if (
-      pointAnalysis &&
-      operationalAggregate >= 0 &&
-      operationalAggregate <= 100
-    ) {
-      const exact = await aggregatePlaceIds(
-        apiKey,
-        location.filter,
-        profile.focusTypes,
-        {
-          operatingStatus: [
-            "OPERATING_STATUS_OPERATIONAL",
-          ],
-        },
-      );
-
-      if (exact.canList) {
-        primaryPlaceIds = exact.placeIds;
-        exactIdCount = primaryPlaceIds.length;
-        listingVerified =
-          exactIdCount === operationalAggregate;
-
-        // For a drillable cohort, display exactly the number
-        // of unique IDs that the user will actually open.
-        operational = exactIdCount;
-      }
-    }
 
     const areaKm2 = pointAnalysis
       ? Math.PI * Math.pow(radiusMeters / 1000, 2)
@@ -1053,14 +1006,6 @@ export async function POST(request: Request) {
       focus: {
         label: profile.label,
         types: profile.focusTypes,
-      },
-
-      primaryPlaceIds,
-
-      listingAudit: {
-        aggregateCount: operationalAggregate,
-        exactIdCount,
-        verified: listingVerified,
       },
 
       center: pointAnalysis
@@ -1107,7 +1052,7 @@ export async function POST(request: Request) {
       source: "Google Places Aggregate API",
       attribution: "Google Maps",
       disclaimer:
-        "Primary counts use the selected primary place types inside the exact map circle. Related ecosystem rows are separate contextual counts and are not components of the primary total. Area Insights does not predict demand, profitability, land availability, zoning, planning permission or investment suitability.",
+        "Area Insights describes observed business presence, ratings and related place categories. It does not predict demand, profitability, land availability, zoning, planning permission or investment suitability.",
     });
   } catch (error) {
     return NextResponse.json(
