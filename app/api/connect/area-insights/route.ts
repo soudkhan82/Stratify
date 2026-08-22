@@ -1016,7 +1016,9 @@ export async function POST(request: Request) {
       );
 
       if (exact.canList) {
-        primaryPlaceIds = exact.placeIds;
+        primaryPlaceIds = exact.placeIds
+          .map((id: unknown) => String(id || "").trim())
+          .filter(Boolean);
         exactIdCount = primaryPlaceIds.length;
         listingVerified =
           exactIdCount === operationalAggregate;
